@@ -7,6 +7,20 @@ import { Track, Shelf, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, Icon
 
 export { Theme, Track, Shelf }
 
+component SettingGroup inherits Rectangle {
+    in property <string> title;
+    in property <string> note;
+    border-radius: Theme.r-lg;
+    background: Theme.surface-1;
+    VerticalLayout {
+        padding: 22px; spacing: 10px;
+        Text { text: root.title; font-size: 16px; font-weight: 700; color: Theme.text-primary; }
+        Text { text: root.note; font-size: 13px; color: Theme.text-secondary; wrap: word-wrap; }
+        Rectangle { height: 4px; }
+        @children
+    }
+}
+
 export component AppWindow inherits Window {
     in property <string> window-title: "vynz";
     title: window-title;
@@ -44,6 +58,18 @@ export component AppWindow inherits Window {
     property <bool> compact: root.width < 1100px;
     property <length> sidebar-w: compact ? 64px : 196px;
 
+    // Ayarlar
+    in-out property <int> cache-index: 2;
+    in-out property <bool> prefetch-on: true;
+    in-out property <int> readahead-index: 1;
+    in-out property <int> cookies-index: 0;
+    in-out property <int> download-index: 1;
+    in property <string> cache-usage: "…";
+    callback settings-changed();
+    callback clear-cache();
+
+    callback hover-shelf(int, int, bool);
+    callback hover-result(int, bool);
     callback play-shelf(int, int);
     callback play-result(int);
     callback play-queue(int);
@@ -267,6 +293,7 @@ export component AppWindow inherits Window {
                                 track: t;
                                 active: has-now && t.key == now.key;
                                 clicked => { root.play-shelf(si, i); }
+                                hovered(on) => { root.hover-shelf(si, i, on); }
                             }
                         }
                     }
@@ -302,12 +329,83 @@ export component AppWindow inherits Window {
                             track: t; index: i;
                             playing: has-now && t.key == now.key; is-running: playing && !buffering;
                             clicked => { root.play-result(i); }
+                            hovered(on) => { root.hover-result(i, on); }
+                        }
+                    }
+                }
+
+                // ===== Ayarlar =====
+                if view == "settings": VerticalLayout {
+                    spacing: 28px;
+                    Text {
+                        text: "Ayarlar";
+                        font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px;
+                        color: Theme.text-primary;
+                    }
+
+                    SettingGroup {
+                        title: "Ses önbelleği";
+                        note: "20 saniyeden uzun dinlenen şarkılar arka planda diske indirilir; tekrar açılışta anında başlar, internetsiz de çalar. Dolunca en uzun süredir çalınmayan silinir. Kullanılan: " + cache-usage;
+                        HorizontalLayout {
+                            spacing: 8px; alignment: start;
+                            for label[i] in ["Kapalı", "1 GB", "2 GB", "5 GB", "10 GB"]: PillButton {
+                                pill-height: 32px; text: label; active: cache-index == i;
+                                clicked => { cache-index = i; root.settings-changed(); }
+                            }
+                            Rectangle { width: 12px; }
+                            PillButton { pill-height: 32px; text: "Temizle"; clicked => { root.clear-cache(); } }
+                        }
+                    }
+
+                    SettingGroup {
+                        title: "Arka plan indirme hızı";
+                        note: "Önbelleğe indirme bu hızı aşmaz; bilgisayarda başka bir program interneti yoğun kullanıyorsa bekler, kotalı bağlantıda hiç indirmez. Çalan şarkı bu sınırdan etkilenmez.";
+                        HorizontalLayout {
+                            spacing: 8px; alignment: start;
+                            for label[i] in ["256 KB/sn", "512 KB/sn", "1 MB/sn", "Sınırsız"]: PillButton {
+                                pill-height: 32px; text: label; active: download-index == i;
+                                clicked => { download-index = i; root.settings-changed(); }
+                            }
+                        }
+                    }
+
+                    SettingGroup {
+                        title: "Önceden hazırlama";
+                        note: "Sıradaki şarkılar, ekrandaki ilk şarkılar ve üzerinde beklediğin şarkı arka planda hazırlanır; tıklayınca hemen başlar. Pilde ve kotalı bağlantıda yalnız sıradakiler hazırlanır.";
+                        HorizontalLayout {
+                            spacing: 8px; alignment: start;
+                            PillButton { pill-height: 32px; text: "Açık"; active: prefetch-on; clicked => { prefetch-on = true; root.settings-changed(); } }
+                            PillButton { pill-height: 32px; text: "Kapalı"; active: !prefetch-on; clicked => { prefetch-on = false; root.settings-changed(); } }
+                        }
+                    }
+
+                    SettingGroup {
+                        title: "İleri okuma (internet kullanımı)";
+                        note: "Çalan şarkının ne kadar önden indirileceği. Kısa tutulursa ilk tampondan sonra indirme çalma hızına iner ve internet başkalarına kalır.";
+                        HorizontalLayout {
+                            spacing: 8px; alignment: start;
+                            for label[i] in ["30 sn", "1 dk", "2 dk", "Sınırsız"]: PillButton {
+                                pill-height: 32px; text: label; active: readahead-index == i;
+                                clicked => { readahead-index = i; root.settings-changed(); }
+                            }
+                        }
+                    }
+
+                    SettingGroup {
+                        title: "YouTube Music girişi";
+                        note: "Tarayıcıdaki YouTube oturumu kullanılırsa Premium hesaplarda ses kalitesi ~260 kbps olur; girişsiz ~140 kbps.";
+                        HorizontalLayout {
+                            spacing: 8px; alignment: start;
+                            for label[i] in ["Girişsiz", "Firefox oturumu"]: PillButton {
+                                pill-height: 32px; text: label; active: cookies-index == i;
+                                clicked => { cookies-index = i; root.settings-changed(); }
+                            }
                         }
                     }
                 }
 
                 // ===== Henüz yapılmayan ekranlar =====
-                if view != "home" && view != "search": Rectangle {
+                if view != "home" && view != "search" && view != "settings": Rectangle {
                     height: 420px;
                     VerticalLayout {
                         alignment: center; spacing: 8px;

@@ -205,8 +205,13 @@ export component TrackCard inherits Rectangle {
     in property <Track> track;
     in property <bool> active;
     callback clicked;
+    callback hovered(bool);
 
-    ta := TouchArea { clicked => { root.clicked(); } mouse-cursor: pointer; }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+        changed has-hover => { root.hovered(self.has-hover); }
+    }
 
     Rectangle {
         x: -10px; width: parent.width + 20px; height: parent.height + 10px;
@@ -264,13 +269,18 @@ export component TrackRow inherits Rectangle {
     in property <bool> playing;
     in property <bool> is-running;
     callback clicked;
+    callback hovered(bool);
 
     height: 56px;
     border-radius: Theme.r-sm;
     background: playing || ta.has-hover ? Theme.surface-1 : transparent;
     animate background { duration: Theme.micro; }
 
-    ta := TouchArea { clicked => { root.clicked(); } mouse-cursor: pointer; }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+        changed has-hover => { root.hovered(self.has-hover); }
+    }
 
     HorizontalLayout {
         padding-left: 14px; padding-right: 14px; spacing: 14px;
