@@ -25,6 +25,29 @@ export struct Shelf {
     items: [Track],
 }
 
+// Aktarma ekranındaki satır: kaynak listedeki şarkı ve bulunan karşılığı.
+// status: 0 eşleşti, 1 emin değil, 2 bulunamadı, 3 doğrudan (eşleştirme gerekmedi)
+export struct ImportRow {
+    key: string,
+    want-title: string,
+    want-artist: string,
+    want-duration: float,
+    title: string,
+    artist: string,
+    duration: float,
+    source: int,
+    status: int,
+    score: int,
+    alts: int,
+    art: image,
+    has-art: bool,
+}
+
+export struct PlaylistInfo {
+    name: string,
+    count: int,
+}
+
 // Kaynak rozetleri: 0 YouTube Music, 1 SoundCloud, 2 Spotify
 export global Sources {
     out property <[string]> names: ["YouTube Music", "SoundCloud", "Spotify"];
@@ -323,6 +346,71 @@ export component TrackRow inherits Rectangle {
             width: 52px; horizontal-alignment: right; vertical-alignment: center;
             text: root.track.duration > 0 ? Fmt.time(root.track.duration) : "";
             font-family: Theme.mono; font-size: 12px; color: Theme.text-muted;
+        }
+    }
+}
+
+export global Status {
+    out property <[string]> names: ["Eşleşti", "Emin değil", "Bulunamadı", "Hazır"];
+    out property <[color]> colors: [#34D399, #FBBF24, #FB7185, #34D399];
+}
+
+export component ImportLine inherits Rectangle {
+    in property <ImportRow> line;
+    callback change();
+
+    height: 64px;
+    border-radius: Theme.r-md;
+    background: ta.has-hover ? Theme.surface-2 : Theme.surface-1;
+    animate background { duration: Theme.micro; }
+    ta := TouchArea { }
+
+    HorizontalLayout {
+        padding-left: 16px; padding-right: 14px; spacing: 14px;
+        // Kaynak listedeki şarkı
+        VerticalLayout {
+            alignment: center; horizontal-stretch: 1;
+            Text { text: root.line.want-title; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
+            Text {
+                text: root.line.want-artist + (root.line.want-duration > 0 ? " · " + Fmt.time(root.line.want-duration) : "");
+                font-size: 12px; color: Theme.text-secondary; overflow: elide;
+            }
+        }
+        Icon { y: (root.height - self.height) / 2; width: 16px; height: 16px; commands: Icons.arrows; stroke: Theme.text-muted; }
+        // Bulunan karşılık
+        if root.line.status != 2: HorizontalLayout {
+            horizontal-stretch: 1; spacing: 10px;
+            Cover { width: 40px; height: 40px; y: 12px; radius: 8px; art: root.line.art; has-art: root.line.has-art; }
+            VerticalLayout {
+                alignment: center;
+                Text { text: root.line.title; font-size: 13.5px; font-weight: 600; color: Theme.text-primary; overflow: elide; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: root.line.artist + (root.line.duration > 0 ? " · " + Fmt.time(root.line.duration) : ""); font-size: 12px; color: Theme.text-secondary; overflow: elide; }
+                }
+            }
+        }
+        if root.line.status == 2: Text {
+            horizontal-stretch: 1; vertical-alignment: center;
+            text: "Karşılığı bulunamadı"; font-size: 13px; color: Status.colors[2];
+        }
+        Rectangle {
+            width: 120px;
+            Rectangle {
+                x: 0; height: 22px; width: st.preferred-width + 18px; border-radius: 11px;
+                background: Status.colors[root.line.status].with-alpha(0.13);
+                st := Text {
+                    text: Status.names[root.line.status] + (root.line.status < 2 ? " %" + root.line.score : "");
+                    font-size: 11px; font-weight: 700; color: Status.colors[root.line.status];
+                }
+            }
+        }
+        Rectangle {
+            width: 84px;
+            if root.line.alts > 1: PillButton {
+                x: 0; y: (root.height - self.height) / 2; pill-height: 30px; text: "Değiştir";
+                clicked => { root.change(); }
+            }
         }
     }
 }

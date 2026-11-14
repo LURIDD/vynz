@@ -3,9 +3,9 @@ import "fonts/PlusJakartaSans.ttf";
 import "fonts/JetBrainsMono.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine } from "parts.slint";
 
-export { Theme, Track, Shelf }
+export { Theme, Track, Shelf, ImportRow, PlaylistInfo }
 
 component SettingGroup inherits Rectangle {
     in property <string> title;
@@ -67,6 +67,27 @@ export component AppWindow inherits Window {
     in property <string> cache-usage: "…";
     callback settings-changed();
     callback clear-cache();
+
+    // Liste aktarma
+    in property <[ImportRow]> import-rows;
+    in property <bool> import-busy;
+    in property <int> import-done;
+    in property <int> import-total;
+    in property <string> import-name;
+    in property <string> import-note;
+    in property <[int]> import-counts: [0, 0, 0, 0];
+    in-out property <int> import-filter: -1;
+    callback start-import(string);
+    callback import-change(int);
+    callback import-save();
+
+    // Kaydedilen listeler
+    in property <[PlaylistInfo]> playlists;
+    in property <int> current-playlist: -1;
+    in property <[Track]> playlist-tracks;
+    callback open-playlist(int);
+    callback play-playlist(int);
+    callback delete-playlist(int);
 
     callback hover-shelf(int, int, bool);
     callback hover-result(int, bool);
@@ -140,6 +161,17 @@ export component AppWindow inherits Window {
             NavButton { icon: Icons.settings; label: "Ayarlar"; compact: compact; active: view == "settings"; clicked => { view = "settings"; } }
 
             Rectangle { height: 24px; }
+            if !compact: Text { text: "Listelerim"; font-size: 11px; font-weight: 700; color: Theme.text-muted; x: 12px; height: 22px; }
+            if !compact && playlists.length == 0: Text {
+                text: "Liste Aktarma'dan ekle"; font-size: 12px; color: Theme.text-muted; x: 12px; height: 26px;
+            }
+            for p[i] in playlists: NavButton {
+                icon: Icons.list-music; label: p.name; compact: compact;
+                active: view == "playlist" && current-playlist == i;
+                clicked => { root.open-playlist(i); view = "playlist"; }
+            }
+
+            Rectangle { height: 24px; }
             if !compact: Text { text: "Kaynaklar"; font-size: 11px; font-weight: 700; color: Theme.text-muted; x: 12px; height: 22px; }
             for name[i] in Sources.names: HorizontalLayout {
                 height: 30px;
@@ -148,12 +180,12 @@ export component AppWindow inherits Window {
                 spacing: 12px;
                 Rectangle {
                     width: 8px; height: 8px; y: 11px; border-radius: 4px;
-                    background: i < 2 ? Sources.colors[i] : Theme.text-muted;
+                    background: Sources.colors[i];
                 }
                 if !compact: Text {
-                    text: name + (i < 2 ? "" : " · yakında");
+                    text: name + (i < 2 ? "" : " · aktarma");
                     vertical-alignment: center; font-size: 12.5px;
-                    color: i < 2 ? Theme.text-secondary : Theme.text-muted;
+                    color: Theme.text-secondary;
                 }
             }
         }
@@ -334,6 +366,125 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // ===== Liste aktarma =====
+                if view == "import": VerticalLayout {
+                    spacing: 20px;
+                    VerticalLayout {
+                        spacing: 6px;
+                        Text { text: "Liste Aktarma"; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; }
+                        Text {
+                            text: "Spotify, YouTube Music ya da SoundCloud liste bağlantısını yapıştır. Spotify şarkıları YouTube Music'te (bulunamazsa SoundCloud'da) eşleştirilir.";
+                            font-size: 14px; color: Theme.text-secondary; wrap: word-wrap;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Rectangle {
+                            horizontal-stretch: 1; height: 44px; border-radius: 22px;
+                            background: link-input.has-focus ? Theme.surface-2 : Theme.surface-1;
+                            TouchArea { mouse-cursor: text; clicked => { link-input.focus(); } }
+                            link-input := TextInput {
+                                x: 18px; width: parent.width - 36px; height: parent.height;
+                                vertical-alignment: center; single-line: true;
+                                font-size: 13.5px; color: Theme.text-primary;
+                                enabled: !import-busy;
+                                accepted => { if (self.text != "") { root.start-import(self.text); } }
+                            }
+                            if link-input.text == "": Text {
+                                x: 18px; height: parent.height; vertical-alignment: center;
+                                text: "https://open.spotify.com/playlist/…"; font-size: 13.5px; color: Theme.text-muted;
+                            }
+                        }
+                        PillButton {
+                            pill-height: 44px; text: import-busy ? "Aktarılıyor…" : "Aktar"; primary: !import-busy; enabled: !import-busy;
+                            clicked => { if (link-input.text != "") { root.start-import(link-input.text); } }
+                        }
+                    }
+                    Text {
+                        text: "Gizli listeler ve Beğenilen Şarkılar için: listeyi geçici olarak herkese açık yap ya da Spotify'da yeni bir herkese açık listeye kopyala. Spotify'ın gömülü sayfası en fazla 100 şarkı verir.";
+                        font-size: 12px; color: Theme.text-muted; wrap: word-wrap;
+                    }
+                    if import-busy: VerticalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: import-total > 0 ? "Eşleştiriliyor: " + import-done + " / " + import-total : "Liste okunuyor…";
+                            font-size: 13px; font-weight: 600; color: Theme.text-secondary;
+                        }
+                        Rectangle {
+                            height: 4px; border-radius: 2px; background: Theme.surface-2;
+                            Rectangle {
+                                x: 0; height: parent.height; border-radius: 2px; background: Theme.accent;
+                                width: import-total > 0 ? parent.width * import-done / import-total : parent.width * 0.08;
+                                animate width { duration: 200ms; }
+                            }
+                        }
+                    }
+                    if !import-busy && import-rows.length > 0: VerticalLayout {
+                        spacing: 14px;
+                        HorizontalLayout {
+                            spacing: 12px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                Text { text: import-name; font-family: Theme.display; font-size: 22px; font-weight: 800; color: Theme.text-primary; overflow: elide; }
+                                Text { text: import-note; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                            }
+                            PillButton {
+                                y: 4px; text: "Kütüphaneye kaydet (" + (import-counts[0] + import-counts[1] + import-counts[3]) + ")"; primary: true;
+                                clicked => { root.import-save(); }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 8px; alignment: start;
+                            PillButton { pill-height: 32px; text: "Tümü (" + import-rows.length + ")"; active: import-filter == -1; clicked => { import-filter = -1; } }
+                            PillButton { pill-height: 32px; text: "Eşleşti (" + (import-counts[0] + import-counts[3]) + ")"; active: import-filter == 0; clicked => { import-filter = 0; } }
+                            PillButton { pill-height: 32px; text: "Emin değil (" + import-counts[1] + ")"; active: import-filter == 1; clicked => { import-filter = 1; } }
+                            PillButton { pill-height: 32px; text: "Bulunamadı (" + import-counts[2] + ")"; active: import-filter == 2; clicked => { import-filter = 2; } }
+                        }
+                        VerticalLayout {
+                            spacing: 0px;
+                            for r[i] in import-rows: Rectangle {
+                                property <bool> shown: import-filter == -1 || r.status == import-filter || (import-filter == 0 && r.status == 3);
+                                visible: shown;
+                                height: shown ? 70px : 0px;
+                                ImportLine {
+                                    y: 0; height: 64px; line: r;
+                                    change => { root.import-change(i); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ===== Kaydedilen liste =====
+                if view == "playlist" && current-playlist >= 0 && current-playlist < playlists.length: VerticalLayout {
+                    spacing: 20px;
+                    HorizontalLayout {
+                        spacing: 16px;
+                        VerticalLayout {
+                            horizontal-stretch: 1; spacing: 4px;
+                            Text { text: "Liste"; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                            Text { text: playlists[current-playlist].name; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; overflow: elide; }
+                            Text { text: playlists[current-playlist].count + " şarkı"; font-size: 14px; color: Theme.text-secondary; }
+                        }
+                        VerticalLayout {
+                            alignment: end;
+                            HorizontalLayout {
+                                spacing: 10px;
+                                PillButton { text: "Çal"; primary: true; enabled: playlist-tracks.length > 0; clicked => { root.play-playlist(0); } }
+                                PillButton { text: "Sil"; clicked => { root.delete-playlist(current-playlist); view = "home"; } }
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 0px;
+                        for t[i] in playlist-tracks: TrackRow {
+                            track: t; index: i;
+                            playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                            clicked => { root.play-playlist(i); }
+                        }
+                    }
+                }
+
                 // ===== Ayarlar =====
                 if view == "settings": VerticalLayout {
                     spacing: 28px;
@@ -405,7 +556,7 @@ export component AppWindow inherits Window {
                 }
 
                 // ===== Henüz yapılmayan ekranlar =====
-                if view != "home" && view != "search" && view != "settings": Rectangle {
+                if view != "home" && view != "search" && view != "settings" && view != "import" && view != "playlist": Rectangle {
                     height: 420px;
                     VerticalLayout {
                         alignment: center; spacing: 8px;

@@ -8,6 +8,8 @@
 mod art;
 mod cache;
 mod fetcher;
+mod import;
+mod library;
 mod model;
 mod player;
 mod resolve;
@@ -62,6 +64,10 @@ struct State {
     hover_timer: Timer,
     metered: Arc<AtomicBool>,
     on_battery: Arc<AtomicBool>,
+    imported: Option<import::Fetched>,
+    import_origin: String,
+    playlists: Vec<library::Playlist>,
+    current_pl: Option<usize>,
 }
 
 /// VYNZ_DEBUG=1 ile zaman damgalı olay günlüğü (stderr): hız ölçümü için.
@@ -188,6 +194,17 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     }
     update_rows(&ui.get_results(), &key, &img);
     update_rows(&ui.get_queue(), &key, &img);
+    update_rows(&ui.get_playlist_tracks(), &key, &img);
+    let rows = ui.get_import_rows();
+    for i in 0..rows.row_count() {
+        if let Some(mut r) = rows.row_data(i) {
+            if r.key == key {
+                r.art = img.clone();
+                r.has_art = true;
+                rows.set_row_data(i, r);
+            }
+        }
+    }
 
     let mut now = ui.get_now();
     if ui.get_has_now() && now.key == key {
@@ -577,6 +594,184 @@ fn search(ui: &AppWindow, query: String) {
     });
 }
 
+// ---------- Liste aktarma ----------
+
+fn import_row_ui(r: &import::Row) -> ImportRow {
+    let pick = r.pick();
+    let key = pick.map(|t| t.key()).unwrap_or_default();
+    let (art, has_art) = ARTS.with(|a| a.borrow().get(&key).map(|(i, _)| (i.clone(), true))).unwrap_or_default();
+    ImportRow {
+        key: key.into(),
+        want_title: r.wanted.title.as_str().into(),
+        want_artist: r.wanted.artist.as_str().into(),
+        want_duration: r.wanted.duration,
+        title: pick.map(|t| t.title.as_str()).unwrap_or("").into(),
+        artist: pick.map(|t| t.artist.as_str()).unwrap_or("").into(),
+        duration: pick.map(|t| t.duration).unwrap_or(0.0),
+        source: pick.map(|t| t.source.index()).unwrap_or(0),
+        status: r.status as i32,
+        score: (r.score() * 100.0).round() as i32,
+        alts: r.candidates.len() as i32,
+        art,
+        has_art,
+    }
+}
+
+fn refresh_import(ui: &AppWindow) {
+    let (rows, counts, name, note) = with_state(|st| {
+        let Some(f) = st.imported.as_ref() else { return (Vec::new(), vec![0; 4], String::new(), String::new()) };
+        let mut counts = vec![0; 4];
+        for r in &f.rows {
+            counts[r.status as usize] += 1;
+        }
+        let mut note = format!("{} · {} şarkı", f.source_label, f.rows.len());
+        if f.truncated {
+            note.push_str(" · Spotify ilk 100 şarkıyı verdi");
+        }
+        let rows: Vec<ImportRow> = f.rows.iter().map(import_row_ui).collect();
+        let picks: Vec<TrackInfo> = f.rows.iter().filter_map(|r| r.pick().cloned()).collect();
+        let name = f.name.clone();
+        for t in picks.iter().take(60) {
+            request_art(st, t);
+        }
+        (rows, counts, name, note)
+    });
+    ui.set_import_rows(ModelRc::new(VecModel::from(rows)));
+    ui.set_import_counts(ModelRc::new(VecModel::from(counts)));
+    ui.set_import_name(name.into());
+    ui.set_import_note(note.into());
+}
+
+fn start_import(ui: &AppWindow, url: String) {
+    let providers = with_state(|st| {
+        st.import_origin = url.clone();
+        let ytm = st.providers.iter().find(|p| p.source() == Source::Ytm).cloned();
+        let sc = st.providers.iter().find(|p| p.source() == Source::SoundCloud).cloned();
+        ytm.zip(sc)
+    });
+    let Some((ytm, sc)) = providers else { return };
+    ui.set_import_busy(true);
+    ui.set_import_done(0);
+    ui.set_import_total(0);
+    ui.set_import_filter(-1);
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let w = Mutex::new(weak.clone());
+        let res = import::run(&url, ytm, sc, |done, total| {
+            let w = w.lock().unwrap().clone();
+            let _ = w.upgrade_in_event_loop(move |ui| {
+                ui.set_import_done(done as i32);
+                ui.set_import_total(total as i32);
+            });
+        });
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            ui.set_import_busy(false);
+            match res {
+                Ok(f) => {
+                    dbg(&format!("aktarma: {} şarkı", f.rows.len()));
+                    with_state(|st| st.imported = Some(f));
+                    refresh_import(&ui);
+                }
+                Err(e) => toast(&ui, &e),
+            }
+        });
+    });
+}
+
+fn import_change(ui: &AppWindow, i: usize) {
+    let row = with_state(|st| {
+        let r = st.imported.as_mut()?.rows.get_mut(i)?;
+        if r.candidates.len() < 2 {
+            return None;
+        }
+        r.chosen = (r.chosen + 1) % r.candidates.len();
+        // Kullanıcı seçtiyse onaylanmış sayılır.
+        r.status = import::Status::Matched;
+        let ui_row = import_row_ui(r);
+        let pick = r.pick().cloned();
+        if let Some(t) = pick {
+            request_art(st, &t);
+        }
+        Some(ui_row)
+    });
+    if let Some(row) = row {
+        ui.get_import_rows().set_row_data(i, row);
+        // sayaçları güncelle
+        let counts = with_state(|st| {
+            let mut c = vec![0; 4];
+            for r in st.imported.as_ref().map(|f| f.rows.as_slice()).unwrap_or(&[]) {
+                c[r.status as usize] += 1;
+            }
+            c
+        });
+        ui.set_import_counts(ModelRc::new(VecModel::from(counts)));
+    }
+}
+
+fn import_save(ui: &AppWindow) {
+    let saved = with_state(|st| {
+        let f = st.imported.take()?;
+        let tracks: Vec<TrackInfo> = f
+            .rows
+            .iter()
+            .filter(|r| r.status != import::Status::Missing)
+            .filter_map(|r| r.pick().cloned())
+            .collect();
+        let n = tracks.len();
+        st.playlists.push(library::Playlist { name: f.name.clone(), origin: st.import_origin.clone(), tracks });
+        if let Err(e) = library::save(&st.playlists) {
+            eprintln!("kütüphane kaydedilemedi: {e}");
+        }
+        Some((f.name, n, st.playlists.len() - 1))
+    });
+    let Some((name, n, idx)) = saved else { return };
+    ui.set_import_rows(ModelRc::new(VecModel::from(Vec::<ImportRow>::new())));
+    refresh_playlists(ui);
+    toast(ui, &format!("“{name}” kaydedildi: {n} şarkı"));
+    open_playlist(ui, idx);
+    ui.set_view("playlist".into());
+}
+
+// ---------- Kaydedilen listeler ----------
+
+fn refresh_playlists(ui: &AppWindow) {
+    let infos: Vec<PlaylistInfo> = with_state(|st| {
+        st.playlists.iter().map(|p| PlaylistInfo { name: p.name.as_str().into(), count: p.tracks.len() as i32 }).collect()
+    });
+    ui.set_playlists(ModelRc::new(VecModel::from(infos)));
+}
+
+fn open_playlist(ui: &AppWindow, i: usize) {
+    let tracks = with_state(|st| {
+        let p = st.playlists.get(i)?.tracks.clone();
+        st.current_pl = Some(i);
+        for t in p.iter().take(40) {
+            request_art(st, t);
+        }
+        for t in p.iter().take(2) {
+            speculate(st, t);
+        }
+        Some(p)
+    });
+    let Some(tracks) = tracks else { return };
+    ui.set_current_playlist(i as i32);
+    ui.set_playlist_tracks(model_of(&tracks));
+}
+
+fn delete_playlist(ui: &AppWindow, i: usize) {
+    with_state(|st| {
+        if i < st.playlists.len() {
+            st.playlists.remove(i);
+            st.current_pl = None;
+            if let Err(e) = library::save(&st.playlists) {
+                eprintln!("kütüphane kaydedilemedi: {e}");
+            }
+        }
+    });
+    ui.set_current_playlist(-1);
+    refresh_playlists(ui);
+}
+
 // ---------- Ayarlar ----------
 
 fn human_bytes(b: u64) -> String {
@@ -688,8 +883,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hover_timer: Timer::default(),
             metered,
             on_battery,
+            imported: None,
+            import_origin: String::new(),
+            playlists: library::load(),
+            current_pl: None,
         })
     });
+    refresh_playlists(&ui);
 
     ui.on_play_shelf({
         let weak = weak.clone();
@@ -781,6 +981,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             thread::spawn(cache::clear);
             ui.set_cache_usage("0 MB".into());
             toast(&ui, "Önbellek temizlendi");
+        }
+    });
+
+    ui.on_start_import({
+        let weak = weak.clone();
+        move |url| {
+            if let Some(ui) = weak.upgrade() {
+                start_import(&ui, url.trim().to_string());
+            }
+        }
+    });
+    ui.on_import_change({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                import_change(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_import_save({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                import_save(&ui);
+            }
+        }
+    });
+    ui.on_open_playlist({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                open_playlist(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_play_playlist({
+        let weak = weak.clone();
+        move |j| {
+            let Some(ui) = weak.upgrade() else { return };
+            let list = with_state(|st| st.current_pl.and_then(|i| st.playlists.get(i)).map(|p| p.tracks.clone()));
+            if let Some(list) = list {
+                play_list(&ui, list, j as usize);
+            }
+        }
+    });
+    ui.on_delete_playlist({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                delete_playlist(&ui, i as usize);
+                toast(&ui, "Liste silindi");
+            }
         }
     });
 
