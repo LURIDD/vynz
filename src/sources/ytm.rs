@@ -64,6 +64,7 @@ fn to_track(it: Item) -> Option<TrackInfo> {
         album: it.album.unwrap_or_default(),
         duration: it.duration.unwrap_or(0.0) as f32,
         thumb: it.thumb.as_deref().map(big_thumb).unwrap_or_default(),
+        url: None,
     })
 }
 

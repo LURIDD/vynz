@@ -8,7 +8,8 @@ import { Track, Shelf, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, Icon
 export { Theme, Track, Shelf }
 
 export component AppWindow inherits Window {
-    title: "vynz";
+    in property <string> window-title: "vynz";
+    title: window-title;
     preferred-width: 1400px;
     preferred-height: 860px;
     min-width: 900px;
@@ -121,12 +122,12 @@ export component AppWindow inherits Window {
                 spacing: 12px;
                 Rectangle {
                     width: 8px; height: 8px; y: 11px; border-radius: 4px;
-                    background: i == 0 ? Sources.colors[i] : Theme.text-muted;
+                    background: i < 2 ? Sources.colors[i] : Theme.text-muted;
                 }
                 if !compact: Text {
-                    text: name + (i == 0 ? "" : " · yakında");
+                    text: name + (i < 2 ? "" : " · yakında");
                     vertical-alignment: center; font-size: 12.5px;
-                    color: i == 0 ? Theme.text-secondary : Theme.text-muted;
+                    color: i < 2 ? Theme.text-secondary : Theme.text-muted;
                 }
             }
         }
@@ -283,7 +284,7 @@ export component AppWindow inherits Window {
                         spacing: 8px; alignment: start;
                         PillButton { pill-height: 32px; text: "Tümü"; active: source-filter == -1; clicked => { source-filter = -1; } }
                         PillButton { pill-height: 32px; text: "YouTube Music"; active: source-filter == 0; clicked => { source-filter = 0; } }
-                        PillButton { pill-height: 32px; text: "SoundCloud · yakında"; enabled: false; }
+                        PillButton { pill-height: 32px; text: "SoundCloud"; active: source-filter == 1; clicked => { source-filter = 1; } }
                         PillButton { pill-height: 32px; text: "Spotify · yakında"; enabled: false; }
                     }
                     if searching: Text { text: "Aranıyor…"; font-size: 14px; color: Theme.text-secondary; }
@@ -294,7 +295,7 @@ export component AppWindow inherits Window {
                         text: "Yukarıdaki kutuya yaz ve Enter'a bas."; font-size: 14px; color: Theme.text-secondary;
                     }
                     VerticalLayout {
-                        spacing: 2px;
+                        spacing: 0px; // gizlenen satırlar boşluk bırakmasın
                         for t[i] in results: TrackRow {
                             visible: source-filter == -1 || t.source == source-filter;
                             height: self.visible ? 56px : 0px;

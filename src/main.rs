@@ -15,7 +15,7 @@ use slint::{Color, ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPix
 
 use model::{Section, Source, TrackInfo};
 use player::{Cmd, Ev, Player};
-use sources::{ytm::Ytm, Provider};
+use sources::{soundcloud::SoundCloud, ytm::Ytm, Provider};
 
 slint::include_modules!();
 
@@ -41,6 +41,14 @@ thread_local! {
 
 fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> R {
     STATE.with(|s| f(s.borrow_mut().as_mut().expect("durum hazır değil")))
+}
+
+fn source_name(src: Source) -> &'static str {
+    match src {
+        Source::Ytm => "YouTube Music",
+        Source::SoundCloud => "SoundCloud",
+        Source::Spotify => "Spotify",
+    }
 }
 
 fn provider(st: &State, src: Source) -> Option<Arc<dyn Provider>> {
@@ -256,12 +264,20 @@ fn search(ui: &AppWindow, query: String) {
     ui.set_last_query(query.as_str().into());
     let weak = ui.as_weak();
     thread::spawn(move || {
+        // Kaynaklar paralel sorgulanır; sonuçlar kaynak sırasıyla birleşir.
+        let outcomes: Vec<_> = thread::scope(|s| {
+            let handles: Vec<_> = providers
+                .iter()
+                .map(|p| s.spawn(|| (p.source(), p.search(&query, 20))))
+                .collect();
+            handles.into_iter().filter_map(|h| h.join().ok()).collect()
+        });
         let mut found = Vec::new();
         let mut errors = Vec::new();
-        for p in providers {
-            match p.search(&query, 25) {
+        for (src, r) in outcomes {
+            match r {
                 Ok(mut r) => found.append(&mut r),
-                Err(e) => errors.push(e),
+                Err(e) => errors.push(format!("{}: {e}", source_name(src))),
             }
         }
         let _ = weak.upgrade_in_event_loop(move |ui| {
@@ -286,6 +302,9 @@ fn search(ui: &AppWindow, query: String) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = AppWindow::new()?;
+    if let Ok(t) = std::env::var("VYNZ_TITLE") {
+        ui.set_window_title(t.into()); // testte pencereyi ayırt etmek için
+    }
     let weak = ui.as_weak();
 
     let player = {
@@ -298,7 +317,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     STATE.with(|s| {
         *s.borrow_mut() = Some(State {
-            providers: vec![Arc::new(Ytm)],
+            providers: vec![Arc::new(Ytm), Arc::new(SoundCloud)],
             player,
             art_tx: start_art_pool(weak.clone()),
             shelves: Vec::new(),
