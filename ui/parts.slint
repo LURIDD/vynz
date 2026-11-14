@@ -43,6 +43,13 @@ export struct ImportRow {
     has-art: bool,
 }
 
+// Söz satırındaki kelime: state 0 söylendi, 1 şu an, 2 sırada; row 0/1 (uzun satır ikiye bölünür)
+export struct LyricWord {
+    text: string,
+    state: int,
+    row: int,
+}
+
 export struct PlaylistInfo {
     name: string,
     count: int,
