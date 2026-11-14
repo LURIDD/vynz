@@ -10,6 +10,7 @@ mod cache;
 mod fetcher;
 mod import;
 mod library;
+mod lyrics;
 mod model;
 mod player;
 mod resolve;
@@ -68,6 +69,13 @@ struct State {
     import_origin: String,
     playlists: Vec<library::Playlist>,
     current_pl: Option<usize>,
+    /// Söz önbelleği: None = bulunamadı.
+    lyrics: HashMap<String, Option<lyrics::Lyrics>>,
+    lyr_pending: HashSet<String>,
+    lyr_line: Option<usize>,
+    lyr_spoken: usize,
+    /// Şarkıya özel söz kaydırma (sn).
+    lyr_offsets: HashMap<String, f32>,
 }
 
 /// VYNZ_DEBUG=1 ile zaman damgalı olay günlüğü (stderr): hız ölçümü için.
@@ -84,6 +92,8 @@ fn dbg(msg: &str) {
 thread_local! {
     static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
     static ARTS: RefCell<HashMap<String, (Image, Color)>> = RefCell::new(HashMap::new());
+    /// Söz ekranı zemini: önceden bulanıklaştırılmış küçük kapaklar.
+    static BLURS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
 }
 
 fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> R {
@@ -211,12 +221,17 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
         }
     }
 
+    let blur = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.blur, art::BLUR, art::BLUR));
+    BLURS.with(|m| m.borrow_mut().insert(key.clone(), blur.clone()));
+
     let mut now = ui.get_now();
     if ui.get_has_now() && now.key == key {
         now.art = img;
         now.has_art = true;
         ui.set_now(now);
         ui.global::<Theme>().set_accent(color);
+        ui.set_now_blur(blur);
+        ui.set_has_blur(true);
     }
 }
 
@@ -231,6 +246,162 @@ fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
     ui.set_playing(true);
     let accent = ARTS.with(|a| a.borrow().get(&t.key()).map(|(_, c)| *c)).unwrap_or(NEUTRAL);
     ui.global::<Theme>().set_accent(accent);
+    match BLURS.with(|b| b.borrow().get(&t.key()).cloned()) {
+        Some(b) => {
+            ui.set_now_blur(b);
+            ui.set_has_blur(true);
+        }
+        None => ui.set_has_blur(false),
+    }
+    request_lyrics(ui, t);
+    render_lyrics(ui);
+}
+
+// ---------- Sözler ----------
+
+fn request_lyrics(ui: &AppWindow, t: &TrackInfo) {
+    let key = t.key();
+    let need = with_state(|st| !st.lyrics.contains_key(&key) && st.lyr_pending.insert(key.clone()));
+    if !need {
+        return;
+    }
+    let t = t.clone();
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let res = lyrics::fetch(&t).ok();
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            dbg(&format!("sözler {key}: {}", if res.is_some() { "bulundu" } else { "yok" }));
+            with_state(|st| {
+                st.lyr_pending.remove(&key);
+                st.lyrics.insert(key.clone(), res);
+            });
+            if ui.get_now().key == key {
+                render_lyrics(&ui);
+            }
+        });
+    });
+}
+
+/// Çalan şarkının söz durumunu baştan kur.
+fn render_lyrics(ui: &AppWindow) {
+    let key = ui.get_now().key.to_string();
+    let (state, source, plain, offset) = with_state(|st| {
+        st.lyr_line = None;
+        st.lyr_spoken = usize::MAX;
+        let offset = st.lyr_offsets.get(&key).copied().unwrap_or(0.0);
+        match st.lyrics.get(&key) {
+            None => (if st.lyr_pending.contains(&key) { 1 } else { 0 }, String::new(), Vec::new(), offset),
+            Some(None) => (4, String::new(), Vec::new(), offset),
+            Some(Some(l)) if l.synced => (2, l.source.clone(), Vec::new(), offset),
+            Some(Some(l)) => (3, l.source.clone(), l.lines.iter().map(|x| x.text.clone()).collect(), offset),
+        }
+    });
+    ui.set_lyric_state(state);
+    ui.set_lyric_source(source.into());
+    ui.set_lyric_offset(offset);
+    ui.set_lyric_plain(ModelRc::new(VecModel::from(plain.into_iter().map(Into::into).collect::<Vec<slint::SharedString>>())));
+    ui.set_lyric_before(ModelRc::new(VecModel::from(Vec::<slint::SharedString>::new())));
+    ui.set_lyric_row0(ModelRc::new(VecModel::from(Vec::<LyricWord>::new())));
+    ui.set_lyric_row1(ModelRc::new(VecModel::from(Vec::<LyricWord>::new())));
+    ui.set_lyric_after(ModelRc::new(VecModel::from(Vec::<slint::SharedString>::new())));
+    update_lyrics(ui, ui.get_position());
+}
+
+/// Uzun satırı kelime sınırından iki dengeli satıra böl (Slint'te kendiliğinden kaydırma yok).
+fn word_rows(words: &[&str]) -> Vec<i32> {
+    let total: usize = words.iter().map(|w| w.chars().count() + 1).sum();
+    if total <= 26 || words.len() < 2 {
+        return vec![0; words.len()];
+    }
+    let mut best = (usize::MAX, 1);
+    let mut acc = 0;
+    for (k, w) in words.iter().enumerate().take(words.len() - 1) {
+        acc += w.chars().count() + 1;
+        let d = (acc as i64 - (total / 2) as i64).unsigned_abs() as usize;
+        if d < best.0 {
+            best = (d, k + 1);
+        }
+    }
+    (0..words.len()).map(|i| if i < best.1 { 0 } else { 1 }).collect()
+}
+
+/// Konuma göre etkin satırı ve kelimeleri güncelle (yalnız değişen kısımlar).
+fn update_lyrics(ui: &AppWindow, pos: f32) {
+    if ui.get_lyric_state() != 2 {
+        return;
+    }
+    let key = ui.get_now().key.to_string();
+    enum Change {
+        None,
+        Line { before: Vec<String>, words: Vec<LyricWord>, after: Vec<String> },
+        Words(usize),
+    }
+    let change = with_state(|st| {
+        let offset = st.lyr_offsets.get(&key).copied().unwrap_or(0.0);
+        let Some(Some(l)) = st.lyrics.get(&key) else { return Change::None };
+        let loc = lyrics::locate(l, pos + offset);
+        let (idx, spoken) = match loc {
+            Some((i, s, _)) => (Some(i), s),
+            None => (None, 0),
+        };
+        if idx != st.lyr_line || st.lyr_spoken == usize::MAX {
+            st.lyr_line = idx;
+            st.lyr_spoken = spoken;
+            let (before, words, after) = match idx {
+                Some(i) => {
+                    let ws: Vec<&str> = l.lines[i].text.split_whitespace().collect();
+                    let rows = word_rows(&ws);
+                    let words = ws
+                        .iter()
+                        .enumerate()
+                        .map(|(k, w)| LyricWord {
+                            text: (*w).into(),
+                            state: if k < spoken { 0 } else if k == spoken { 1 } else { 2 },
+                            row: rows[k],
+                        })
+                        .collect();
+                    let before = l.lines[i.saturating_sub(2)..i].iter().map(|x| x.text.clone()).collect();
+                    let after = l.lines.iter().skip(i + 1).take(3).map(|x| x.text.clone()).collect();
+                    (before, words, after)
+                }
+                // İlk satırdan önce: sıradakileri göster
+                None => (Vec::new(), Vec::new(), l.lines.iter().take(4).map(|x| x.text.clone()).collect()),
+            };
+            return Change::Line { before, words, after };
+        }
+        if spoken != st.lyr_spoken {
+            st.lyr_spoken = spoken;
+            return Change::Words(spoken);
+        }
+        Change::None
+    });
+    let strings = |v: Vec<String>| ModelRc::new(VecModel::from(v.into_iter().map(Into::into).collect::<Vec<slint::SharedString>>()));
+    match change {
+        Change::None => {}
+        Change::Line { before, words, after } => {
+            let (r0, r1): (Vec<LyricWord>, Vec<LyricWord>) = words.into_iter().partition(|w| w.row == 0);
+            ui.set_lyric_before(strings(before));
+            ui.set_lyric_row0(ModelRc::new(VecModel::from(r0)));
+            ui.set_lyric_row1(ModelRc::new(VecModel::from(r1)));
+            ui.set_lyric_after(strings(after));
+        }
+        Change::Words(spoken) => {
+            // Kelime sırası iki satır boyunca sürer.
+            let mut k = 0;
+            for m in [ui.get_lyric_row0(), ui.get_lyric_row1()] {
+                for j in 0..m.row_count() {
+                    if let Some(mut w) = m.row_data(j) {
+                        let s = if k < spoken { 0 } else if k == spoken { 1 } else { 2 };
+                        if w.state != s {
+                            w.state = s;
+                            m.set_row_data(j, w);
+                        }
+                    }
+                    k += 1;
+                }
+            }
+        }
+    }
 }
 
 fn play_index(ui: &AppWindow, i: usize) {
@@ -428,6 +599,7 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
     match ev {
         Ev::Time(t) => {
             ui.set_position(t as f32);
+            update_lyrics(ui, t as f32);
             if t >= 20.0 {
                 queue_for_cache();
             }
@@ -902,6 +1074,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             import_origin: String::new(),
             playlists: library::load(),
             current_pl: None,
+            lyrics: HashMap::new(),
+            lyr_pending: HashSet::new(),
+            lyr_line: None,
+            lyr_spoken: 0,
+            lyr_offsets: HashMap::new(),
         })
     });
     refresh_playlists(&ui);
@@ -999,6 +1176,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    ui.on_lyric_shift({
+        let weak = weak.clone();
+        move |d| {
+            let Some(ui) = weak.upgrade() else { return };
+            let key = ui.get_now().key.to_string();
+            let off = with_state(|st| {
+                let o = st.lyr_offsets.entry(key).or_insert(0.0);
+                *o = ((*o + d) * 10.0).round() / 10.0;
+                st.lyr_line = None;
+                st.lyr_spoken = usize::MAX;
+                *o
+            });
+            ui.set_lyric_offset(off);
+            update_lyrics(&ui, ui.get_position());
+        }
+    });
     ui.on_start_import({
         let weak = weak.clone();
         move |url| {

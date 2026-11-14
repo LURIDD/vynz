@@ -8,7 +8,11 @@ pub struct Art {
     pub height: u32,
     /// Okunabilirliği ayarlanmış vurgu rengi (r, g, b).
     pub accent: (u8, u8, u8),
+    /// Söz ekranı zemini için önceden bulanıklaştırılmış küçük kapak (BLUR x BLUR).
+    pub blur: Vec<u8>,
 }
+
+pub const BLUR: u32 = 48;
 
 fn cache_dir() -> PathBuf {
     let base = std::env::var_os("XDG_CACHE_HOME")
@@ -41,8 +45,11 @@ pub fn load(key: &str, url: &str) -> Result<Art, String> {
     let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
     let img = img.resize_to_fill(320, 320, image::imageops::FilterType::Triangle).to_rgba8();
     let accent = accent_of(&img);
+    // Ucuz bulanıklık: küçült, bulanıklaştır; arayüz büyütünce yumuşak görünür.
+    let small = image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle);
+    let blur = image::imageops::blur(&small, 6.0).into_raw();
     let (width, height) = img.dimensions();
-    Ok(Art { rgba: img.into_raw(), width, height, accent })
+    Ok(Art { rgba: img.into_raw(), width, height, accent, blur })
 }
 
 /// Doygun piksellere ağırlık veren ortalama, sonra koyu zeminde okunur aralığa çekilir.
