@@ -5,7 +5,7 @@
 // - Sıradaki parça mpv listesine eklenir; prefetch-playlist, çalan parçanın verisi
 //   bittiğinde (önce çalan gelir) sıradakini açmaya başlar: geçiş anında olur.
 // - cache-secs ileri okumayı sınırlar: ilk tampondan sonra indirme çalma hızına iner.
-// - stream-record ile çalınan veri diske de yazılır (ek indirme yok).
+// - MPRIS eklentisi yüklenir; parça adı force-media-title ile verilir.
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -14,9 +14,10 @@ use libmpv2::{events::*, mpv_end_file_reason, Format, Mpv};
 
 pub enum Cmd {
     /// Hemen çal (mpv listesindeki sıradakini de temizler).
-    Load { url: String, record: Option<String> },
+    /// `title`: MPRIS'te (çubuk, medya tuşları) görünecek ad.
+    Load { url: String, title: String },
     /// Sıradaki olarak ekle (ön-tampon).
-    Append { url: String, record: Option<String> },
+    Append { url: String, title: String },
     /// Eklenmiş sıradakini kaldır.
     ClearNext,
     SetPause(bool),
@@ -32,8 +33,8 @@ pub enum Ev {
     Duration(f64),
     Paused(bool),
     Buffering(bool),
-    /// Yeni dosya başladı.
-    Started,
+    /// Yeni dosya başladı; mpv listesindeki sırası (0 = yüklediğimiz, 1 = eklenen sıradaki).
+    Started(i64),
     /// Kullanıcı ya da program konum değiştirdi (kayıt artık eksiksiz değil).
     Seeked,
     /// Dosya sonuna ulaşıldı.
@@ -63,16 +64,16 @@ impl Player {
     }
 }
 
+const MPRIS: &str = "/usr/lib/mpv-mpris/mpris.so";
+
 fn readahead_value(secs: u32) -> String {
     if secs == 0 { "86400".into() } else { secs.to_string() }
 }
 
-fn loadfile(mpv: &Mpv, url: &str, mode: &str, record: &Option<String>) -> libmpv2::Result<()> {
-    match record {
-        // Dosyaya özel seçenek: yalnız bu parça kaydedilir.
-        Some(path) => mpv.command("loadfile", &[url, mode, "-1", &format!("stream-record={path}")]),
-        None => mpv.command("loadfile", &[url, mode]),
-    }
+fn loadfile(mpv: &Mpv, url: &str, mode: &str, title: &str) -> libmpv2::Result<()> {
+    // Dosyaya özel seçenek; virgül ve eşittir seçenek ayırıcısı olduğundan temizlenir.
+    let clean: String = title.chars().map(|c| if c == ',' || c == '=' { ' ' } else { c }).collect();
+    mpv.command("loadfile", &[url, mode, "-1", &format!("force-media-title=%{}%{clean}", clean.len())])
 }
 
 fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<Result<(), String>>) {
@@ -89,6 +90,10 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
         i.set_property("cache-secs", readahead_value(readahead))?;
         i.set_property("demuxer-max-bytes", "64MiB")?;
         i.set_property("prefetch-playlist", "yes")?;
+        // MPRIS: Quickshell medya penceresi ve klavyedeki medya tuşları için.
+        if std::path::Path::new(MPRIS).exists() {
+            i.set_property("scripts", MPRIS)?;
+        }
         if let Some(ao) = &ao {
             i.set_property("ao", ao.as_str())?;
         }
@@ -119,19 +124,19 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
     loop {
         loop {
             match rx.try_recv() {
-                Ok(Cmd::Load { url, record }) => {
+                Ok(Cmd::Load { url, title }) => {
                     last_time = -1.0;
                     let _ = mpv.command("playlist-clear", &[]);
                     let _ = mpv.set_property("pause", false);
-                    if let Err(e) = loadfile(&mpv, &url, "replace", &record) {
+                    if let Err(e) = loadfile(&mpv, &url, "replace", &title) {
                         on_event(Ev::Error(e.to_string()));
                     } else {
                         on_event(Ev::Buffering(true));
                     }
                 }
-                Ok(Cmd::Append { url, record }) => {
+                Ok(Cmd::Append { url, title }) => {
                     let _ = mpv.command("playlist-clear", &[]);
-                    if let Err(e) = loadfile(&mpv, &url, "append", &record) {
+                    if let Err(e) = loadfile(&mpv, &url, "append", &title) {
                         eprintln!("sıradaki eklenemedi: {e}");
                     }
                 }
@@ -169,7 +174,8 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
             },
             Some(Ok(Event::StartFile)) => {
                 last_time = -1.0;
-                on_event(Ev::Started);
+                let pos = mpv.get_property::<i64>("playlist-pos").unwrap_or(0);
+                on_event(Ev::Started(pos));
             }
             Some(Ok(Event::Seek)) => on_event(Ev::Seeked),
             Some(Ok(Event::PlaybackRestart)) => on_event(Ev::Buffering(false)),
