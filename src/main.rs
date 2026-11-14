@@ -106,6 +106,11 @@ fn page_url(st: &State, t: &TrackInfo) -> Option<String> {
     provider(st, t.source)?.stream_url(t).ok()
 }
 
+/// MPRIS'te görünen ad.
+fn media_title(t: &TrackInfo) -> String {
+    if t.artist.is_empty() { t.title.clone() } else { format!("{} — {}", t.artist, t.title) }
+}
+
 fn ui_track(t: &TrackInfo) -> Track {
     let (art, has_art) = ARTS
         .with(|a| a.borrow().get(&t.key()).map(|(i, _)| (i.clone(), true)))
@@ -241,11 +246,11 @@ fn play_index(ui: &AppWindow, i: usize) {
         let key = t.key();
         if let Some(path) = cache::lookup(&key) {
             dbg(&format!("çal {key}: disk önbelleği"));
-            st.player.send(Cmd::Load { url: path.to_string_lossy().into_owned(), record: None });
+            st.player.send(Cmd::Load { url: path.to_string_lossy().into_owned(), title: media_title(&t) });
             st.loaded = true;
         } else if let Some(r) = st.resolver.cached(&key) {
             dbg(&format!("çal {key}: önceden çözülmüş"));
-            st.player.send(Cmd::Load { url: r.stream, record: None });
+            st.player.send(Cmd::Load { url: r.stream, title: media_title(&t) });
             st.loaded = true;
         } else {
             dbg(&format!("çal {key}: çözülüyor"));
@@ -276,18 +281,20 @@ fn on_resolved_now(ui: &AppWindow, seq: u64, key: String, res: Result<resolve::R
         return;
     }
     dbg(&format!("çözüldü {key}: {}", if res.is_ok() { "tamam" } else { "hata" }));
-    with_state(|st| match res {
-        Ok(r) => {
-            st.player.send(Cmd::Load { url: r.stream, record: None });
-            st.loaded = true;
-        }
-        Err(e) => {
-            eprintln!("çözülemedi ({key}): {e}; yedek yol");
-            st.fallback_tried = true;
-            let page = st.index.and_then(|i| st.queue.get(i).cloned()).and_then(|t| page_url(st, &t));
-            if let Some(page) = page {
-                st.player.send(Cmd::Load { url: page, record: None });
+    with_state(|st| {
+        let Some(t) = st.index.and_then(|i| st.queue.get(i).cloned()) else { return };
+        match res {
+            Ok(r) => {
+                st.player.send(Cmd::Load { url: r.stream, title: media_title(&t) });
                 st.loaded = true;
+            }
+            Err(e) => {
+                eprintln!("çözülemedi ({key}): {e}; yedek yol");
+                st.fallback_tried = true;
+                if let Some(page) = page_url(st, &t) {
+                    st.player.send(Cmd::Load { url: page, title: media_title(&t) });
+                    st.loaded = true;
+                }
             }
         }
     });
@@ -335,15 +342,16 @@ fn maybe_append_next(_ui: &AppWindow) {
             return;
         }
         let key = st.queue[next].key();
-        let (url, record) = if let Some(p) = cache::lookup(&key) {
-            (p.to_string_lossy().into_owned(), None)
+        let url = if let Some(p) = cache::lookup(&key) {
+            p.to_string_lossy().into_owned()
         } else if let Some(r) = st.resolver.cached(&key) {
-            (r.stream, None)
+            r.stream
         } else {
             return; // çözülünce tekrar çağrılır
         };
-        dbg(&format!("sıradaki eklendi: {}", st.queue[next].key()));
-        st.player.send(Cmd::Append { url, record });
+        dbg(&format!("sıradaki eklendi: {key}"));
+        let title = media_title(&st.queue[next]);
+        st.player.send(Cmd::Append { url, title });
         st.appended = Some(next);
     });
 }
@@ -359,28 +367,35 @@ fn step(ui: &AppWindow, delta: i64) {
     }
 }
 
-fn on_ended(ui: &AppWindow) {
+/// mpv eklediğimiz sıradakine geçti (doğal bitiş ya da MPRIS "sonraki"): durumu güncelle.
+fn on_started(ui: &AppWindow, pos: i64) {
+    if pos < 1 {
+        return; // kendi yüklediğimiz parça
+    }
     let advanced = with_state(|st| {
         let i = st.index?;
-        if st.appended == Some(i + 1) {
-            // mpv sıradakine kendisi geçti (ön-tampon): yalnız durumu güncelle.
-            dbg("ön-tampondan sıradakine geçildi");
-            st.index = Some(i + 1);
-            st.appended = None;
-            st.play_seq += 1;
-            st.loaded = true; // mpv zaten yükledi
-            st.fallback_tried = false;
-            return Some(Some((st.queue[i + 1].clone(), i + 1)));
+        if st.appended != Some(i + 1) {
+            return None;
         }
-        Some(None)
+        dbg("ön-tampondan sıradakine geçildi");
+        st.index = Some(i + 1);
+        st.appended = None;
+        st.play_seq += 1;
+        st.loaded = true; // mpv zaten yükledi
+        st.fallback_tried = false;
+        Some((st.queue[i + 1].clone(), i + 1))
     });
-    match advanced {
-        Some(Some((t, i))) => {
-            set_now_ui(ui, &t, i);
-            schedule_prefetch(ui);
-        }
-        Some(None) => step(ui, 1),
-        None => {}
+    if let Some((t, i)) = advanced {
+        set_now_ui(ui, &t, i);
+        schedule_prefetch(ui);
+    }
+}
+
+/// Parça bitti. Sıradaki eklenmişse mpv ona kendisi geçer (on_started); değilse biz geçeriz.
+fn on_ended(ui: &AppWindow) {
+    let has_next = with_state(|st| st.index.is_some_and(|i| st.appended == Some(i + 1)));
+    if !has_next {
+        step(ui, 1);
     }
 }
 
@@ -391,10 +406,10 @@ fn on_error(ui: &AppWindow, e: String) {
         }
         st.fallback_tried = true;
         st.appended = None;
-        let page = st.index.and_then(|i| st.queue.get(i).cloned()).and_then(|t| page_url(st, &t));
-        match page {
+        let Some(t) = st.index.and_then(|i| st.queue.get(i).cloned()) else { return false };
+        match page_url(st, &t) {
             Some(page) => {
-                st.player.send(Cmd::Load { url: page, record: None });
+                st.player.send(Cmd::Load { url: page, title: media_title(&t) });
                 st.loaded = true;
                 true
             }
@@ -425,7 +440,7 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
             }
             ui.set_buffering(b)
         }
-        Ev::Started => {}
+        Ev::Started(pos) => on_started(ui, pos),
         Ev::Seeked => {}
         Ev::Ended => {
             dbg("parça bitti");
