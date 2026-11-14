@@ -43,7 +43,7 @@ pub fn load(key: &str, url: &str) -> Result<Art, String> {
         }
     };
     let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
-    let img = img.resize_to_fill(320, 320, image::imageops::FilterType::Triangle).to_rgba8();
+    let img = img.resize_to_fill(256, 256, image::imageops::FilterType::Triangle).to_rgba8();
     let accent = accent_of(&img);
     // Ucuz bulanıklık: küçült, bulanıklaştır; arayüz büyütünce yumuşak görünür.
     let small = image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle);
