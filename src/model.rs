@@ -29,6 +29,8 @@ pub struct TrackInfo {
     pub duration: f32,
     /// Kapak adresi (büyük boy).
     pub thumb: String,
+    /// Sayfa adresi (SoundCloud gibi kimlikten adres türetilemeyen kaynaklar için).
+    pub url: Option<String>,
 }
 
 impl TrackInfo {

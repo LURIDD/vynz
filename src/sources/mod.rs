@@ -1,5 +1,6 @@
 // Her müzik servisi bu arayüzle bağlanır. Arayüz kaynaktan habersizdir.
 
+pub mod soundcloud;
 pub mod ytm;
 
 use crate::model::{Section, Source, TrackInfo};
