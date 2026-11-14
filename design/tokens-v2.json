@@ -1,0 +1,224 @@
+{
+  "$schema": "https://ymus.app/schemas/design-tokens-v2.json",
+  "meta": {
+    "name": "ymus-2-ambient-edition",
+    "version": "2.0.0",
+    "aesthetic": "2026 Post-Liner Ambient Desktop",
+    "grid_base_px": 8,
+    "wcag_target": "AA",
+    "rust_renderer_constraints": {
+      "framework_targets": ["iced", "slint"],
+      "blur_strategy": "single_preblurred_64x64_cover_sprite_on_canvas",
+      "realtime_backdrop_filter_chains": false,
+      "surface_separation": "tonal_alpha_and_whitespace_no_1px_boxes"
+    }
+  },
+  "color": {
+    "dark": {
+      "bg_canvas": "#090A0D",
+      "bg_ambient_wash": "rgba(255, 255, 255, 0.04)",
+      "surface_subtle": "rgba(255, 255, 255, 0.03)",
+      "surface_1": "rgba(255, 255, 255, 0.045)",
+      "surface_2": "rgba(255, 255, 255, 0.075)",
+      "surface_3": "rgba(255, 255, 255, 0.11)",
+      "surface_floating": "#14161D",
+      "surface_floating_translucent": "rgba(20, 22, 29, 0.88)",
+      "surface_drawer": "#12141B",
+      "text_primary": "#F5F6F8",
+      "text_secondary": "rgba(245, 246, 248, 0.66)",
+      "text_muted": "rgba(245, 246, 248, 0.40)",
+      "text_on_accent": "#090A0D",
+      "accent_default": "#E4E6EB",
+      "accent_hover": "#FFFFFF",
+      "accent_muted": "rgba(228, 230, 235, 0.14)",
+      "accent_ambient_primary": "#D97757",
+      "accent_ambient_secondary": "#4F46E5",
+      "status_matched": "#34D399",
+      "status_matched_bg": "rgba(52, 211, 153, 0.12)",
+      "status_uncertain": "#FBBF24",
+      "status_uncertain_bg": "rgba(251, 191, 36, 0.12)",
+      "status_unmatched": "#FB7185",
+      "status_unmatched_bg": "rgba(251, 113, 133, 0.12)",
+      "status_live_room": "#A78BFA",
+      "status_live_room_bg": "rgba(167, 139, 250, 0.14)"
+    },
+    "light": {
+      "bg_canvas": "#F4F3EF",
+      "bg_ambient_wash": "rgba(15, 18, 24, 0.03)",
+      "surface_subtle": "rgba(15, 18, 24, 0.025)",
+      "surface_1": "rgba(15, 18, 24, 0.045)",
+      "surface_2": "rgba(15, 18, 24, 0.075)",
+      "surface_3": "rgba(15, 18, 24, 0.11)",
+      "surface_floating": "#FFFFFF",
+      "surface_floating_translucent": "rgba(255, 255, 255, 0.90)",
+      "surface_drawer": "#EAE8E1",
+      "text_primary": "#111318",
+      "text_secondary": "rgba(17, 19, 24, 0.65)",
+      "text_muted": "rgba(17, 19, 24, 0.42)",
+      "text_on_accent": "#FFFFFF",
+      "accent_default": "#181A20",
+      "accent_hover": "#2D313B",
+      "accent_muted": "rgba(24, 26, 32, 0.10)",
+      "accent_ambient_primary": "#C25E3E",
+      "accent_ambient_secondary": "#4338CA",
+      "status_matched": "#059669",
+      "status_matched_bg": "rgba(5, 150, 105, 0.10)",
+      "status_uncertain": "#D97706",
+      "status_uncertain_bg": "rgba(217, 119, 6, 0.10)",
+      "status_unmatched": "#E11D48",
+      "status_unmatched_bg": "rgba(225, 29, 72, 0.10)",
+      "status_live_room": "#7C3AED",
+      "status_live_room_bg": "rgba(124, 58, 237, 0.10)"
+    },
+    "cover_derived_palettes": {
+      "neutral": {
+        "label": "Nötr Gümüş (Varsayılan)",
+        "dark_accent": "#E4E6EB",
+        "light_accent": "#181A20",
+        "ambient_blob_1": "#64748B",
+        "ambient_blob_2": "#334155"
+      },
+      "terracotta": {
+        "label": "Erkin Koray — Elektronik Türküler (1974)",
+        "dark_accent": "#F4A261",
+        "light_accent": "#B45309",
+        "ambient_blob_1": "#E76F51",
+        "ambient_blob_2": "#78350F"
+      },
+      "emerald": {
+        "label": "Khruangbin — Mordechai (2020)",
+        "dark_accent": "#34D399",
+        "light_accent": "#047857",
+        "ambient_blob_1": "#10B981",
+        "ambient_blob_2": "#064E3B"
+      },
+      "cobalt": {
+        "label": "Mor ve Ötesi — Dünya Yalan Söylüyor (2004)",
+        "dark_accent": "#60A5FA",
+        "light_accent": "#1D4ED8",
+        "ambient_blob_1": "#3B82F6",
+        "ambient_blob_2": "#1E3A8A"
+      },
+      "rose": {
+        "label": "Daft Punk — Random Access Memories (2013)",
+        "dark_accent": "#FB7185",
+        "light_accent": "#BE123C",
+        "ambient_blob_1": "#F43F5E",
+        "ambient_blob_2": "#4C1D95"
+      }
+    }
+  },
+  "typography": {
+    "families": {
+      "display": "'Plus Jakarta Sans', 'Manrope', system-ui, -apple-system, sans-serif",
+      "sans": "'Manrope', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+      "mono": "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace"
+    },
+    "usage_rules": {
+      "mono_allowed_only_for": ["track_duration", "timecode_scrubber", "numeric_counts", "hover_revealed_audio_specs"],
+      "mono_forbidden_for": ["section_headers", "navigation_labels", "status_badges", "buttons"]
+    },
+    "scale_px": {
+      "xs_meta": {
+        "size": 11,
+        "line_height": 16,
+        "weight": 500,
+        "tracking_em": 0.01
+      },
+      "sm_secondary": {
+        "size": 13,
+        "line_height": 18,
+        "weight": 500,
+        "tracking_em": 0.0
+      },
+      "md_body": {
+        "size": 14,
+        "line_height": 20,
+        "weight": 500,
+        "tracking_em": -0.005
+      },
+      "lg_section": {
+        "size": 20,
+        "line_height": 26,
+        "weight": 700,
+        "tracking_em": -0.02
+      },
+      "xl_title": {
+        "size": 28,
+        "line_height": 34,
+        "weight": 700,
+        "tracking_em": -0.025
+      },
+      "hero_display": {
+        "size": 56,
+        "line_height": 60,
+        "weight": 800,
+        "tracking_em": -0.038
+      },
+      "hero_display_xl": {
+        "size": 68,
+        "line_height": 70,
+        "weight": 800,
+        "tracking_em": -0.042
+      },
+      "lyrics_inactive": {
+        "size": 28,
+        "line_height": 40,
+        "weight": 700,
+        "tracking_em": -0.025
+      },
+      "lyrics_active": {
+        "size": 44,
+        "line_height": 54,
+        "weight": 800,
+        "tracking_em": -0.035
+      }
+    }
+  },
+  "spacing_px": {
+    "sp_0_5": 4,
+    "sp_1": 8,
+    "sp_1_5": 12,
+    "sp_2": 16,
+    "sp_3": 24,
+    "sp_4": 32,
+    "sp_5": 40,
+    "sp_6": 48,
+    "sp_8": 64
+  },
+  "layout_px": {
+    "window_min_width": 900,
+    "window_min_height": 600,
+    "sidebar_expanded_width": 196,
+    "sidebar_collapsed_width": 64,
+    "right_drawer_width": 320,
+    "right_drawer_default_open": false,
+    "floating_player_height": 76,
+    "floating_player_margin_x": 20,
+    "floating_player_margin_bottom": 16,
+    "topbar_height": 60,
+    "mini_player_width": 380,
+    "mini_player_height": 128
+  },
+  "radius_px": {
+    "xs": 6,
+    "sm": 10,
+    "md": 14,
+    "lg": 20,
+    "xl": 26,
+    "pill": 9999
+  },
+  "motion": {
+    "durations_ms": {
+      "micro_hover": 140,
+      "card_lift": 160,
+      "drawer_slide": 190,
+      "lyric_word_fill": 150,
+      "ambient_crossfade": 200
+    },
+    "easing": {
+      "standard": "cubic-bezier(0.22, 1, 0.36, 1)",
+      "decelerate": "cubic-bezier(0.0, 0.0, 0.2, 1.0)"
+    }
+  }
+}

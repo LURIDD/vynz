@@ -1,0 +1,367 @@
+import { Theme, Icons, Icon } from "theme.slint";
+
+export global Fmt {
+    public pure function time(seconds: float) -> string {
+        let s = Math.max(0, Math.floor(seconds));
+        let m = Math.floor(s / 60);
+        let r = Math.mod(s, 60);
+        return (m < 10 ? "0" : "") + m + ":" + (r < 10 ? "0" : "") + r;
+    }
+}
+
+export struct Album {
+    title: string,
+    artist: string,
+    c1: color,
+    c2: color,
+    c3: color,
+    motif: color,
+    kind: int,
+    accent: int,
+}
+
+export struct Track {
+    title: string,
+    artist: string,
+    album: string,
+    duration: float,
+    quality: string,
+    cover: int,
+}
+
+// Albüm kapağı: gerçek kapak gelene kadar kapağı taklit eden soyut desen.
+export component Cover inherits Rectangle {
+    in property <Album> album;
+    in property <length> radius: Theme.r-md;
+    border-radius: radius;
+    clip: true;
+    background: @linear-gradient(135deg, album.c1 0%, album.c2 55%, album.c3 100%);
+
+    // 0: güneş ve tepe
+    if album.kind == 0: Rectangle {
+        Rectangle {
+            width: parent.width * 0.32; height: self.width;
+            x: (parent.width - self.width) / 2; y: parent.height * 0.42 - self.height / 2;
+            border-radius: self.width / 2;
+            background: album.motif.with-alpha(0.9);
+        }
+        Rectangle {
+            width: parent.width * 0.62; height: self.width;
+            x: (parent.width - self.width) / 2; y: parent.height * 0.42 - self.height / 2;
+            border-radius: self.width / 2;
+            border-width: 1px; border-color: #FFF8EB3d;
+        }
+        Path {
+            width: 100%; height: 100%;
+            viewbox-width: 300; viewbox-height: 300;
+            commands: "M0 210 Q90 165 180 205 T300 190 L300 300 L0 300 Z";
+            fill: album.c3;
+        }
+    }
+    // 1: yeşil daireler ve dalga
+    if album.kind == 1: Rectangle {
+        Rectangle {
+            width: parent.width * 0.43; height: self.width;
+            x: parent.width * 0.7 - self.width / 2; y: parent.height * 0.3 - self.height / 2;
+            border-radius: self.width / 2; background: album.motif.with-alpha(0.35);
+        }
+        Path {
+            width: 100%; height: 100%;
+            viewbox-width: 300; viewbox-height: 300;
+            commands: "M-20 240 C80 140 200 280 320 170 L320 300 L-20 300 Z";
+            fill: album.motif.with-alpha(0.22);
+        }
+        Rectangle {
+            width: parent.width * 0.32; height: self.width;
+            x: parent.width * 0.38 - self.width / 2; y: parent.height * 0.52 - self.height / 2;
+            border-radius: self.width / 2; border-width: 2px; border-color: album.motif.with-alpha(0.7);
+        }
+    }
+    // 2: halka ve merkez
+    if album.kind == 2: Rectangle {
+        Rectangle {
+            width: parent.width * 0.68; height: self.width;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: self.width / 2; border-width: 1.5px; border-color: album.motif.with-alpha(0.4);
+        }
+        Rectangle {
+            width: parent.width * 0.36; height: self.width;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: self.width / 2; background: album.motif.with-alpha(0.75);
+        }
+    }
+    // 3: üçgen
+    if album.kind == 3: Rectangle {
+        Path {
+            width: 100%; height: 100%;
+            viewbox-width: 300; viewbox-height: 300;
+            commands: "M150 56 L238 220 L62 220 Z";
+            fill: album.motif.with-alpha(0.18);
+            stroke: album.motif.with-alpha(0.85);
+            stroke-width: 2px;
+        }
+        Rectangle {
+            width: parent.width * 0.19; height: self.width;
+            x: (parent.width - self.width) / 2; y: parent.height * 0.54 - self.height / 2;
+            border-radius: self.width / 2; background: album.motif;
+        }
+    }
+    // 4: dizek çizgileri
+    if album.kind == 4: Rectangle {
+        for i in 5: Rectangle {
+            x: parent.width * 0.2; width: parent.width * 0.6; height: 1.5px;
+            y: parent.height * (0.233 + i * 0.133);
+            background: album.motif.with-alpha(0.45);
+        }
+        Rectangle {
+            width: parent.width * 0.24; height: self.width;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: self.width / 2; background: album.motif.with-alpha(0.85);
+        }
+    }
+}
+
+export component EqBars inherits Rectangle {
+    in property <bool> running: true;
+    width: 16px;
+    height: 14px;
+    for i in 3: Rectangle {
+        x: i * 5.5px;
+        width: 3px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+        property <float> phase: running
+            ? Math.abs(Math.sin((animation-tick() / 1ms) * (0.25 + i * 0.07) * 1deg + i * 50deg))
+            : 0.35 + i * 0.2;
+        height: parent.height * (0.25 + 0.75 * phase);
+        y: parent.height - self.height;
+    }
+}
+
+export component NavButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> active;
+    in property <bool> dot;
+    in property <bool> compact;
+    callback clicked;
+
+    height: 36px;
+    border-radius: Theme.r-sm;
+    background: active ? Theme.surface-2 : ta.has-hover ? Theme.surface-1 : transparent;
+    animate background { duration: Theme.micro; }
+
+    ta := TouchArea { clicked => { root.clicked(); } mouse-cursor: pointer; }
+
+    HorizontalLayout {
+        padding-left: compact ? (root.width - 18px) / 2 : 12px;
+        padding-right: 12px;
+        spacing: 12px;
+        alignment: start;
+        Icon {
+            y: (root.height - self.height) / 2;
+            commands: root.icon;
+            stroke: root.active ? Theme.accent : (ta.has-hover ? Theme.text-primary : Theme.text-secondary);
+        }
+        if !compact: Text {
+            text: root.label;
+            vertical-alignment: center;
+            font-size: 13.5px;
+            font-weight: root.active ? 700 : 600;
+            color: root.active || ta.has-hover ? Theme.text-primary : Theme.text-secondary;
+        }
+    }
+    if dot && !compact: Rectangle {
+        x: parent.width - 18px; y: (parent.height - 6px) / 2;
+        width: 6px; height: 6px; border-radius: 3px; background: Theme.live;
+    }
+}
+
+export component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> primary;
+    in property <color> tint: Theme.text-secondary;
+    callback clicked;
+
+    width: primary ? 40px : 34px;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: primary ? (ta.has-hover ? #FFFFFF : Theme.text-primary) : (ta.has-hover ? Theme.surface-2 : transparent);
+    animate background { duration: Theme.micro; }
+
+    ta := TouchArea { clicked => { root.clicked(); } mouse-cursor: pointer; }
+    Icon {
+        commands: root.icon;
+        stroke: root.primary ? Theme.on-primary : (ta.has-hover ? Theme.text-primary : root.tint);
+        stroke-width: root.primary ? 1.8px : 1.4px;
+    }
+}
+
+export component PillButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    callback clicked;
+
+    height: 40px;
+    min-width: label.preferred-width + 40px;
+    border-radius: self.height / 2;
+    background: primary ? (ta.has-hover ? #FFFFFF : Theme.text-primary) : (ta.has-hover ? Theme.surface-3 : Theme.surface-2);
+    animate background { duration: Theme.micro; }
+
+    ta := TouchArea { clicked => { root.clicked(); } mouse-cursor: pointer; }
+    label := Text {
+        text: root.text;
+        font-size: 13.5px;
+        font-weight: root.primary ? 700 : 600;
+        color: root.primary ? Theme.on-primary : Theme.text-primary;
+    }
+}
+
+// İnce, üzerine gelince kalınlaşan kaydırıcı.
+export component Scrubber inherits Rectangle {
+    in property <float> value; // 0..1
+    callback seek(float);
+
+    height: 16px;
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.seek(Math.clamp(self.mouse-x / self.width, 0, 1)); }
+    }
+    track := Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: ta.has-hover ? 7px : 3px;
+        animate height { duration: Theme.micro; }
+        border-radius: self.height / 2;
+        background: Theme.surface-2;
+        Rectangle {
+            x: 0;
+            width: parent.width * Math.clamp(root.value, 0, 1);
+            border-radius: parent.border-radius;
+            background: Theme.accent;
+        }
+    }
+    Rectangle {
+        width: 11px; height: 11px; border-radius: 5.5px;
+        x: track.width * Math.clamp(root.value, 0, 1) - 5.5px;
+        y: (parent.height - self.height) / 2;
+        background: #FFFFFF;
+        opacity: ta.has-hover ? 1 : 0;
+        animate opacity { duration: Theme.micro; }
+        drop-shadow-blur: 6px; drop-shadow-color: #00000080; drop-shadow-offset-y: 2px;
+    }
+}
+
+export component AlbumCard inherits Rectangle {
+    in property <Album> album;
+    callback clicked;
+
+    ta := TouchArea { clicked => { root.clicked(); } mouse-cursor: pointer; }
+
+    bg := Rectangle {
+        x: -10px; width: parent.width + 20px; height: parent.height + 10px;
+        y: (ta.has-hover ? -4px : 0px) - 10px;
+        animate y, background { duration: Theme.card; easing: ease-out; }
+        border-radius: Theme.r-md;
+        background: ta.has-hover ? Theme.surface-1 : transparent;
+        drop-shadow-blur: 36px;
+        drop-shadow-offset-y: 18px;
+        drop-shadow-color: ta.has-hover ? #0000008c : transparent;
+        animate drop-shadow-color { duration: Theme.card; }
+    }
+
+    Rectangle {
+        y: ta.has-hover ? -4px : 0px;
+        animate y { duration: Theme.card; easing: ease-out; }
+
+        VerticalLayout {
+            spacing: 12px;
+            alignment: start;
+            Cover {
+                album: root.album;
+                width: root.width; height: root.width;
+                drop-shadow-blur: 24px; drop-shadow-offset-y: 10px; drop-shadow-color: #00000059;
+                Rectangle {
+                    width: 38px; height: 38px; border-radius: 19px;
+                    x: parent.width - 48px;
+                    y: parent.height - (ta.has-hover ? 48px : 42px);
+                    opacity: ta.has-hover ? 1 : 0;
+                    animate opacity, y { duration: Theme.card; easing: ease-out; }
+                    background: Theme.text-primary;
+                    drop-shadow-blur: 20px; drop-shadow-color: #00000080; drop-shadow-offset-y: 8px;
+                    Icon { width: 16px; height: 16px; x: 12px; commands: Icons.play; stroke: Theme.on-primary; fill: Theme.on-primary; }
+                }
+            }
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: root.album.title; overflow: elide;
+                    font-size: 14.5px; font-weight: 700; color: Theme.text-primary;
+                }
+                Text {
+                    text: root.album.artist; overflow: elide;
+                    font-size: 13px; color: Theme.text-secondary;
+                }
+            }
+        }
+    }
+}
+
+export component TrackRow inherits Rectangle {
+    in property <Track> track;
+    in property <int> index;
+    in property <bool> playing;
+    in property <bool> is-running;
+    callback clicked;
+
+    height: 52px;
+    border-radius: Theme.r-sm;
+    background: playing || ta.has-hover ? Theme.surface-1 : transparent;
+    animate background { duration: Theme.micro; }
+
+    ta := TouchArea { clicked => { root.clicked(); } mouse-cursor: pointer; }
+
+    HorizontalLayout {
+        padding-left: 14px; padding-right: 14px; spacing: 12px;
+        Rectangle {
+            width: 28px;
+            if root.playing: EqBars { x: 0; running: root.is-running; }
+            if !root.playing: Text {
+                x: 0;
+                text: (root.index < 9 ? "0" : "") + (root.index + 1);
+                font-family: Theme.mono; font-size: 12px; color: Theme.text-muted;
+                vertical-alignment: center;
+            }
+        }
+        VerticalLayout {
+            alignment: center; spacing: 1px;
+            Text {
+                text: root.track.title; overflow: elide;
+                font-size: 14px; font-weight: root.playing ? 700 : 600;
+                color: root.playing ? Theme.accent : Theme.text-primary;
+            }
+            Text { text: root.track.artist; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+        }
+        Text {
+            width: 220px; text: root.track.album; overflow: elide;
+            vertical-alignment: center; font-size: 13.5px;
+            color: ta.has-hover || root.playing ? Theme.text-primary : Theme.text-secondary;
+        }
+        // Teknik bilgi yalnız üzerine gelince
+        Rectangle {
+            width: 110px;
+            opacity: ta.has-hover ? 1 : 0;
+            animate opacity { duration: Theme.micro; }
+            Rectangle {
+                x: 0; height: 20px; width: q.preferred-width + 16px;
+                border-radius: 10px; background: Theme.surface-1;
+                q := Text { text: root.track.quality; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
+            }
+        }
+        Text {
+            width: 52px; horizontal-alignment: right; vertical-alignment: center;
+            text: Fmt.time(root.track.duration);
+            font-family: Theme.mono; font-size: 12px; color: Theme.text-muted;
+        }
+    }
+}
+

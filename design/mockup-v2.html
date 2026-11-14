@@ -1,0 +1,2660 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark" data-accent="terracotta">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ymus 2 (v2) — Modern Ambient Masaüstü Müzik Deneyimi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       1. TASARIM BELİRTEÇLERİ (tokens-v2.json ile 1:1 eşleşen CSS değişkenleri)
+       Rust (iced / Slint) Çizilebilirlik Kuralı:
+       - Ağır gerçek zamanlı backdrop-filter zinciri YOK.
+       - Pencere zemini tek bir 64x64 ön-bulanıklaştırılmış kapak dokusu katmanıdır.
+       - Yüzey ayrımı 1px çerçevelerle değil; boşluk, ton/alfa farkı ve tipografiyle yapılır.
+       ========================================================================== */
+    :root,
+    [data-theme="dark"] {
+      --bg-canvas: #090A0D;
+      --surface-subtle: rgba(255, 255, 255, 0.028);
+      --surface-1: rgba(255, 255, 255, 0.048);
+      --surface-2: rgba(255, 255, 255, 0.08);
+      --surface-3: rgba(255, 255, 255, 0.125);
+      --surface-floating: #13151C;
+      --surface-drawer: #101218;
+      --surface-dropdown: #161922;
+
+      --text-primary: #F5F6F8;
+      --text-secondary: rgba(245, 246, 248, 0.64);
+      --text-muted: rgba(245, 246, 248, 0.38);
+      --text-on-primary: #090A0D;
+
+      /* Varsayılan buton/etkileşim nötr, kapak vurgusu ortam ve aktif oynatma için */
+      --ui-primary-bg: #F5F6F8;
+      --ui-primary-fg: #090A0D;
+      --ui-primary-hover: #FFFFFF;
+
+      /* Çalan kapaktan türetilen dinamik değişkenler (Varsayılan: Erkin Koray / Terracotta) */
+      --cover-accent: #F4A261;
+      --cover-accent-soft: rgba(244, 162, 97, 0.16);
+      --ambient-blob-1: rgba(231, 111, 81, 0.24);
+      --ambient-blob-2: rgba(120, 53, 15, 0.20);
+      --ambient-blob-3: rgba(244, 162, 97, 0.10);
+
+      --status-matched: #34D399;
+      --status-matched-bg: rgba(52, 211, 153, 0.12);
+      --status-uncertain: #FBBF24;
+      --status-uncertain-bg: rgba(251, 191, 36, 0.12);
+      --status-unmatched: #FB7185;
+      --status-unmatched-bg: rgba(251, 113, 133, 0.12);
+      --status-live-room: #A78BFA;
+      --status-live-room-bg: rgba(167, 139, 250, 0.14);
+
+      --shadow-card-hover: 0 18px 36px -8px rgba(0, 0, 0, 0.55);
+      --shadow-floating-player: 0 24px 48px -12px rgba(0, 0, 0, 0.72), 0 4px 16px rgba(0, 0, 0, 0.4);
+      --shadow-cover-hero: 0 28px 56px -12px rgba(0, 0, 0, 0.68);
+      --shadow-drawer: -20px 0 48px rgba(0, 0, 0, 0.6);
+    }
+
+    [data-theme="light"] {
+      --bg-canvas: #F3F2EE;
+      --surface-subtle: rgba(15, 18, 24, 0.025);
+      --surface-1: rgba(15, 18, 24, 0.045);
+      --surface-2: rgba(15, 18, 24, 0.075);
+      --surface-3: rgba(15, 18, 24, 0.115);
+      --surface-floating: #FFFFFF;
+      --surface-drawer: #EBE9E2;
+      --surface-dropdown: #FFFFFF;
+
+      --text-primary: #111318;
+      --text-secondary: rgba(17, 19, 24, 0.62);
+      --text-muted: rgba(17, 19, 24, 0.40);
+      --text-on-primary: #FFFFFF;
+
+      --ui-primary-bg: #111318;
+      --ui-primary-fg: #FFFFFF;
+      --ui-primary-hover: #262A34;
+
+      --cover-accent: #C25E3E;
+      --cover-accent-soft: rgba(194, 94, 62, 0.13);
+      --ambient-blob-1: rgba(231, 111, 81, 0.16);
+      --ambient-blob-2: rgba(244, 162, 97, 0.14);
+      --ambient-blob-3: rgba(194, 94, 62, 0.08);
+
+      --status-matched: #059669;
+      --status-matched-bg: rgba(5, 150, 105, 0.10);
+      --status-uncertain: #D97706;
+      --status-uncertain-bg: rgba(217, 119, 6, 0.10);
+      --status-unmatched: #E11D48;
+      --status-unmatched-bg: rgba(225, 29, 72, 0.10);
+      --status-live-room: #7C3AED;
+      --status-live-room-bg: rgba(124, 58, 237, 0.10);
+
+      --shadow-card-hover: 0 16px 32px -8px rgba(17, 19, 24, 0.12);
+      --shadow-floating-player: 0 20px 44px -10px rgba(17, 19, 24, 0.16), 0 2px 10px rgba(17, 19, 24, 0.06);
+      --shadow-cover-hero: 0 24px 48px -12px rgba(17, 19, 24, 0.22);
+      --shadow-drawer: -16px 0 40px rgba(17, 19, 24, 0.12);
+    }
+
+    /* Kapaktan Türetilen Ortam & Vurgu Paletleri */
+    [data-theme="dark"][data-accent="neutral"] {
+      --cover-accent: #E4E6EB;
+      --cover-accent-soft: rgba(228, 230, 235, 0.14);
+      --ambient-blob-1: rgba(100, 116, 139, 0.18);
+      --ambient-blob-2: rgba(51, 65, 85, 0.16);
+      --ambient-blob-3: rgba(148, 163, 184, 0.08);
+    }
+    [data-theme="dark"][data-accent="emerald"] {
+      --cover-accent: #34D399;
+      --cover-accent-soft: rgba(52, 211, 153, 0.15);
+      --ambient-blob-1: rgba(16, 185, 129, 0.22);
+      --ambient-blob-2: rgba(6, 78, 59, 0.24);
+      --ambient-blob-3: rgba(52, 211, 153, 0.09);
+    }
+    [data-theme="dark"][data-accent="cobalt"] {
+      --cover-accent: #60A5FA;
+      --cover-accent-soft: rgba(96, 165, 250, 0.15);
+      --ambient-blob-1: rgba(59, 130, 246, 0.22);
+      --ambient-blob-2: rgba(30, 58, 138, 0.24);
+      --ambient-blob-3: rgba(96, 165, 250, 0.09);
+    }
+    [data-theme="dark"][data-accent="rose"] {
+      --cover-accent: #FB7185;
+      --cover-accent-soft: rgba(251, 113, 133, 0.15);
+      --ambient-blob-1: rgba(244, 63, 94, 0.22);
+      --ambient-blob-2: rgba(76, 29, 149, 0.22);
+      --ambient-blob-3: rgba(251, 113, 133, 0.09);
+    }
+
+    [data-theme="light"][data-accent="neutral"] {
+      --cover-accent: #181A20;
+      --cover-accent-soft: rgba(24, 26, 32, 0.10);
+      --ambient-blob-1: rgba(100, 116, 139, 0.12);
+      --ambient-blob-2: rgba(148, 163, 184, 0.10);
+      --ambient-blob-3: rgba(71, 85, 105, 0.05);
+    }
+    [data-theme="light"][data-accent="emerald"] {
+      --cover-accent: #047857;
+      --cover-accent-soft: rgba(4, 120, 87, 0.11);
+      --ambient-blob-1: rgba(16, 185, 129, 0.15);
+      --ambient-blob-2: rgba(52, 211, 153, 0.12);
+      --ambient-blob-3: rgba(4, 120, 87, 0.06);
+    }
+    [data-theme="light"][data-accent="cobalt"] {
+      --cover-accent: #1D4ED8;
+      --cover-accent-soft: rgba(29, 78, 216, 0.11);
+      --ambient-blob-1: rgba(59, 130, 246, 0.15);
+      --ambient-blob-2: rgba(96, 165, 250, 0.12);
+      --ambient-blob-3: rgba(29, 78, 216, 0.06);
+    }
+    [data-theme="light"][data-accent="rose"] {
+      --cover-accent: #BE123C;
+      --cover-accent-soft: rgba(190, 18, 60, 0.11);
+      --ambient-blob-1: rgba(244, 63, 94, 0.15);
+      --ambient-blob-2: rgba(167, 139, 250, 0.12);
+      --ambient-blob-3: rgba(190, 18, 60, 0.06);
+    }
+
+    :root {
+      --font-display: 'Plus Jakarta Sans', 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-sans: 'Manrope', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+      --sp-0-5: 4px;
+      --sp-1: 8px;
+      --sp-1-5: 12px;
+      --sp-2: 16px;
+      --sp-3: 24px;
+      --sp-4: 32px;
+      --sp-5: 40px;
+      --sp-6: 48px;
+
+      --r-xs: 6px;
+      --r-sm: 10px;
+      --r-md: 14px;
+      --r-lg: 20px;
+      --r-xl: 26px;
+      --r-pill: 9999px;
+
+      /* Yüzen oynatma çubuğu boyutu ve kaydırılan içerik güvenli alt boşluğu (çubuk yüksekliği + alt ofset + 24px) */
+      --player-bar-height: 76px;
+      --player-bar-offset: 16px;
+      --player-clearance: calc(var(--player-bar-height) + var(--player-bar-offset) + 24px);
+
+      /* Mikro etkileşimler: 120-200 ms */
+      --dur-micro: 140ms;
+      --dur-card: 160ms;
+      --dur-drawer: 190ms;
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 20px;
+      background-color: #050507;
+      color: var(--text-primary);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 12px 12px 56px 12px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ==========================================================================
+       2. SOL ALT KÖŞE KÜÇÜK YUVARLAK GELİŞTİRİCİ / PROTOTİP DÜĞMESİ (YUKARI AÇILIR)
+       ========================================================================== */
+    .dev-dock {
+      position: fixed;
+      bottom: 10px;
+      left: 14px;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .dev-toggle-pill {
+      width: 36px;
+      height: 36px;
+      background: rgba(18, 20, 26, 0.88);
+      color: rgba(245, 246, 248, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 50%;
+      padding: 0;
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      transition: color var(--dur-micro) var(--ease-out), background var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+    }
+    .dev-toggle-pill:hover {
+      color: #FFFFFF;
+      background: rgba(26, 29, 38, 0.96);
+      transform: scale(1.05);
+    }
+    .dev-dock.open .dev-toggle-pill {
+      color: var(--cover-accent);
+      background: rgba(26, 29, 38, 0.98);
+    }
+
+    .dev-drawer-panel {
+      position: absolute;
+      bottom: calc(100% + 10px);
+      left: 0;
+      background: #12141C;
+      border-radius: var(--r-lg);
+      padding: 14px 18px;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.75);
+      width: max-content;
+      max-width: min(880px, calc(100vw - 28px));
+      color: #F5F6F8;
+      font-size: 12px;
+    }
+    .dev-dock.open .dev-drawer-panel {
+      display: flex;
+    }
+
+    .dev-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .dev-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(245, 246, 248, 0.45);
+      margin-right: 4px;
+      min-width: 72px;
+    }
+
+    .dev-chip {
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(245, 246, 248, 0.78);
+      border: none;
+      border-radius: var(--r-pill);
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+    }
+    .dev-chip:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #FFFFFF;
+    }
+    .dev-chip.active {
+      background: #F5F6F8;
+      color: #090A0D;
+    }
+
+    .swatch-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: transform var(--dur-micro) var(--ease-out);
+    }
+    .swatch-dot:hover {
+      transform: scale(1.15);
+    }
+    .swatch-dot.active {
+      border-color: #FFFFFF;
+      transform: scale(1.12);
+    }
+
+    /* ==========================================================================
+       3. ANA UYGULAMA PENCERESİ & ORTAM (AMBIENT) ARKA PLAN KATMANI
+       ========================================================================== */
+    .app-window {
+      width: 100%;
+      max-width: 1400px;
+      height: 860px;
+      background: var(--bg-canvas);
+      border-radius: var(--r-xl);
+      display: grid;
+      grid-template-rows: 60px minmax(0, 1fr);
+      grid-template-columns: 196px 1fr;
+      grid-template-areas:
+        "sidebar topbar"
+        "sidebar main";
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.75);
+    }
+
+    /* Tek yüzeyde 64x64 ön-bulanıklaştırılmış kapak ortam katmanı (Rust iced/Slint dostu) */
+    .ambient-canvas-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        radial-gradient(circle at 28% 18%, var(--ambient-blob-1) 0%, transparent 58%),
+        radial-gradient(circle at 76% 42%, var(--ambient-blob-2) 0%, transparent 62%),
+        radial-gradient(circle at 45% 88%, var(--ambient-blob-3) 0%, transparent 55%);
+      transition: background 200ms var(--ease-out);
+    }
+
+    /* 900x600 Dar Pencere Modu Simülasyonu */
+    .app-window.compact-900 {
+      max-width: 900px;
+      height: 600px;
+      grid-template-columns: 64px 1fr;
+    }
+
+    @media (max-width: 1024px) {
+      .app-window {
+        grid-template-columns: 64px 1fr;
+      }
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    [tabindex="0"]:focus-visible {
+      outline: 2px solid var(--cover-accent);
+      outline-offset: 2px;
+    }
+
+    /* ==========================================================================
+       4. İNCE VE SAKİN SOL KENAR ÇUBUĞU (Sıfır Kenarlık)
+       ========================================================================== */
+    .sidebar {
+      grid-area: sidebar;
+      position: relative;
+      z-index: 10;
+      background: var(--surface-subtle);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 22px 14px var(--player-clearance) 14px;
+      gap: 28px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .brand-header {
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      height: 28px;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 17px;
+      letter-spacing: -0.03em;
+      color: var(--text-primary);
+    }
+
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--cover-accent);
+      box-shadow: 0 0 12px var(--cover-accent);
+      transition: background 200ms var(--ease-out);
+    }
+
+    .nav-section {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .nav-section-title {
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--text-muted);
+      padding: 0 12px;
+      margin-bottom: 6px;
+    }
+
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      height: 36px;
+      padding: 0 12px;
+      border: none;
+      border-radius: var(--r-sm);
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      white-space: nowrap;
+      transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+    }
+
+    .nav-btn:hover {
+      background: var(--surface-1);
+      color: var(--text-primary);
+    }
+
+    .nav-btn.active {
+      background: var(--surface-2);
+      color: var(--text-primary);
+      font-weight: 700;
+    }
+
+    .nav-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: currentColor;
+      opacity: 0.82;
+    }
+    .nav-btn.active .nav-icon {
+      opacity: 1;
+      color: var(--cover-accent);
+    }
+
+    /* Lucide Satır İçi SVG Standartları (18px, stroke 1.75, currentColor) */
+    .lucide-icon {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      stroke-width: 1.75;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      flex-shrink: 0;
+      display: block;
+    }
+
+    .nav-dot-indicator {
+      margin-left: auto;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--status-live-room);
+    }
+
+    .app-window.compact-900 .brand-text,
+    .app-window.compact-900 .nav-section-title,
+    .app-window.compact-900 .nav-label,
+    .app-window.compact-900 .nav-dot-indicator {
+      display: none;
+    }
+    .app-window.compact-900 .nav-btn,
+    .app-window.compact-900 .brand-header {
+      justify-content: center;
+      padding: 0;
+    }
+
+    /* ==========================================================================
+       5. ÜST ÇUBUK & KOMUT PALETİ (Sıfır Çerçeve, Yumuşak Yüzey)
+       ========================================================================== */
+    .topbar {
+      grid-area: topbar;
+      position: relative;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      gap: 16px;
+    }
+
+    .search-trigger-wrap {
+      position: relative;
+      width: 360px;
+      max-width: 100%;
+    }
+
+    .search-input-box {
+      width: 100%;
+      height: 38px;
+      background: var(--surface-1);
+      border-radius: var(--r-pill);
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-primary);
+      cursor: text;
+      transition: background var(--dur-micro) var(--ease-out);
+    }
+    .search-input-box:hover,
+    .search-input-box:focus-within {
+      background: var(--surface-2);
+    }
+
+    .search-input-box input {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13.5px;
+      font-weight: 500;
+      width: 100%;
+      outline: none;
+    }
+
+    .shortcut-hint {
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .search-dropdown {
+      position: absolute;
+      top: 46px;
+      left: 0;
+      width: 460px;
+      background: var(--surface-dropdown);
+      border-radius: var(--r-lg);
+      padding: 12px;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 24px 56px rgba(0, 0, 0, 0.65);
+    }
+    .search-dropdown.open {
+      display: flex;
+    }
+
+    .search-group-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      padding: 6px 10px 2px 10px;
+    }
+
+    .search-result-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 10px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: background var(--dur-micro) var(--ease-out);
+    }
+    .search-result-item:hover,
+    .search-result-item.selected {
+      background: var(--surface-2);
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ==========================================================================
+       6. MODERN BUTON SİSTEMİ (Kutu Stili Yok — Pill & Tonlu Yüzeyler)
+       ========================================================================== */
+    .btn-primary {
+      height: 40px;
+      padding: 0 22px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: var(--ui-primary-bg);
+      color: var(--ui-primary-fg);
+      font-family: var(--font-sans);
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform var(--dur-micro) var(--ease-out), background var(--dur-micro) var(--ease-out);
+    }
+    .btn-primary:hover {
+      background: var(--ui-primary-hover);
+      transform: scale(1.02);
+    }
+
+    .btn-secondary {
+      height: 40px;
+      padding: 0 18px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: var(--surface-2);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+    }
+    .btn-secondary:hover {
+      background: var(--surface-3);
+    }
+
+    .btn-subtle {
+      height: 34px;
+      padding: 0 14px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+    }
+    .btn-subtle:hover,
+    .btn-subtle.active {
+      background: var(--surface-2);
+      color: var(--text-primary);
+    }
+
+    .live-room-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: var(--status-live-room-bg);
+      color: var(--status-live-room);
+      font-family: var(--font-sans);
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity var(--dur-micro) var(--ease-out);
+    }
+    .live-room-pill:hover {
+      opacity: 0.88;
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    /* ==========================================================================
+       7. ANA İÇERİK ALANI, KAHRAMAN ALBÜM KAPAĞI VE TİPOGRAFİ
+       ========================================================================== */
+    .main-area {
+      grid-area: main;
+      position: relative;
+      z-index: 10;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 12px 36px var(--player-clearance) 36px;
+      scroll-padding-bottom: var(--player-clearance);
+    }
+
+    .view-panel {
+      display: none;
+      flex-direction: column;
+      gap: 36px;
+      padding-bottom: var(--player-clearance);
+    }
+    .view-panel.active {
+      display: flex;
+    }
+
+    /* Kahraman (Hero) Sahnesi — Çerçevesiz, Albüm Kapağı ve Büyük Tipografi Odaklı */
+    .hero-showcase {
+      display: flex;
+      align-items: flex-end;
+      gap: 32px;
+      padding: 12px 0 8px 0;
+    }
+
+    .artwork-sleeve {
+      position: relative;
+      width: 224px;
+      height: 224px;
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      flex-shrink: 0;
+      box-shadow: var(--shadow-cover-hero);
+      background: #181A20;
+      transition: transform var(--dur-card) var(--ease-out);
+    }
+    .artwork-sleeve:hover {
+      transform: scale(1.02) translateY(-2px);
+    }
+    .artwork-sleeve svg,
+    .artwork-sleeve img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .artwork-sm {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--r-sm);
+      overflow: hidden;
+      flex-shrink: 0;
+      background: #181A20;
+      position: relative;
+    }
+    .artwork-sm svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .hero-copy {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .eyebrow-label {
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--cover-accent);
+      letter-spacing: 0.01em;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .hero-display-title {
+      font-family: var(--font-display);
+      font-size: clamp(44px, 4.5vw, 64px);
+      line-height: 1.03;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--text-primary);
+    }
+
+    .hero-subtitle {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    /* Teknik bilgi yalnız üzerine gelince görünür */
+    .hover-tech-meta {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--surface-1);
+      padding: 2px 8px;
+      border-radius: var(--r-pill);
+      opacity: 0;
+      transition: opacity var(--dur-micro) var(--ease-out);
+    }
+    .hero-showcase:hover .hover-tech-meta,
+    .track-row:hover .hover-tech-meta,
+    .player-bar:hover .hover-tech-meta {
+      opacity: 1;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    /* Bölüm Başlıkları */
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: var(--text-primary);
+    }
+
+    /* Albüm Kart Izgarası (Kenarlıksız, Hover'da Hafif Büyüme + Gölge) */
+    .album-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+      gap: 20px;
+    }
+
+    .album-card {
+      background: transparent;
+      border-radius: var(--r-md);
+      padding: 10px;
+      margin: -10px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      cursor: pointer;
+      transition: transform var(--dur-card) var(--ease-out), background var(--dur-card) var(--ease-out), box-shadow var(--dur-card) var(--ease-out);
+    }
+
+    .album-card:hover {
+      background: var(--surface-1);
+      transform: translateY(-4px) scale(1.015);
+      box-shadow: var(--shadow-card-hover);
+    }
+
+    .album-card-art {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: var(--r-md);
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    }
+    .album-card-art svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .card-play-fab {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--ui-primary-bg);
+      color: var(--ui-primary-fg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity var(--dur-card) var(--ease-out), transform var(--dur-card) var(--ease-out);
+    }
+    .album-card:hover .card-play-fab {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .album-card-title {
+      font-weight: 700;
+      font-size: 14.5px;
+      letter-spacing: -0.01em;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .album-card-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: -6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Parça Listesi (Sıfır Çerçeve, Canlı Ekolayzer Çubukları, Hover'da Teknik Bilgi) */
+    .track-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .track-row {
+      display: grid;
+      grid-template-columns: 36px 1fr 180px 110px 56px;
+      align-items: center;
+      height: 48px;
+      padding: 0 14px;
+      border-radius: var(--r-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+    }
+
+    .track-row:hover {
+      background: var(--surface-1);
+      color: var(--text-primary);
+    }
+
+    .track-row.playing {
+      background: var(--surface-1);
+      color: var(--text-primary);
+    }
+
+    .track-num {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+    }
+
+    /* Çalan Satırda Küçük Canlı Ekolayzer Çubukları */
+    .eq-bars {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 2.5px;
+      height: 14px;
+      width: 16px;
+    }
+    .eq-bar {
+      width: 3px;
+      background: var(--cover-accent);
+      border-radius: 2px;
+      animation: eqPulse 0.85s ease-in-out infinite alternate;
+    }
+    .eq-bar:nth-child(1) { height: 60%; animation-duration: 0.65s; }
+    .eq-bar:nth-child(2) { height: 100%; animation-duration: 0.90s; animation-delay: 0.15s; }
+    .eq-bar:nth-child(3) { height: 45%; animation-duration: 0.75s; animation-delay: 0.30s; }
+
+    @keyframes eqPulse {
+      0% { height: 25%; }
+      100% { height: 100%; }
+    }
+
+    .track-title {
+      color: var(--text-primary);
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .track-row.playing .track-title {
+      color: var(--cover-accent);
+      font-weight: 700;
+    }
+
+    .track-duration {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: right;
+    }
+
+    /* ==========================================================================
+       8. TAM EKRAN SÖZ GÖRÜNÜMÜ VİTRİNİ (Showcase Lyrics)
+       ========================================================================== */
+    .lyrics-showcase {
+      position: relative;
+      border-radius: var(--r-xl);
+      background: var(--surface-subtle);
+      padding: 40px 48px;
+      overflow: hidden;
+      min-height: 620px;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 56px;
+      align-items: center;
+    }
+
+    /* Söz vitrini için yoğunlaştırılmış ön-bulanık kapak atmosferi */
+    .lyrics-ambient-backdrop {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 20% 45%, var(--ambient-blob-1) 0%, transparent 60%),
+        radial-gradient(circle at 80% 30%, var(--ambient-blob-2) 0%, transparent 65%),
+        radial-gradient(circle at 60% 85%, var(--cover-accent-soft) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .lyrics-left-column {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .lyrics-stage-column {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+      gap: 24px;
+    }
+
+    .lyrics-floating-controls {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      opacity: 0.35;
+      transition: opacity var(--dur-micro) var(--ease-out);
+    }
+    .lyrics-showcase:hover .lyrics-floating-controls {
+      opacity: 1;
+    }
+
+    .lyrics-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+      margin: auto 0;
+    }
+
+    .lyric-line {
+      font-family: var(--font-display);
+      font-size: 28px;
+      line-height: 1.28;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: color var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+    }
+    .lyric-line:hover {
+      color: var(--text-secondary);
+      transform: translateX(4px);
+    }
+
+    .lyric-line.active {
+      font-size: clamp(34px, 3.4vw, 46px);
+      line-height: 1.16;
+      font-weight: 800;
+      letter-spacing: -0.035em;
+      color: var(--text-secondary);
+    }
+
+    .lyric-word {
+      display: inline-block;
+      transition: color 150ms var(--ease-out), transform 150ms var(--ease-out);
+    }
+    .lyric-word.spoken {
+      color: var(--text-primary);
+    }
+    .lyric-word.current {
+      color: var(--cover-accent);
+      transform: translateY(-2px);
+      text-shadow: 0 8px 24px var(--cover-accent-soft);
+    }
+
+    /* ==========================================================================
+       9. AKTARMA, DİNLEME ODASI, PROFİL VE AYAR YÜZEYLERİ (Çerçevesiz Tonlu)
+       ========================================================================== */
+    .tonal-surface {
+      background: var(--surface-1);
+      border-radius: var(--r-lg);
+      padding: 20px 24px;
+    }
+
+    .import-row {
+      display: grid;
+      grid-template-columns: 1fr 28px 1fr 130px 130px;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 20px;
+      background: var(--surface-1);
+      border-radius: var(--r-md);
+      transition: background var(--dur-micro) var(--ease-out);
+    }
+    .import-row:hover {
+      background: var(--surface-2);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: var(--r-pill);
+      width: fit-content;
+    }
+    .status-pill.matched { background: var(--status-matched-bg); color: var(--status-matched); }
+    .status-pill.uncertain { background: var(--status-uncertain-bg); color: var(--status-uncertain); }
+    .status-pill.unmatched { background: var(--status-unmatched-bg); color: var(--status-unmatched); }
+
+    .spectrum-bars {
+      height: 128px;
+      display: grid;
+      grid-template-columns: repeat(32, 1fr);
+      align-items: end;
+      gap: 6px;
+      padding-top: 20px;
+    }
+
+    .spec-bar {
+      background: var(--cover-accent);
+      border-radius: var(--r-pill);
+      width: 100%;
+      opacity: 0.85;
+      transition: height 160ms var(--ease-out), background 200ms var(--ease-out);
+    }
+
+    /* ==========================================================================
+       10. KAYAR SAĞ ÇEKMECE (Varsayılan Kapalı, Açılınca Kayarak Gelir)
+       ========================================================================== */
+    .right-drawer {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      bottom: var(--player-clearance);
+      width: 328px;
+      background: var(--surface-drawer);
+      border-radius: var(--r-lg);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 60;
+      box-shadow: var(--shadow-drawer);
+      transform: translateX(360px);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform var(--dur-drawer) var(--ease-out), opacity var(--dur-drawer) var(--ease-out);
+    }
+
+    .app-window.drawer-open .right-drawer {
+      transform: translateX(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .segmented-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: var(--surface-1);
+      padding: 4px;
+      border-radius: var(--r-pill);
+    }
+
+    .seg-btn {
+      height: 30px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 12.5px;
+      font-weight: 700;
+      border-radius: var(--r-pill);
+      cursor: pointer;
+      transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+    }
+    .seg-btn.active {
+      background: var(--surface-3);
+      color: var(--text-primary);
+    }
+
+    .queue-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--surface-subtle);
+      border-radius: var(--r-sm);
+      gap: 10px;
+      transition: background var(--dur-micro) var(--ease-out);
+    }
+    .queue-item:hover {
+      background: var(--surface-1);
+    }
+
+    .vote-pill {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: var(--surface-2);
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+    }
+    .vote-pill.voted {
+      background: var(--cover-accent-soft);
+      color: var(--cover-accent);
+    }
+
+    /* ==========================================================================
+       11. KENARLARDAN BOŞLUKLU YÜZEN OYNATMA ÇUBUĞU (Floating Player Bar)
+       ========================================================================== */
+    .player-bar {
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      bottom: var(--player-bar-offset);
+      height: var(--player-bar-height);
+      background: var(--surface-floating);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-floating-player);
+      display: grid;
+      grid-template-columns: 290px 1fr 290px;
+      align-items: center;
+      padding: 0 20px;
+      gap: 20px;
+      z-index: 50;
+    }
+
+    .now-playing-info {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .transport-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .transport-buttons {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+    }
+    .icon-btn:hover {
+      background: var(--surface-2);
+      color: var(--text-primary);
+    }
+
+    .icon-btn.primary-play {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--ui-primary-bg);
+      color: var(--ui-primary-fg);
+      font-size: 14px;
+    }
+    .icon-btn.primary-play:hover {
+      background: var(--ui-primary-hover);
+      transform: scale(1.06);
+    }
+
+    .scrubber-row {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .time-code {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      min-width: 34px;
+    }
+
+    /* İnce, üzerine gelince kalınlaşan ilerleme çubuğu */
+    .slider-hit-area {
+      flex: 1;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .slider-track {
+      width: 100%;
+      height: 3px;
+      background: var(--surface-2);
+      border-radius: var(--r-pill);
+      position: relative;
+      transition: height var(--dur-micro) var(--ease-out);
+    }
+    .slider-hit-area:hover .slider-track {
+      height: 7px;
+    }
+
+    .slider-fill {
+      height: 100%;
+      background: var(--cover-accent);
+      border-radius: var(--r-pill);
+      position: relative;
+      transition: background 200ms var(--ease-out);
+    }
+
+    .slider-thumb {
+      position: absolute;
+      right: -5px;
+      top: 50%;
+      transform: translateY(-50%) scale(0);
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      transition: transform var(--dur-micro) var(--ease-out);
+    }
+    .slider-hit-area:hover .slider-thumb {
+      transform: translateY(-50%) scale(1);
+    }
+
+    .player-right-controls {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      position: relative;
+    }
+
+    /* Ses Yolu / Teknik Ayrıntı Mini Popover */
+    .audio-path-popover {
+      position: absolute;
+      bottom: 64px;
+      right: 0;
+      width: 248px;
+      background: var(--surface-dropdown);
+      border-radius: var(--r-md);
+      padding: 14px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .audio-path-popover.open {
+      display: flex;
+    }
+
+    /* ==========================================================================
+       12. MİNİ OYNATICI VE DURUM BİLDİRİMLERİ
+       ========================================================================== */
+    .mini-player-shell {
+      display: none;
+      width: 380px;
+      background: var(--surface-floating);
+      border-radius: var(--r-xl);
+      padding: 20px;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 28px 64px rgba(0, 0, 0, 0.75);
+    }
+    .mini-player-shell.active {
+      display: flex;
+    }
+
+    .state-banner {
+      display: none;
+      padding: 16px 20px;
+      border-radius: var(--r-md);
+      background: var(--surface-2);
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .state-banner.visible {
+      display: flex;
+    }
+    .state-banner.error {
+      background: var(--status-unmatched-bg);
+      color: var(--status-unmatched);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========================================================================
+       SOL ALT KÖŞE KÜÇÜK YUVARLAK GELİŞTİRİCİ DENETİM DÜĞMESİ (YUKARI AÇILIR)
+       ======================================================================== -->
+  <div id="devDock" class="dev-dock" role="region" aria-label="Geliştirici Prototip Kontrolleri">
+    <div class="dev-drawer-panel">
+      <div class="dev-row">
+        <span class="dev-label">9 Ekran:</span>
+        <button class="dev-chip active" onclick="switchView('home', this)">1. Ana Sayfa</button>
+        <button class="dev-chip" onclick="switchView('album', this)">2. Albüm</button>
+        <button class="dev-chip" onclick="toggleSearchDropdown()">3. Arama (Ctrl+K)</button>
+        <button class="dev-chip" onclick="switchView('lyrics', this)">4. Söz Vitrini</button>
+        <button class="dev-chip" onclick="switchView('import', this)">5. Aktarma</button>
+        <button class="dev-chip" onclick="switchView('room', this)">6. Dinleme Odası</button>
+        <button class="dev-chip" onclick="switchView('profile', this)">7. Profil & Spektrum</button>
+        <button class="dev-chip" onclick="switchView('settings', this)">8. Ayarlar</button>
+        <button class="dev-chip" onclick="toggleMiniPlayer(this)">9. Mini Oynatıcı</button>
+      </div>
+
+      <div class="dev-row">
+        <span class="dev-label">Durumlar:</span>
+        <button class="dev-chip active" onclick="setUiState('normal', this)">Normal</button>
+        <button class="dev-chip" onclick="setUiState('loading', this)">Yükleniyor</button>
+        <button class="dev-chip" onclick="setUiState('empty', this)">Boş</button>
+        <button class="dev-chip" onclick="setUiState('error', this)">Hata / Kopuk</button>
+        <span class="dev-label" style="margin-left:12px;">Pencere:</span>
+        <button class="dev-chip" onclick="toggleCompactWindow(this)">900×600 Dar</button>
+        <button class="dev-chip" onclick="toggleTheme(this)">Koyu / Açık</button>
+      </div>
+
+      <div class="dev-row">
+        <span class="dev-label">Kapak Tonu:</span>
+        <button class="swatch-dot" style="background:#94A3B8" title="Nötr Gümüş (Varsayılan)" onclick="setAccent('neutral', this)"></button>
+        <button class="swatch-dot active" style="background:#F4A261" title="Erkin Koray — Terracotta" onclick="setAccent('terracotta', this)"></button>
+        <button class="swatch-dot" style="background:#34D399" title="Khruangbin — Zümrüt" onclick="setAccent('emerald', this)"></button>
+        <button class="swatch-dot" style="background:#60A5FA" title="Mor ve Ötesi — Kobalt" onclick="setAccent('cobalt', this)"></button>
+        <button class="swatch-dot" style="background:#FB7185" title="Daft Punk — Mercan" onclick="setAccent('rose', this)"></button>
+      </div>
+    </div>
+
+    <button class="dev-toggle-pill" title="Prototip & Durum Denetimi" aria-label="Prototip & Durum Denetimi" onclick="document.getElementById('devDock').classList.toggle('open')">
+      <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- ========================================================================
+       9. MİNİ OYNATICI PENCERESİ (Yüzen Kompakt + Senkron Söz Satırı)
+       ======================================================================== -->
+  <div id="miniPlayerWindow" class="mini-player-shell" aria-label="ymus 2 Mini Oynatıcı">
+    <div class="ambient-canvas-layer"></div>
+    <div style="position:relative; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <div style="display:flex; align-items:center; gap:12px; min-width:0;">
+        <div class="artwork-sm" style="width:52px; height:52px;">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="gMini" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#E76F51"/><stop offset="100%" stop-color="#2A120A"/></linearGradient></defs><rect width="100" height="100" fill="url(#gMini)"/><circle cx="50" cy="50" r="32" fill="none" stroke="#F4A261" stroke-width="2" opacity="0.6"/><circle cx="50" cy="50" r="12" fill="#F4A261"/></svg>
+        </div>
+        <div style="min-width:0;">
+          <div style="font-weight:700; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Cemalim</div>
+          <div style="font-size:12.5px; color:var(--text-secondary);">Erkin Koray • Elektronik Türküler</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <button class="icon-btn" title="Önceki">
+          <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon points="19 20 9 12 19 4 19 20"/>
+            <line x1="5" x2="5" y1="19" y2="5"/>
+          </svg>
+        </button>
+        <button class="icon-btn primary-play" title="Duraklat">
+          <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="14" y="4" width="4" height="16" rx="1"/>
+            <rect x="6" y="4" width="4" height="16" rx="1"/>
+          </svg>
+        </button>
+        <button class="icon-btn" title="Sonraki">
+          <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon points="5 4 15 12 5 20 5 4"/>
+            <line x1="19" x2="19" y1="5" y2="19"/>
+          </svg>
+        </button>
+        <button class="icon-btn" title="Tam Pencereye Dön" onclick="toggleMiniPlayer()">
+          <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <polyline points="15 3 21 3 21 9"/>
+            <polyline points="9 21 3 21 3 15"/>
+            <line x1="21" x2="14" y1="3" y2="10"/>
+            <line x1="3" x2="10" y1="21" y2="14"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div style="position:relative; z-index:1; display:flex; align-items:center; gap:10px;">
+      <span class="time-code">02:14</span>
+      <div class="slider-hit-area"><div class="slider-track"><div class="slider-fill" style="width:58%;"><div class="slider-thumb"></div></div></div></div>
+      <span class="time-code">03:48</span>
+    </div>
+
+    <div style="position:relative; z-index:1; font-size:13.5px; font-weight:600; color:var(--cover-accent); display:flex; justify-content:space-between; align-items:center;">
+      <span>“Gurbet elde kaldım yalnız canım dayanır”</span>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       ANA MASAÜSTÜ PENCERESİ (ymus 2 v2)
+       ======================================================================== -->
+  <div id="mainAppWindow" class="app-window">
+    <!-- Ekran geneline yayılmış yumuşak kapak ortam arka planı -->
+    <div class="ambient-canvas-layer"></div>
+
+    <!-- 1. İNCE VE SAKİN SOL KENAR ÇUBUĞU -->
+    <aside class="sidebar" aria-label="Ana Gezinme">
+      <div class="brand-header">
+        <div class="brand-logo">
+          <span class="brand-dot"></span>
+          <span class="brand-text">ymus</span>
+        </div>
+      </div>
+
+      <nav class="nav-section" aria-label="Keşfet ve Kütüphane">
+        <div class="nav-section-title">Kütüphane</div>
+        <button class="nav-btn active" data-view="home" onclick="switchView('home')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/>
+              <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            </svg>
+          </span>
+          <span class="nav-label">Şimdi Dinle</span>
+        </button>
+        <button class="nav-btn" data-view="album" onclick="switchView('album')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M6 12c0-1.7.7-3.2 1.8-4.2"/>
+              <circle cx="12" cy="12" r="2"/>
+              <path d="M18 12c0 1.7-.7 3.2-1.8 4.2"/>
+            </svg>
+          </span>
+          <span class="nav-label">Albümler</span>
+        </button>
+        <button class="nav-btn" data-view="lyrics" onclick="switchView('lyrics')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m11 7.601-5.994 8.19a1 1 0 0 0 .1 1.298l.817.818a1 1 0 0 0 1.314.087L15.09 12"/>
+              <path d="M16.5 21.174C15.5 20.5 14.372 20 13 20c-2.058 0-3.928 2.356-6 2-2.072-.356-2.775-3.369-1.5-4.5"/>
+              <circle cx="16" cy="7" r="5"/>
+            </svg>
+          </span>
+          <span class="nav-label">Söz Vitrini</span>
+        </button>
+        <button class="nav-btn" data-view="import" onclick="switchView('import')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 3 4 7l4 4"/>
+              <path d="M4 7h16"/>
+              <path d="m16 21 4-4-4-4"/>
+              <path d="M20 17H4"/>
+            </svg>
+          </span>
+          <span class="nav-label">Liste Aktarma</span>
+        </button>
+        <button class="nav-btn" data-view="room" onclick="switchView('room')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/>
+              <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/>
+              <circle cx="12" cy="12" r="2"/>
+              <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/>
+              <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/>
+            </svg>
+          </span>
+          <span class="nav-label">Dinleme Odası</span>
+          <span class="nav-dot-indicator" title="4 kişi canlı odada"></span>
+        </button>
+        <button class="nav-btn" data-view="profile" onclick="switchView('profile')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2 10v3"/>
+              <path d="M6 6v11"/>
+              <path d="M10 3v18"/>
+              <path d="M14 8v7"/>
+              <path d="M18 5v13"/>
+              <path d="M22 10v3"/>
+            </svg>
+          </span>
+          <span class="nav-label">Frekans & Profil</span>
+        </button>
+        <button class="nav-btn" data-view="settings" onclick="switchView('settings')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </span>
+          <span class="nav-label">Ayarlar</span>
+        </button>
+      </nav>
+
+      <nav class="nav-section" aria-label="Koleksiyonlar">
+        <div class="nav-section-title">Koleksiyonlar</div>
+        <button class="nav-btn" onclick="switchView('album')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15V6"/>
+              <path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/>
+              <path d="M12 12H3"/>
+              <path d="M16 6H3"/>
+              <path d="M12 18H3"/>
+            </svg>
+          </span>
+          <span class="nav-label">Anadolu Psikedelik</span>
+        </button>
+        <button class="nav-btn" onclick="switchView('album')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15V6"/>
+              <path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/>
+              <path d="M12 12H3"/>
+              <path d="M16 6H3"/>
+              <path d="M12 18H3"/>
+            </svg>
+          </span>
+          <span class="nav-label">Gece Sürüşü</span>
+        </button>
+        <button class="nav-btn" onclick="switchView('album')">
+          <span class="nav-icon">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15V6"/>
+              <path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/>
+              <path d="M12 12H3"/>
+              <path d="M16 6H3"/>
+              <path d="M12 18H3"/>
+            </svg>
+          </span>
+          <span class="nav-label">Referans Kayıtlar</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- 2. ÜST ÇUBUK & AÇILIR ARAMA -->
+    <header class="topbar">
+      <div class="search-trigger-wrap">
+        <div class="search-input-box" onclick="toggleSearchDropdown(true)">
+          <span style="color:var(--text-muted); font-size:14px;">⌕</span>
+          <input type="text" id="globalSearchInput" value="Erkin Koray" placeholder="Şarkı, albüm, sanatçı veya komut..." aria-label="Arama" />
+          <span class="shortcut-hint">⌘K</span>
+        </div>
+
+        <div id="searchDropdown" class="search-dropdown" role="listbox" aria-label="Arama Sonuçları">
+          <div id="searchEmptyState" style="display:none; padding:24px; text-align:center; color:var(--text-secondary);">
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px;">Eşleşen kayıt bulunamadı</div>
+            <div style="font-size:12.5px; color:var(--text-muted);">Yerel arşivde veya bağlı kataloglarda sonuç yok.</div>
+          </div>
+
+          <div id="searchNormalResults">
+            <div class="search-group-header">
+              <span>Parçalar</span>
+              <span>Enter ile çal</span>
+            </div>
+            <div class="search-result-item selected" onclick="switchView('album'); toggleSearchDropdown(false);">
+              <div class="artwork-sm">
+                <svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#8C2D19"/><circle cx="50" cy="50" r="28" fill="#F4A261" opacity="0.85"/></svg>
+              </div>
+              <div style="flex:1;">
+                <div style="font-weight:700; font-size:13.5px;">Cemalim</div>
+                <div style="font-size:12px; color:var(--text-secondary);">Erkin Koray • Elektronik Türküler</div>
+              </div>
+              <span class="time-code">03:48</span>
+            </div>
+            <div class="search-result-item" onclick="switchView('album'); toggleSearchDropdown(false);">
+              <div class="artwork-sm">
+                <svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#064E3B"/><circle cx="50" cy="50" r="28" fill="#34D399" opacity="0.85"/></svg>
+              </div>
+              <div style="flex:1;">
+                <div style="font-weight:700; font-size:13.5px;">Şaşkın</div>
+                <div style="font-size:12px; color:var(--text-secondary);">Erkin Koray • 45'lik Arşivi</div>
+              </div>
+              <span class="time-code">04:12</span>
+            </div>
+
+            <div class="search-group-header" style="margin-top:6px;">
+              <span>Albümler</span>
+            </div>
+            <div class="search-result-item" onclick="switchView('album'); toggleSearchDropdown(false);">
+              <div class="artwork-sm">
+                <svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#78350F"/><circle cx="50" cy="50" r="34" stroke="#F4A261" stroke-width="6" fill="none"/></svg>
+              </div>
+              <div style="flex:1;">
+                <div style="font-weight:700; font-size:13.5px;">Elektronik Türküler (1974)</div>
+                <div style="font-size:12px; color:var(--text-secondary);">Erkin Koray • 8 Parça</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="live-room-pill" onclick="switchView('room')">
+          <span class="pulse-dot"></span>
+          <span>#stüdyo-gece • 4 dinleyici</span>
+        </button>
+        <button class="btn-subtle" id="drawerToggleBtn" onclick="toggleRightDrawer()" title="Kuyruk ve Oda Çekmecesi">
+          <span>Kuyruk</span>
+          <span style="font-family:var(--font-mono); font-size:11px; opacity:0.65;">12</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 3. ORTA ANA İÇERİK ALANI -->
+    <main class="main-area">
+
+      <!-- DURUM BANNER'LARI (Yükleniyor / Boş / Hata) -->
+      <div id="globalLoadingBanner" class="state-banner">
+        <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; color:var(--text-secondary);">
+            <span>Yerel müzik arşivi ve senkron söz dizini taranıyor…</span>
+            <span style="font-family:var(--font-mono);">1.420 / 1.850</span>
+          </div>
+          <div class="slider-track"><div class="slider-fill" style="width:76%;"></div></div>
+        </div>
+      </div>
+
+      <div id="globalEmptyBanner" class="state-banner">
+        <div>
+          <div style="font-weight:700; font-size:14px;">Bu görünümde henüz eşleşen öğe yok</div>
+          <div style="font-size:12.5px; color:var(--text-secondary);">Yerel klasör ekleyebilir veya Aktarma ekranından çalma listesi içe aktarabilirsiniz.</div>
+        </div>
+        <button class="btn-primary" style="height:34px; font-size:12px;" onclick="setUiState('normal')">Veriyi Geri Yükle</button>
+      </div>
+
+      <div id="globalErrorBanner" class="state-banner error">
+        <div>
+          <div style="font-weight:700; font-size:14px;">Dinleme Odası bağlantısı kesildi</div>
+          <div style="font-size:12.5px;">Yerel oynatma kesintisiz sürüyor. Oda #stüdyo-gece ile yeniden senkronize olunabilir.</div>
+        </div>
+        <button class="btn-primary" style="height:34px; font-size:12px;" onclick="setUiState('normal')">Yeniden Bağlan</button>
+      </div>
+
+      <!-- ====================================================================
+           GÖRÜNÜM 1: ŞİMDİ DİNLE / ANA SAYFA (Kahraman Kapak ve Büyük Başlık)
+           ==================================================================== -->
+      <section id="view-home" class="view-panel active" aria-label="Şimdi Dinle">
+        <div class="hero-showcase">
+          <!-- Gerçekçi Sanat Kapağı: Anadolu Psikedelik Katmanlı SVG Plak Tasarımı -->
+          <div class="artwork-sleeve" onclick="switchView('album')" style="cursor:pointer;">
+            <svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <radialGradient id="sunGlow" cx="50%" cy="42%" r="58%">
+                  <stop offset="0%" stop-color="#FDE68A" />
+                  <stop offset="35%" stop-color="#F4A261" />
+                  <stop offset="70%" stop-color="#C84B31" />
+                  <stop offset="100%" stop-color="#1D1118" />
+                </radialGradient>
+                <linearGradient id="dune1" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#2B141D" />
+                  <stop offset="100%" stop-color="#0E080C" />
+                </linearGradient>
+              </defs>
+              <rect width="400" height="400" fill="url(#sunGlow)" />
+              <!-- Geometrik Anadolu Güneşi Işınları -->
+              <g opacity="0.24" stroke="#FFF8EB" stroke-width="1.5" fill="none">
+                <circle cx="200" cy="168" r="54" />
+                <circle cx="200" cy="168" r="86" />
+                <circle cx="200" cy="168" r="122" />
+                <circle cx="200" cy="168" r="160" />
+              </g>
+              <circle cx="200" cy="168" r="42" fill="#FFF3D6" opacity="0.92" />
+              <!-- Soyut Dağ / Ses Dalgası Katmanları -->
+              <path d="M0 270 Q110 210 220 265 T400 245 L400 400 L0 400 Z" fill="#431920" opacity="0.88" />
+              <path d="M0 305 Q150 250 270 300 T400 285 L400 400 L0 400 Z" fill="url(#dune1)" />
+              <text x="28" y="352" fill="#F5F6F8" font-family="Plus Jakarta Sans, sans-serif" font-weight="800" font-size="22" letter-spacing="-0.5">ERKİN KORAY</text>
+              <text x="28" y="374" fill="#F4A261" font-family="Manrope, sans-serif" font-weight="600" font-size="12" letter-spacing="2">ELEKTRONİK TÜRKÜLER • 1974</text>
+            </svg>
+          </div>
+
+          <div class="hero-copy">
+            <div class="eyebrow-label">
+              <span class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span>
+              <span>Şimdi Çalıyor</span>
+            </div>
+            <h1 class="hero-display-title">Cemalim</h1>
+            <div class="hero-subtitle">
+              <strong style="color:var(--text-primary); font-weight:700;">Erkin Koray</strong>
+              <span>•</span>
+              <span>Elektronik Türküler (1974 Analog Remaster)</span>
+              <span class="hover-tech-meta">FLAC 24-bit / 96 kHz • PipeWire</span>
+            </div>
+            <div class="hero-actions">
+              <button class="btn-primary" onclick="switchView('lyrics')">
+                <span>¶ Söz Vitrinini Aç</span>
+              </button>
+              <button class="btn-secondary" onclick="switchView('album')">
+                <span>Albüme Git</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kaldığın Yerden Devam Et (Gerçekçi SVG Sanat Kapakları, Hover'da Büyüme + Gölge) -->
+        <div>
+          <div class="section-header">
+            <h2 class="section-title">Son Dinlenen Albümler</h2>
+          </div>
+          <div class="album-grid">
+            <div class="album-card" onclick="selectAlbum('terracotta', 'Elektronik Türküler', 'Erkin Koray')">
+              <div class="album-card-art">
+                <svg viewBox="0 0 300 300">
+                  <defs><radialGradient id="c1" cx="50%" cy="40%" r="60%"><stop offset="0%" stop-color="#F4A261"/><stop offset="65%" stop-color="#B84028"/><stop offset="100%" stop-color="#1C0E12"/></radialGradient></defs>
+                  <rect width="300" height="300" fill="url(#c1)"/>
+                  <circle cx="150" cy="125" r="46" fill="#FFE8C2" opacity="0.88"/>
+                  <path d="M0 210 Q90 165 180 205 T300 190 L300 300 L0 300 Z" fill="#231016"/>
+                </svg>
+                <div class="card-play-fab">▶</div>
+              </div>
+              <div class="album-card-title">Elektronik Türküler</div>
+              <div class="album-card-sub">Erkin Koray</div>
+            </div>
+
+            <div class="album-card" onclick="selectAlbum('emerald', 'Mordechai', 'Khruangbin')">
+              <div class="album-card-art">
+                <svg viewBox="0 0 300 300">
+                  <defs><linearGradient id="c2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#065F46"/><stop offset="55%" stop-color="#047857"/><stop offset="100%" stop-color="#022C22"/></linearGradient></defs>
+                  <rect width="300" height="300" fill="url(#c2)"/>
+                  <circle cx="210" cy="90" r="65" fill="#34D399" opacity="0.35"/>
+                  <path d="M-20 240 C80 140, 200 280, 320 170 L320 300 L-20 300 Z" fill="#A7F3D0" opacity="0.22"/>
+                  <circle cx="115" cy="155" r="48" stroke="#6EE7B7" stroke-width="3" fill="none" opacity="0.7"/>
+                </svg>
+                <div class="card-play-fab">▶</div>
+              </div>
+              <div class="album-card-title">Mordechai</div>
+              <div class="album-card-sub">Khruangbin</div>
+            </div>
+
+            <div class="album-card" onclick="selectAlbum('cobalt', 'Dünya Yalan Söylüyor', 'Mor ve Ötesi')">
+              <div class="album-card-art">
+                <svg viewBox="0 0 300 300">
+                  <defs><linearGradient id="c3" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0%" stop-color="#1E3A8A"/><stop offset="50%" stop-color="#1D4ED8"/><stop offset="100%" stop-color="#090D1A"/></linearGradient></defs>
+                  <rect width="300" height="300" fill="url(#c3)"/>
+                  <rect x="48" y="48" width="204" height="204" rx="102" stroke="#93C5FD" stroke-width="2" fill="none" opacity="0.4"/>
+                  <circle cx="150" cy="150" r="54" fill="#60A5FA" opacity="0.75"/>
+                </svg>
+                <div class="card-play-fab">▶</div>
+              </div>
+              <div class="album-card-title">Dünya Yalan Söylüyor</div>
+              <div class="album-card-sub">Mor ve Ötesi</div>
+            </div>
+
+            <div class="album-card" onclick="selectAlbum('rose', 'Random Access Memories', 'Daft Punk')">
+              <div class="album-card-art">
+                <svg viewBox="0 0 300 300">
+                  <defs><linearGradient id="c4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4C1D95"/><stop offset="50%" stop-color="#9F1239"/><stop offset="100%" stop-color="#0F071E"/></linearGradient></defs>
+                  <rect width="300" height="300" fill="url(#c4)"/>
+                  <polygon points="150,56 238,220 62,220" stroke="#FDA4AF" stroke-width="3" fill="rgba(251,113,133,0.18)"/>
+                  <circle cx="150" cy="162" r="28" fill="#FB7185"/>
+                </svg>
+                <div class="card-play-fab">▶</div>
+              </div>
+              <div class="album-card-title">Random Access Memories</div>
+              <div class="album-card-sub">Daft Punk</div>
+            </div>
+
+            <div class="album-card" onclick="selectAlbum('neutral', 'All Melody', 'Nils Frahm')">
+              <div class="album-card-art">
+                <svg viewBox="0 0 300 300">
+                  <defs><linearGradient id="c5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#334155"/><stop offset="100%" stop-color="#0F172A"/></linearGradient></defs>
+                  <rect width="300" height="300" fill="url(#c5)"/>
+                  <g stroke="#CBD5E1" stroke-width="1.5" opacity="0.45">
+                    <line x1="60" y1="70" x2="240" y2="70"/><line x1="60" y1="110" x2="240" y2="110"/>
+                    <line x1="60" y1="150" x2="240" y2="150"/><line x1="60" y1="190" x2="240" y2="190"/>
+                    <line x1="60" y1="230" x2="240" y2="230"/>
+                  </g>
+                  <circle cx="150" cy="150" r="36" fill="#E2E8F0" opacity="0.85"/>
+                </svg>
+                <div class="card-play-fab">▶</div>
+              </div>
+              <div class="album-card-title">All Melody</div>
+              <div class="album-card-sub">Nils Frahm</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hızlı Sıradaki Parçalar (Çerçevesiz, Canlı Ekolayzerli, Teknik Bilgi Yalnız Hover'da) -->
+        <div>
+          <div class="section-header">
+            <h2 class="section-title">Son Çalınanlar</h2>
+          </div>
+          <div class="track-list">
+            <div class="track-row playing" onclick="switchView('lyrics')">
+              <span class="track-num">
+                <span class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span>
+              </span>
+              <div>
+                <div class="track-title">Cemalim</div>
+                <div style="font-size:12.5px; color:var(--text-secondary);">Erkin Koray</div>
+              </div>
+              <span>Elektronik Türküler</span>
+              <span><span class="hover-tech-meta">FLAC 96 kHz</span></span>
+              <span class="track-duration">03:48</span>
+            </div>
+
+            <div class="track-row" onclick="selectAlbum('emerald', 'Time (You and I)', 'Khruangbin')">
+              <span class="track-num">02</span>
+              <div>
+                <div class="track-title">Time (You and I)</div>
+                <div style="font-size:12.5px; color:var(--text-secondary);">Khruangbin</div>
+              </div>
+              <span>Mordechai</span>
+              <span><span class="hover-tech-meta">ALAC 24-bit</span></span>
+              <span class="track-duration">05:42</span>
+            </div>
+
+            <div class="track-row" onclick="selectAlbum('cobalt', 'Bir Derdim Var', 'Mor ve Ötesi')">
+              <span class="track-num">03</span>
+              <div>
+                <div class="track-title">Bir Derdim Var</div>
+                <div style="font-size:12.5px; color:var(--text-secondary);">Mor ve Ötesi</div>
+              </div>
+              <span>Dünya Yalan Söylüyor</span>
+              <span><span class="hover-tech-meta">FLAC 44.1 kHz</span></span>
+              <span class="track-duration">03:34</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           GÖRÜNÜM 2: ALBÜM SAYFASI
+           ==================================================================== -->
+      <section id="view-album" class="view-panel" aria-label="Albüm Detayı">
+        <div class="hero-showcase">
+          <div class="artwork-sleeve">
+            <svg viewBox="0 0 400 400">
+              <rect width="400" height="400" fill="url(#sunGlow)" />
+              <circle cx="200" cy="168" r="86" stroke="#FFF8EB" stroke-width="1.5" fill="none" opacity="0.3" />
+              <circle cx="200" cy="168" r="42" fill="#FFF3D6" opacity="0.92" />
+              <path d="M0 270 Q110 210 220 265 T400 245 L400 400 L0 400 Z" fill="#431920" opacity="0.88" />
+              <path d="M0 305 Q150 250 270 300 T400 285 L400 400 L0 400 Z" fill="#180B10" />
+            </svg>
+          </div>
+          <div class="hero-copy">
+            <div class="eyebrow-label">Albüm • 1974</div>
+            <h1 class="hero-display-title">Elektronik Türküler</h1>
+            <div class="hero-subtitle">
+              <strong style="color:var(--text-primary);">Erkin Koray</strong>
+              <span>•</span>
+              <span>8 şarkı, 37 dk</span>
+              <span class="hover-tech-meta">24-bit / 96 kHz Analog Master • DR12</span>
+            </div>
+            <div class="hero-actions">
+              <button class="btn-primary">▶ Albümü Çal</button>
+              <button class="btn-secondary">⇄ Karıştır</button>
+              <button class="btn-subtle" onclick="switchView('room')">◉ Odada Dinlet</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="track-list">
+          <div class="track-row">
+            <span class="track-num">01</span>
+            <div class="track-title">Karlı Dağlar</div>
+            <span style="font-size:12.5px; color:var(--text-muted);">Erkin Koray</span>
+            <span><span class="hover-tech-meta">FLAC 96k</span></span>
+            <span class="track-duration">03:52</span>
+          </div>
+          <div class="track-row playing" onclick="switchView('lyrics')">
+            <span class="track-num">
+              <span class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span>
+            </span>
+            <div class="track-title">Cemalim</div>
+            <span style="font-size:12.5px; color:var(--cover-accent);">Kelime Senkron Sözler</span>
+            <span><span class="hover-tech-meta">FLAC 96k</span></span>
+            <span class="track-duration">03:48</span>
+          </div>
+          <div class="track-row">
+            <span class="track-num">03</span>
+            <div class="track-title">Hele Yar</div>
+            <span style="font-size:12.5px; color:var(--text-muted);">Erkin Koray</span>
+            <span><span class="hover-tech-meta">FLAC 96k</span></span>
+            <span class="track-duration">06:21</span>
+          </div>
+          <div class="track-row">
+            <span class="track-num">04</span>
+            <div class="track-title">Korkulu Rüya (Enstrümantal)</div>
+            <span style="font-size:12.5px; color:var(--text-muted);">Enstrümantal</span>
+            <span><span class="hover-tech-meta">FLAC 96k</span></span>
+            <span class="track-duration">01:29</span>
+          </div>
+          <div class="track-row">
+            <span class="track-num">05</span>
+            <div class="track-title">Yalnızlar Rıhtımı</div>
+            <span style="font-size:12.5px; color:var(--text-muted);">Erkin Koray</span>
+            <span><span class="hover-tech-meta">FLAC 96k</span></span>
+            <span class="track-duration">04:37</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           GÖRÜNÜM 4: TAM EKRAN SENKRON SÖZ VİTRİNİ (Kelime Kelime Dolan Yazı)
+           ==================================================================== -->
+      <section id="view-lyrics" class="view-panel" aria-label="Senkron Söz Vitrini">
+        <div class="lyrics-showcase">
+          <div class="lyrics-ambient-backdrop"></div>
+
+          <!-- Sol Sütun: Yüzen Büyük Albüm Kapağı ve Şarkı Kimliği -->
+          <div class="lyrics-left-column">
+            <div class="artwork-sleeve" style="width:260px; height:260px;">
+              <svg viewBox="0 0 400 400">
+                <rect width="400" height="400" fill="url(#sunGlow)" />
+                <circle cx="200" cy="168" r="86" stroke="#FFF8EB" stroke-width="1.5" fill="none" opacity="0.3" />
+                <circle cx="200" cy="168" r="42" fill="#FFF3D6" opacity="0.92" />
+                <path d="M0 270 Q110 210 220 265 T400 245 L400 400 L0 400 Z" fill="#431920" opacity="0.88" />
+                <path d="M0 305 Q150 250 270 300 T400 285 L400 400 L0 400 Z" fill="#180B10" />
+              </svg>
+            </div>
+            <div>
+              <h2 style="font-family:var(--font-display); font-size:26px; font-weight:800; letter-spacing:-0.03em;">Cemalim</h2>
+              <p style="color:var(--text-secondary); font-size:14px; margin-top:2px;">Erkin Koray • Elektronik Türküler</p>
+            </div>
+          </div>
+
+          <!-- Sağ Sütun: Vitrin Tipografisi ve Kelime Kelime Vurgu -->
+          <div class="lyrics-stage-column">
+            <div class="lyrics-floating-controls">
+              <button class="btn-subtle" onclick="adjustOffset(-50)">-50 ms</button>
+              <span id="lyricOffsetValue" style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); padding:0 6px;">-100 ms</span>
+              <button class="btn-subtle" onclick="adjustOffset(50)">+50 ms</button>
+              <button class="btn-subtle" onclick="adjustOffset(0, true)">Sıfırla</button>
+              <span class="btn-subtle">LRCLIB .elrc</span>
+            </div>
+
+            <div class="lyrics-lines">
+              <div class="lyric-line">Şu karşıki dağda lambalar yanar</div>
+              <div class="lyric-line">Lambanın şavkına da Cemalim güller boyanır</div>
+              <div class="lyric-line active">
+                <span class="lyric-word spoken">Gurbet</span>
+                <span class="lyric-word spoken">elde</span>
+                <span class="lyric-word current">kaldım</span>
+                <span class="lyric-word">yalnız</span>
+                <span class="lyric-word">canım</span>
+                <span class="lyric-word">dayanır</span>
+              </div>
+              <div class="lyric-line">Uyan Cemalim uyan, uyanmaz mısın?</div>
+              <div class="lyric-line">Yedi yerden hançer yedim, uyanmaz mısın?</div>
+            </div>
+
+            <div style="height:12px;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           GÖRÜNÜM 5: LİSTE AKTARMA (Spotify / YTM / SoundCloud Eşleşme)
+           ==================================================================== -->
+      <section id="view-import" class="view-panel" aria-label="Liste Aktarma">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px;">
+          <div>
+            <div class="eyebrow-label">Katalog Eşleştirici</div>
+            <h1 class="hero-display-title" style="font-size:44px; margin-top:4px;">Liste Aktarma</h1>
+            <p style="color:var(--text-secondary); font-size:14.5px; margin-top:6px;">Spotify — <strong>"Anadolu & Krautrock Gece Sürüşü"</strong> (155 şarkı)</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn-subtle active">Spotify</button>
+            <button class="btn-subtle">YouTube Music</button>
+            <button class="btn-subtle">SoundCloud</button>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <button class="btn-subtle active">Tümü (155)</button>
+          <button class="btn-subtle" style="color:var(--status-matched);">Eşleşen (142)</button>
+          <button class="btn-subtle" style="color:var(--status-uncertain);">Emin Olunmayan (9)</button>
+          <button class="btn-subtle" style="color:var(--status-unmatched);">Eşleşmeyen (4)</button>
+          <button class="btn-primary" style="margin-left:auto; height:36px; font-size:13px;">142 Eşleşeni Kaydet</button>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div class="import-row">
+            <div>
+              <div style="font-weight:700;">Erkin Koray — Cemalim</div>
+              <div style="font-size:12.5px; color:var(--text-secondary);">Spotify • <span style="font-family:var(--font-mono);">03:48</span></div>
+            </div>
+            <span style="color:var(--text-muted);">→</span>
+            <div>
+              <div style="font-weight:700;">Erkin Koray — Cemalim (1974 Remaster)</div>
+              <div style="font-size:12.5px; color:var(--text-secondary);">Yerel Arşiv • Tam ISRC Eşleşmesi</div>
+            </div>
+            <span class="status-pill matched">✓ %99 Eşleşti</span>
+            <button class="btn-subtle" style="justify-content:center;">Değiştir</button>
+          </div>
+
+          <div class="import-row">
+            <div>
+              <div style="font-weight:700;">Barış Manço — Dönence (Canlı 1982)</div>
+              <div style="font-size:12.5px; color:var(--text-secondary);">YouTube Music • <span style="font-family:var(--font-mono);">06:12</span></div>
+            </div>
+            <span style="color:var(--status-uncertain);">?</span>
+            <div>
+              <div style="font-weight:700;">Barış Manço — Dönence (Stüdyo Sürümü)</div>
+              <div style="font-size:12.5px; color:var(--status-uncertain);">Süre farkı: 05:08 (-64 sn)</div>
+            </div>
+            <span class="status-pill uncertain">? %74 Benzer</span>
+            <div style="display:flex; gap:6px;">
+              <button class="btn-primary" style="height:32px; padding:0 14px; font-size:12px;">Onayla</button>
+              <button class="btn-subtle" style="height:32px; padding:0 10px;">Seç</button>
+            </div>
+          </div>
+
+          <div class="import-row">
+            <div>
+              <div style="font-weight:700;">Kozmik Bağlama — İsimsiz Demo #4</div>
+              <div style="font-size:12.5px; color:var(--text-secondary);">SoundCloud • <span style="font-family:var(--font-mono);">04:19</span></div>
+            </div>
+            <span style="color:var(--status-unmatched);">✕</span>
+            <div>
+              <div style="font-weight:700; color:var(--status-unmatched);">Yerel arşivde karşılığı bulunamadı</div>
+              <div style="font-size:12.5px; color:var(--text-secondary);">Manuel dosya seçebilir veya yer tutucu bırakabilirsiniz.</div>
+            </div>
+            <span class="status-pill unmatched">✕ Eşleşmedi</span>
+            <button class="btn-subtle" style="justify-content:center;">Dosya Seç…</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           GÖRÜNÜM 6: BİRLİKTE DİNLEME ODASI
+           ==================================================================== -->
+      <section id="view-room" class="view-panel" aria-label="Birlikte Dinleme Odası">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px;">
+          <div>
+            <div class="live-room-pill" style="margin-bottom:10px;">
+              <span class="pulse-dot"></span>
+              <span>Canlı Oda • #stüdyo-gece</span>
+            </div>
+            <h1 class="hero-display-title" style="font-size:44px;">Anadolu & Gece Kodlama</h1>
+            <p style="color:var(--text-secondary); font-size:14.5px; margin-top:6px;">4 katılımcı senkronize dinliyor • Sıradaki parça ortak oylamayla seçilir</p>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn-secondary">Davet Bağlantısını Kopyala</button>
+            <button class="btn-subtle" style="color:var(--status-unmatched);">Ayrıl</button>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+          <div class="tonal-surface" style="display:flex; flex-direction:column; gap:12px;">
+            <div class="section-header" style="margin-bottom:4px;">
+              <h2 class="section-title" style="font-size:18px;">Dinleyiciler</h2>
+              <span style="font-family:var(--font-mono); font-size:12px; color:var(--status-matched);">18 ms NTP</span>
+            </div>
+            <div class="queue-item">
+              <div><strong>@deniz</strong> <span style="font-size:12px; color:var(--text-muted); margin-left:6px;">Kurucu</span></div>
+              <span style="font-size:12.5px; color:var(--status-matched);">🔥 Senkron</span>
+            </div>
+            <div class="queue-item">
+              <div><strong>@kaantek</strong></div>
+              <span style="font-size:12.5px; color:var(--status-matched);">🎸 Senkron</span>
+            </div>
+            <div class="queue-item">
+              <div><strong>@selin_dsp</strong></div>
+              <span style="font-size:12.5px; color:var(--status-matched);">✨ Senkron</span>
+            </div>
+            <div class="queue-item">
+              <div><strong>@emre_rust</strong></div>
+              <span style="font-size:12.5px; color:var(--status-uncertain);">Tamponlanıyor…</span>
+            </div>
+          </div>
+
+          <div class="tonal-surface" style="display:flex; flex-direction:column; gap:12px;">
+            <div class="section-header" style="margin-bottom:4px;">
+              <h2 class="section-title" style="font-size:18px;">Sıradaki Şarkı Oylaması</h2>
+              <button class="btn-subtle">+ Parça Öner</button>
+            </div>
+            <div class="queue-item">
+              <div>
+                <div style="font-weight:700;">Altın Gün — Goca Dünya</div>
+                <div style="font-size:12px; color:var(--text-secondary);">@kaantek önerdi • <span style="font-family:var(--font-mono);">03:58</span></div>
+              </div>
+              <button class="vote-pill voted" onclick="this.classList.toggle('voted')">▲ 4</button>
+            </div>
+            <div class="queue-item">
+              <div>
+                <div style="font-weight:700;">Nils Frahm — Says</div>
+                <div style="font-size:12px; color:var(--text-secondary);">@selin_dsp önerdi • <span style="font-family:var(--font-mono);">08:18</span></div>
+              </div>
+              <button class="vote-pill" onclick="this.classList.toggle('voted')">▲ 2</button>
+            </div>
+            <div class="queue-item">
+              <div>
+                <div style="font-weight:700;">Moğollar — Ağrı Dağı Efsanesi</div>
+                <div style="font-size:12px; color:var(--text-secondary);">@deniz önerdi • <span style="font-family:var(--font-mono);">09:10</span></div>
+              </div>
+              <button class="vote-pill" onclick="this.classList.toggle('voted')">▲ 1</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           GÖRÜNÜM 7: PROFİL VE 32-BANT FREKANS GÖRSELLEŞTİRİCİ
+           ==================================================================== -->
+      <section id="view-profile" class="view-panel" aria-label="Frekans ve Profil">
+        <div class="hero-showcase" style="align-items:center;">
+          <div class="artwork-sleeve" style="width:112px; height:112px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--surface-2);">
+            <span style="font-family:var(--font-display); font-size:32px; font-weight:800; color:var(--cover-accent);">DA</span>
+          </div>
+          <div class="hero-copy">
+            <h1 class="hero-display-title" style="font-size:42px;">Deniz Aksoy</h1>
+            <div class="hero-subtitle">Bu ay <span style="font-family:var(--font-mono); color:var(--text-primary);">4.820</span> dakika dinleme • <span style="font-family:var(--font-mono); color:var(--text-primary);">318</span> albüm arşivi</div>
+          </div>
+        </div>
+
+        <div class="tonal-surface">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:700; font-size:16px;">Canlı Frekans Spektrumu</div>
+              <div style="font-size:13px; color:var(--text-secondary);">Çalan albüm kapağının OKLCH tonuyla boyanan 32 ayrık bant</div>
+            </div>
+            <span class="hover-tech-meta" style="opacity:1;">60 FPS • PipeWire Doğrudan</span>
+          </div>
+
+          <div class="spectrum-bars" aria-label="32 Bant Ses Spektrumu">
+            <div class="spec-bar" style="height:28%"></div><div class="spec-bar" style="height:44%"></div><div class="spec-bar" style="height:68%"></div><div class="spec-bar" style="height:86%"></div>
+            <div class="spec-bar" style="height:95%"></div><div class="spec-bar" style="height:78%"></div><div class="spec-bar" style="height:64%"></div><div class="spec-bar" style="height:82%"></div>
+            <div class="spec-bar" style="height:98%"></div><div class="spec-bar" style="height:88%"></div><div class="spec-bar" style="height:74%"></div><div class="spec-bar" style="height:62%"></div>
+            <div class="spec-bar" style="height:54%"></div><div class="spec-bar" style="height:70%"></div><div class="spec-bar" style="height:84%"></div><div class="spec-bar" style="height:91%"></div>
+            <div class="spec-bar" style="height:77%"></div><div class="spec-bar" style="height:60%"></div><div class="spec-bar" style="height:48%"></div><div class="spec-bar" style="height:66%"></div>
+            <div class="spec-bar" style="height:74%"></div><div class="spec-bar" style="height:58%"></div><div class="spec-bar" style="height:44%"></div><div class="spec-bar" style="height:52%"></div>
+            <div class="spec-bar" style="height:39%"></div><div class="spec-bar" style="height:32%"></div><div class="spec-bar" style="height:46%"></div><div class="spec-bar" style="height:35%"></div>
+            <div class="spec-bar" style="height:26%"></div><div class="spec-bar" style="height:20%"></div><div class="spec-bar" style="height:15%"></div><div class="spec-bar" style="height:10%"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           GÖRÜNÜM 8: AYARLAR & BİLEŞEN DURUMLARI
+           ==================================================================== -->
+      <section id="view-settings" class="view-panel" aria-label="Ayarlar">
+        <div>
+          <div class="eyebrow-label">Yapılandırma</div>
+          <h1 class="hero-display-title" style="font-size:44px; margin-top:4px;">Ayarlar</h1>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+          <div class="tonal-surface" style="display:flex; flex-direction:column; gap:16px;">
+            <div style="font-weight:700; font-size:16px;">Ses Motoru ve Ortam</div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="color:var(--text-secondary);">Çıkış Sürücüsü</span>
+              <span style="font-weight:600;">PipeWire (Bit-Perfect Özel Kip)</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="color:var(--text-secondary);">Kapak Ortam (Ambient) Aydınlatması</span>
+              <button class="btn-subtle active" onclick="toggleTheme()">Açık / Koyu Değiştir</button>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="color:var(--text-secondary);">Teknik Ses Bilgisini Göster</span>
+              <span style="color:var(--text-muted); font-size:13px;">Yalnız üzerine gelince</span>
+            </div>
+          </div>
+
+          <div class="tonal-surface" style="display:flex; flex-direction:column; gap:16px;">
+            <div style="font-weight:700; font-size:16px;">Etkileşim Yüzeyleri (v2)</div>
+            <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+              <button class="btn-primary">Birincil Aksiyon</button>
+              <button class="btn-secondary">İkincil Yüzey</button>
+              <button class="btn-subtle">Yumuşak Etiket</button>
+              <button class="btn-subtle" disabled style="opacity:0.35; cursor:not-allowed;">Devre Dışı</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 4. SAĞ ÇEKMECE (Varsayılan Kapalı, Kayarak Açılan Kuyruk & Oda Paneli) -->
+    <aside class="right-drawer" aria-label="Kuyruk ve Canlı Oda Çekmecesi">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div class="segmented-tabs" style="flex:1;" role="tablist">
+          <button id="tabQueueBtn" class="seg-btn active" onclick="switchDrawerTab('queue')">Kuyruk (12)</button>
+          <button id="tabRoomBtn" class="seg-btn" onclick="switchDrawerTab('room')">Canlı Oda (4)</button>
+        </div>
+        <button class="icon-btn" style="margin-left:8px;" onclick="toggleRightDrawer()" title="Kapat">✕</button>
+      </div>
+
+      <!-- Kuyruk Sekmesi -->
+      <div id="drawerQueuePane" style="display:flex; flex-direction:column; gap:10px; overflow-y:auto;">
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); padding:4px 4px 0 4px;">Şimdi Çalıyor</div>
+        <div class="queue-item" style="background:var(--surface-2);">
+          <div class="artwork-sm" style="width:38px; height:38px;">
+            <svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#8C2D19"/><circle cx="50" cy="50" r="26" fill="#F4A261"/></svg>
+          </div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:700; font-size:13.5px; color:var(--cover-accent);">Cemalim</div>
+            <div style="font-size:12px; color:var(--text-secondary);">Erkin Koray</div>
+          </div>
+          <span class="time-code">03:48</span>
+        </div>
+
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); padding:8px 4px 0 4px;">Sıradakiler</div>
+        <div class="queue-item">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; font-size:13.5px;">Goca Dünya</div>
+            <div style="font-size:12px; color:var(--text-secondary);">Altın Gün</div>
+          </div>
+          <span class="time-code">03:58</span>
+        </div>
+        <div class="queue-item">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; font-size:13.5px;">Bir Derdim Var</div>
+            <div style="font-size:12px; color:var(--text-secondary);">Mor ve Ötesi</div>
+          </div>
+          <span class="time-code">03:34</span>
+        </div>
+        <div class="queue-item">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; font-size:13.5px;">Time (You and I)</div>
+            <div style="font-size:12px; color:var(--text-secondary);">Khruangbin</div>
+          </div>
+          <span class="time-code">05:42</span>
+        </div>
+      </div>
+
+      <!-- Oda Sekmesi -->
+      <div id="drawerRoomPane" style="display:none; flex-direction:column; gap:10px; height:100%;">
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted);">Oylama</div>
+        <div class="queue-item">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; font-size:13px;">Altın Gün — Goca Dünya</div>
+            <div style="font-size:11.5px; color:var(--text-secondary);">@kaantek</div>
+          </div>
+          <button class="vote-pill voted">▲ 4</button>
+        </div>
+        <div class="queue-item">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; font-size:13px;">Nils Frahm — Says</div>
+            <div style="font-size:11.5px; color:var(--text-secondary);">@selin_dsp</div>
+          </div>
+          <button class="vote-pill">▲ 2</button>
+        </div>
+
+        <div id="reactionFeed" style="flex:1; background:var(--surface-subtle); border-radius:var(--r-md); padding:12px; font-size:12.5px; display:flex; flex-direction:column; gap:8px;">
+          <div><strong>@kaantek:</strong> 🔥 <span style="color:var(--text-muted);">02:11</span></div>
+          <div><strong>@selin_dsp:</strong> 🎸 Bağlama tonu harika</div>
+          <div><strong>@deniz:</strong> ✨ Remaster tertemiz</div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; background:var(--surface-1); border-radius:var(--r-pill); padding:4px 10px;">
+          <button class="icon-btn" onclick="sendReaction('🔥')">🔥</button>
+          <button class="icon-btn" onclick="sendReaction('🎸')">🎸</button>
+          <button class="icon-btn" onclick="sendReaction('✨')">✨</button>
+          <button class="icon-btn" onclick="sendReaction('❤️')">❤️</button>
+          <button class="icon-btn" onclick="sendReaction('🚀')">🚀</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 5. KENARLARDAN BOŞLUKLU YÜZEN OYNATMA ÇUBUĞU -->
+    <footer class="player-bar" aria-label="Oynatma Kontrolleri">
+      <div class="now-playing-info">
+        <div class="artwork-sm" style="cursor:pointer;" onclick="switchView('album')">
+          <svg viewBox="0 0 100 100">
+            <rect width="100" height="100" fill="url(#sunGlow)" />
+            <circle cx="50" cy="42" r="18" fill="#FFF3D6" />
+            <path d="M0 70 Q40 55 100 68 L100 100 L0 100 Z" fill="#231016" />
+          </svg>
+        </div>
+        <div style="min-width:0;">
+          <div id="playerSongTitle" style="font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Cemalim</div>
+          <div id="playerArtistName" style="font-size:12.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Erkin Koray</div>
+        </div>
+        <button class="icon-btn" title="Favorilere Ekle" style="color:var(--cover-accent);">
+          <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="transport-center">
+        <div class="transport-buttons">
+          <button class="icon-btn" title="Karıştır">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/>
+              <path d="m18 2 4 4-4 4"/>
+              <path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/>
+              <path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/>
+              <path d="m18 14 4 4-4 4"/>
+            </svg>
+          </button>
+          <button class="icon-btn" title="Önceki">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <polygon points="19 20 9 12 19 4 19 20"/>
+              <line x1="5" x2="5" y1="19" y2="5"/>
+            </svg>
+          </button>
+          <button class="icon-btn primary-play" title="Çal / Duraklat">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="14" y="4" width="4" height="16" rx="1"/>
+              <rect x="6" y="4" width="4" height="16" rx="1"/>
+            </svg>
+          </button>
+          <button class="icon-btn" title="Sonraki">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <polygon points="5 4 15 12 5 20 5 4"/>
+              <line x1="19" x2="19" y1="5" y2="19"/>
+            </svg>
+          </button>
+          <button class="icon-btn" title="Tekrarla">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m17 2 4 4-4 4"/>
+              <path d="M3 11v-1a4 4 0 0 1 4-4h14"/>
+              <path d="m7 22-4-4 4-4"/>
+              <path d="M21 13v1a4 4 0 0 1-4 4H3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="scrubber-row">
+          <span class="time-code">02:14</span>
+          <div class="slider-hit-area" role="slider" aria-label="Şarkı İlerlemesi" aria-valuenow="58" tabindex="0">
+            <div class="slider-track">
+              <div class="slider-fill" style="width:58%;">
+                <div class="slider-thumb"></div>
+              </div>
+            </div>
+          </div>
+          <span class="time-code">03:48</span>
+        </div>
+      </div>
+
+      <div class="player-right-controls">
+        <!-- Teknik ses bilgisi yalnız üzerine gelince veya tıklandığında açılır -->
+        <button class="hover-tech-meta" style="border:none; cursor:pointer;" onclick="document.getElementById('audioPopover').classList.toggle('open')" title="Ses Yolu Ayrıntıları">
+          24-bit / 96 kHz
+        </button>
+
+        <div id="audioPopover" class="audio-path-popover">
+          <div style="font-weight:700; color:var(--text-primary);">Kayıpsız Ses Yolu</div>
+          <div style="color:var(--text-secondary);">Kaynak: FLAC 24-bit / 96 kHz</div>
+          <div style="color:var(--text-secondary);">Çıkış: PipeWire Doğrudan (Bit-Perfect)</div>
+        </div>
+
+        <button class="icon-btn" title="Söz Vitrini" onclick="switchView('lyrics')">
+          <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m11 7.601-5.994 8.19a1 1 0 0 0 .1 1.298l.817.818a1 1 0 0 0 1.314.087L15.09 12"/>
+            <path d="M16.5 21.174C15.5 20.5 14.372 20 13 20c-2.058 0-3.928 2.356-6 2-2.072-.356-2.775-3.369-1.5-4.5"/>
+            <circle cx="16" cy="7" r="5"/>
+          </svg>
+        </button>
+        <button class="icon-btn" title="Kuyruk Çekmecesi" onclick="toggleRightDrawer()">
+          <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15V6"/>
+            <path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/>
+            <path d="M12 12H3"/>
+            <path d="M16 6H3"/>
+            <path d="M12 18H3"/>
+          </svg>
+        </button>
+        <button class="icon-btn" title="Mini Oynatıcı" onclick="toggleMiniPlayer()">
+          <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4"/>
+            <rect width="10" height="7" x="12" y="13" rx="2"/>
+          </svg>
+        </button>
+        <div style="display:flex; align-items:center; gap:6px; width:88px;">
+          <span style="color:var(--text-secondary); display:inline-flex; align-items:center;">
+            <svg class="lucide-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/>
+              <path d="M16 9a5 5 0 0 1 0 6"/>
+              <path d="M19.364 18.364a9 9 0 0 0 0-12.728"/>
+            </svg>
+          </span>
+          <div class="slider-hit-area" role="slider" aria-label="Ses Seviyesi" aria-valuenow="80" tabindex="0">
+            <div class="slider-track">
+              <div class="slider-fill" style="width:80%;">
+                <div class="slider-thumb"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- ========================================================================
+       ETKİLEŞİM VE DURUM GEÇİŞLERİ
+       ======================================================================== -->
+  <script>
+    let currentOffsetMs = -100;
+
+    function switchView(viewId, devBtn) {
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+      const target = document.getElementById('view-' + viewId);
+      if (target) target.classList.add('active');
+
+      document.querySelectorAll('.sidebar .nav-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-view') === viewId);
+      });
+
+      if (devBtn && devBtn.parentElement) {
+        devBtn.parentElement.querySelectorAll('.dev-chip').forEach(b => b.classList.remove('active'));
+        devBtn.classList.add('active');
+      }
+      toggleSearchDropdown(false);
+    }
+
+    function selectAlbum(accent, title, artist) {
+      setAccent(accent);
+      document.getElementById('playerSongTitle').textContent = title;
+      document.getElementById('playerArtistName').textContent = artist;
+    }
+
+    function toggleSearchDropdown(forceState) {
+      const dd = document.getElementById('searchDropdown');
+      const next = typeof forceState === 'boolean' ? forceState : !dd.classList.contains('open');
+      dd.classList.toggle('open', next);
+      if (next) document.getElementById('globalSearchInput').focus();
+    }
+
+    function switchDrawerTab(tab) {
+      const isQueue = tab === 'queue';
+      document.getElementById('tabQueueBtn').classList.toggle('active', isQueue);
+      document.getElementById('tabRoomBtn').classList.toggle('active', !isQueue);
+      document.getElementById('drawerQueuePane').style.display = isQueue ? 'flex' : 'none';
+      document.getElementById('drawerRoomPane').style.display = isQueue ? 'none' : 'flex';
+    }
+
+    function toggleRightDrawer() {
+      const win = document.getElementById('mainAppWindow');
+      const isOpen = win.classList.toggle('drawer-open');
+      document.getElementById('drawerToggleBtn').classList.toggle('active', isOpen);
+    }
+
+    function toggleCompactWindow(btn) {
+      document.getElementById('mainAppWindow').classList.toggle('compact-900');
+      if (btn) btn.classList.toggle('active');
+    }
+
+    function toggleMiniPlayer(btn) {
+      const mini = document.getElementById('miniPlayerWindow');
+      const main = document.getElementById('mainAppWindow');
+      const showMini = !mini.classList.contains('active');
+      mini.classList.toggle('active', showMini);
+      main.style.display = showMini ? 'none' : 'grid';
+      if (btn) btn.classList.toggle('active', showMini);
+    }
+
+    function toggleTheme(btn) {
+      const root = document.documentElement;
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      if (btn) btn.classList.toggle('active', next === 'light');
+    }
+
+    function setAccent(accent, dotBtn) {
+      document.documentElement.setAttribute('data-accent', accent);
+      if (dotBtn) {
+        document.querySelectorAll('.swatch-dot').forEach(d => d.classList.remove('active'));
+        dotBtn.classList.add('active');
+      }
+    }
+
+    function setUiState(state, btn) {
+      document.getElementById('globalLoadingBanner').classList.toggle('visible', state === 'loading');
+      document.getElementById('globalEmptyBanner').classList.toggle('visible', state === 'empty');
+      document.getElementById('globalErrorBanner').classList.toggle('visible', state === 'error');
+      document.getElementById('searchEmptyState').style.display = state === 'empty' ? 'block' : 'none';
+      document.getElementById('searchNormalResults').style.display = state === 'empty' ? 'none' : 'block';
+
+      if (btn && btn.parentElement) {
+        btn.parentElement.querySelectorAll('.dev-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+    }
+
+    function adjustOffset(delta, reset) {
+      currentOffsetMs = reset ? 0 : currentOffsetMs + delta;
+      const sign = currentOffsetMs > 0 ? '+' : '';
+      document.getElementById('lyricOffsetValue').textContent = sign + currentOffsetMs + ' ms';
+    }
+
+    function sendReaction(emoji) {
+      const feed = document.getElementById('reactionFeed');
+      const item = document.createElement('div');
+      item.innerHTML = '<strong>@deniz:</strong> ' + emoji + ' <span style="color:var(--text-muted);">şimdi</span>';
+      feed.appendChild(item);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        toggleSearchDropdown();
+      } else if (e.key === 'Escape') {
+        toggleSearchDropdown(false);
+        document.getElementById('audioPopover').classList.remove('open');
+      }
+    });
+  </script>
+</body>
+</html>
