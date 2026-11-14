@@ -1,17 +1,12 @@
 // Tasarım belirteçleri: design/tokens-v2.json ile eşleşir.
 
 export global Theme {
-    // Kapak tonları: 0 nötr, 1 terracotta, 2 zümrüt, 3 kobalt, 4 mercan
-    in-out property <int> accent-index: 1;
-    out property <[color]> accents: [#E4E6EB, #F4A261, #34D399, #60A5FA, #FB7185];
-    out property <[color]> blobs: [#64748B, #E76F51, #10B981, #3B82F6, #F43F5E];
-    out property <[color]> blobs-deep: [#334155, #78350F, #064E3B, #1E3A8A, #4C1D95];
-
-    out property <color> accent: accents[accent-index];
+    // Vurgu rengi çalan kapaktan türetilir (Rust: art.rs), varsayılan nötr.
+    in-out property <color> accent: #E4E6EB;
     out property <color> accent-soft: accent.with-alpha(0.16);
-    out property <color> blob1: blobs[accent-index].with-alpha(0.24);
-    out property <color> blob2: blobs-deep[accent-index].with-alpha(0.30);
-    out property <color> blob3: accent.with-alpha(0.10);
+    out property <color> blob1: accent.with-alpha(0.20);
+    out property <color> blob2: accent.darker(0.9).with-alpha(0.26);
+    out property <color> blob3: accent.with-alpha(0.09);
 
     out property <color> outer: #050507;
     out property <color> canvas: #090A0D;
