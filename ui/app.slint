@@ -3,9 +3,9 @@ import "fonts/PlusJakartaSans.ttf";
 import "fonts/JetBrainsMono.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Album, Track, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, AlbumCard, TrackRow } from "parts.slint";
+import { Track, Shelf, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow } from "parts.slint";
 
-export { Theme, Album, Track }
+export { Theme, Track, Shelf }
 
 export component AppWindow inherits Window {
     title: "vynz";
@@ -16,54 +16,69 @@ export component AppWindow inherits Window {
     background: Theme.canvas;
     default-font-family: Theme.sans;
 
-    in property <[Album]> albums;
-    in property <[Track]> tracks;
+    // Veri (Rust doldurur)
+    in property <[Shelf]> shelves;
+    in property <bool> home-loading: true;
+    in property <[Track]> results;
+    in property <bool> searching;
+    in property <string> last-query;
     in property <[Track]> queue;
-    in-out property <int> now-index: 0;
-    in-out property <bool> playing: true;
-    in-out property <float> position: 134;
+    in property <int> queue-index: -1;
+    in property <string> toast;
+
+    // Çalan
+    in property <bool> has-now;
+    in property <Track> now;
+    in property <bool> playing;
+    in property <bool> buffering;
+    in property <float> position;
+    in property <float> duration;
     in-out property <float> volume: 0.8;
-    in-out property <bool> liked: true;
+    in-out property <bool> liked;
+
     in-out property <string> view: "home";
     in-out property <bool> drawer-open: false;
+    in-out property <int> source-filter: -1;
 
-    property <Track> now: tracks[now-index];
     property <bool> compact: root.width < 1100px;
     property <length> sidebar-w: compact ? 64px : 196px;
 
-    callback play-track(int);
+    callback play-shelf(int, int);
+    callback play-result(int);
+    callback play-queue(int);
+    callback search(string);
     callback seek(float);
+    callback set-volume(float);
     callback toggle-play();
     callback next();
     callback prev();
 
-    // Kapaktan türeyen ortam ışığı (Rust tarafında 64x64 bulanık kapak dokusuyla değişecek)
-    ambient := Rectangle {
+    // Kapaktan türeyen ortam ışığı
+    Rectangle {
         Rectangle {
             width: root.width * 1.1; height: self.width;
             x: root.width * 0.28 - self.width / 2; y: root.height * 0.18 - self.height / 2;
             background: @radial-gradient(circle, Theme.blob1 0%, transparent 58%);
-            animate background { duration: 400ms; }
+            animate background { duration: 500ms; }
         }
         Rectangle {
             width: root.width * 1.2; height: self.width;
             x: root.width * 0.76 - self.width / 2; y: root.height * 0.42 - self.height / 2;
             background: @radial-gradient(circle, Theme.blob2 0%, transparent 62%);
-            animate background { duration: 400ms; }
+            animate background { duration: 500ms; }
         }
         Rectangle {
             width: root.width * 0.9; height: self.width;
             x: root.width * 0.45 - self.width / 2; y: root.height * 0.88 - self.height / 2;
             background: @radial-gradient(circle, Theme.blob3 0%, transparent 55%);
-            animate background { duration: 400ms; }
+            animate background { duration: 500ms; }
         }
     }
 
     // ---------- Kenar çubuğu ----------
-    sidebar := Rectangle {
+    Rectangle {
         x: 0; y: 0; width: sidebar-w; height: root.height;
         background: Theme.surface-subtle;
-        animate width { duration: Theme.drawer-dur; easing: ease-out; }
 
         VerticalLayout {
             padding: 14px; padding-top: 22px; padding-bottom: Theme.player-clearance;
@@ -79,7 +94,6 @@ export component AppWindow inherits Window {
                     width: 10px; height: 10px; y: 9px; border-radius: 5px;
                     background: Theme.accent;
                     drop-shadow-blur: 12px; drop-shadow-color: Theme.accent;
-                    animate background { duration: 200ms; }
                 }
                 if !compact: Text {
                     text: "vynz"; vertical-alignment: center;
@@ -91,18 +105,30 @@ export component AppWindow inherits Window {
             if !compact: Text { text: "Kütüphane"; font-size: 11px; font-weight: 700; color: Theme.text-muted; x: 12px; height: 22px; }
 
             NavButton { icon: Icons.home; label: "Şimdi Dinle"; compact: compact; active: view == "home"; clicked => { view = "home"; } }
-            NavButton { icon: Icons.disc; label: "Albümler"; compact: compact; active: view == "album"; clicked => { view = "album"; } }
+            NavButton { icon: Icons.search; label: "Ara"; compact: compact; active: view == "search"; clicked => { view = "search"; search-input.focus(); } }
             NavButton { icon: Icons.mic; label: "Söz Vitrini"; compact: compact; active: view == "lyrics"; clicked => { view = "lyrics"; } }
             NavButton { icon: Icons.arrows; label: "Liste Aktarma"; compact: compact; active: view == "import"; clicked => { view = "import"; } }
-            NavButton { icon: Icons.radio; label: "Dinleme Odası"; compact: compact; dot: true; active: view == "room"; clicked => { view = "room"; } }
+            NavButton { icon: Icons.radio; label: "Dinleme Odası"; compact: compact; active: view == "room"; clicked => { view = "room"; } }
             NavButton { icon: Icons.audio-lines; label: "Frekans & Profil"; compact: compact; active: view == "profile"; clicked => { view = "profile"; } }
             NavButton { icon: Icons.settings; label: "Ayarlar"; compact: compact; active: view == "settings"; clicked => { view = "settings"; } }
 
             Rectangle { height: 24px; }
-            if !compact: Text { text: "Koleksiyonlar"; font-size: 11px; font-weight: 700; color: Theme.text-muted; x: 12px; height: 22px; }
-            NavButton { icon: Icons.list-music; label: "Anadolu Psikedelik"; compact: compact; }
-            NavButton { icon: Icons.list-music; label: "Gece Sürüşü"; compact: compact; }
-            NavButton { icon: Icons.list-music; label: "Referans Kayıtlar"; compact: compact; }
+            if !compact: Text { text: "Kaynaklar"; font-size: 11px; font-weight: 700; color: Theme.text-muted; x: 12px; height: 22px; }
+            for name[i] in Sources.names: HorizontalLayout {
+                height: 30px;
+                padding-left: compact ? 0 : 14px;
+                alignment: compact ? center : start;
+                spacing: 12px;
+                Rectangle {
+                    width: 8px; height: 8px; y: 11px; border-radius: 4px;
+                    background: i == 0 ? Sources.colors[i] : Theme.text-muted;
+                }
+                if !compact: Text {
+                    text: name + (i == 0 ? "" : " · yakında");
+                    vertical-alignment: center; font-size: 12.5px;
+                    color: i == 0 ? Theme.text-secondary : Theme.text-muted;
+                }
+            }
         }
     }
 
@@ -116,48 +142,47 @@ export component AppWindow inherits Window {
             HorizontalLayout {
                 padding-left: 32px; padding-right: 32px; spacing: 10px;
                 Rectangle {
-                    width: Math.min(360px, main.width * 0.4);
+                    width: Math.min(420px, main.width * 0.45);
                     height: 38px; y: 11px;
                     border-radius: 19px;
                     background: search-input.has-focus ? Theme.surface-2 : Theme.surface-1;
                     animate background { duration: Theme.micro; }
+                    TouchArea { mouse-cursor: text; clicked => { search-input.focus(); } }
                     HorizontalLayout {
                         padding-left: 16px; padding-right: 16px; spacing: 10px;
                         Icon { width: 15px; height: 15px; y: (38px - 15px) / 2; commands: Icons.search; stroke: Theme.text-muted; }
-                        search-input := TextInput {
-                            vertical-alignment: center;
-                            font-size: 13.5px; font-weight: 500;
-                            color: Theme.text-primary;
-                            text: "Erkin Koray";
-                            single-line: true;
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            search-input := TextInput {
+                                width: parent.width; height: parent.height;
+                                vertical-alignment: center;
+                                font-size: 13.5px; font-weight: 500;
+                                color: Theme.text-primary;
+                                single-line: true;
+                                accepted => {
+                                    if (self.text != "") {
+                                        view = "search";
+                                        root.search(self.text);
+                                    }
+                                }
+                            }
+                            if search-input.text == "": Text {
+                                x: 0; height: parent.height; vertical-alignment: center;
+                                text: "Şarkı, sanatçı ya da bağlantı";
+                                font-size: 13.5px; color: Theme.text-muted;
+                            }
                         }
-                        Text { text: "Ctrl K"; vertical-alignment: center; font-size: 11px; font-weight: 600; color: Theme.text-muted; }
+                        Text { text: "Enter"; vertical-alignment: center; font-size: 11px; font-weight: 600; color: Theme.text-muted; }
                     }
                 }
                 Rectangle { horizontal-stretch: 1; }
-                // Canlı oda
-                Rectangle {
-                    min-width: room-label.preferred-width + 42px; max-width: self.min-width; height: 34px; y: 13px;
-                    border-radius: 17px; background: Theme.live-bg;
-                    room-ta := TouchArea { mouse-cursor: pointer; clicked => { view = "room"; } }
-                    opacity: room-ta.has-hover ? 0.88 : 1;
-                    Rectangle {
-                        x: 14px; width: 7px; height: 7px; border-radius: 3.5px; background: Theme.live;
-                        drop-shadow-blur: 8px; drop-shadow-color: Theme.live;
-                    }
-                    room-label := Text {
-                        x: 30px; text: "#stüdyo-gece · 4 dinleyici";
-                        font-size: 12.5px; font-weight: 700; color: Theme.live;
-                    }
-                }
-                // Kuyruk düğmesi
                 Rectangle {
                     min-width: 96px; max-width: 96px; height: 34px; y: 13px;
                     border-radius: 17px;
                     background: drawer-open || q-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
                     animate background { duration: Theme.micro; }
                     q-ta := TouchArea { mouse-cursor: pointer; clicked => { drawer-open = !drawer-open; } }
-                    q-row := HorizontalLayout {
+                    HorizontalLayout {
                         x: 14px; spacing: 6px;
                         Text { text: "Kuyruk"; vertical-alignment: center; font-size: 12.5px; font-weight: 600; color: drawer-open ? Theme.text-primary : Theme.text-secondary; }
                         Text { text: queue.length; vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
@@ -166,7 +191,6 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Kaydırılan içerik
         flick := Flickable {
             x: 0; y: 60px; width: parent.width; height: parent.height - 60px;
             content-width: self.width;
@@ -178,91 +202,125 @@ export component AppWindow inherits Window {
                 padding-bottom: Theme.player-clearance + 24px;
                 spacing: 36px;
 
-                if view != "home": Rectangle {
-                    height: 420px;
-                    VerticalLayout {
-                        alignment: center; spacing: 8px;
-                        Text { text: "Bu ekran sonraki aşamada"; horizontal-alignment: center; font-family: Theme.display; font-size: 28px; font-weight: 800; color: Theme.text-primary; }
-                        Text { text: "1. aşamada yalnız ana sayfa ve oynatma çubuğu var."; horizontal-alignment: center; font-size: 14px; color: Theme.text-secondary; }
-                    }
-                }
-
-                // Kahraman: çalan şarkı
+                // ===== Ana sayfa =====
                 if view == "home": HorizontalLayout {
                     spacing: 32px;
                     padding-top: 12px; padding-bottom: 8px;
-                    hero-cover := Cover {
+                    Cover {
                         width: 224px; height: 224px;
                         radius: Theme.r-lg;
-                        album: albums[now.cover];
+                        art: now.art; has-art: has-now && now.has-art;
                         drop-shadow-blur: 56px; drop-shadow-offset-y: 28px; drop-shadow-color: #000000ad;
                     }
                     VerticalLayout {
                         alignment: end; spacing: 10px;
                         HorizontalLayout {
                             spacing: 8px; alignment: start;
-                            EqBars { y: 3px; running: playing; }
-                            Text { text: playing ? "Şimdi Çalıyor" : "Duraklatıldı"; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                            if has-now: EqBars { y: 3px; running: playing && !buffering; }
+                            Text {
+                                text: !has-now ? "Hoş geldin" : buffering ? "Yükleniyor" : playing ? "Şimdi Çalıyor" : "Duraklatıldı";
+                                font-size: 12px; font-weight: 700; color: Theme.accent;
+                            }
                         }
                         Text {
-                            text: now.title;
-                            font-family: Theme.display; font-size: 64px; font-weight: 800;
-                            letter-spacing: -2.5px; color: Theme.text-primary;
+                            text: has-now ? now.title : "Ne dinlemek istersin?";
+                            font-family: Theme.display; font-size: 60px; font-weight: 800;
+                            letter-spacing: -2.4px; color: Theme.text-primary;
                             overflow: elide;
                         }
                         HorizontalLayout {
                             spacing: 8px; alignment: start;
-                            Text { text: now.artist; font-size: 15px; font-weight: 700; color: Theme.text-primary; }
-                            Text { text: "·"; font-size: 15px; color: Theme.text-secondary; }
-                            Text { text: now.album; font-size: 15px; font-weight: 500; color: Theme.text-secondary; }
+                            if has-now: Text { text: now.artist; font-size: 15px; font-weight: 700; color: Theme.text-primary; }
+                            if has-now && now.album != "": Text { text: "·"; font-size: 15px; color: Theme.text-secondary; }
+                            if has-now: Text { text: now.album; font-size: 15px; font-weight: 500; color: Theme.text-secondary; overflow: elide; }
+                            if !has-now: Text { text: "Aşağıdan bir şarkı seç ya da yukarıda ara."; font-size: 15px; color: Theme.text-secondary; }
+                            if has-now: SourceBadge { y: 0px; source: now.source; }
                         }
                         Rectangle { height: 8px; }
                         HorizontalLayout {
                             spacing: 12px; alignment: start;
-                            PillButton { text: "Söz Vitrinini Aç"; primary: true; clicked => { view = "lyrics"; } }
-                            PillButton { text: "Albüme Git"; clicked => { view = "album"; } }
+                            PillButton { text: "Söz Vitrinini Aç"; primary: true; enabled: has-now; clicked => { view = "lyrics"; } }
+                            PillButton { text: "Ara"; clicked => { view = "search"; search-input.focus(); } }
                         }
                     }
                 }
 
-                // Son dinlenen albümler
+                if view == "home" && home-loading: Text {
+                    text: "Önerilerin yükleniyor…"; font-size: 14px; color: Theme.text-secondary;
+                }
+
                 if view == "home": VerticalLayout {
-                    spacing: 16px;
-                    Text { text: "Son Dinlenen Albümler"; font-family: Theme.display; font-size: 21px; font-weight: 700; letter-spacing: -0.5px; color: Theme.text-primary; }
-                    grid := Rectangle {
-                        property <int> cols: albums.length;
-                        property <length> gap: 20px;
-                        property <length> card-w: (self.width - gap * (cols - 1)) / cols;
-                        height: card-w + 56px;
-                        for a[i] in albums: AlbumCard {
-                            x: i * (grid.card-w + grid.gap); y: 0;
-                            width: grid.card-w; height: grid.card-w + 56px;
-                            album: a;
-                            clicked => { root.play-track(i); }
+                    spacing: 36px;
+                    for shelf[si] in shelves: VerticalLayout {
+                        spacing: 16px;
+                        Text { text: shelf.title; font-family: Theme.display; font-size: 21px; font-weight: 700; letter-spacing: -0.5px; color: Theme.text-primary; }
+                        row := Rectangle {
+                            property <length> gap: 20px;
+                            property <int> cols: Math.max(3, Math.floor((self.width + gap) / (176px + gap)));
+                            property <length> card-w: (self.width - gap * (cols - 1)) / cols;
+                            height: card-w + 52px;
+                            for t[i] in shelf.items: TrackCard {
+                                visible: i < row.cols;
+                                x: i * (row.card-w + row.gap); y: 0;
+                                width: row.card-w; height: row.card-w + 52px;
+                                track: t;
+                                active: has-now && t.key == now.key;
+                                clicked => { root.play-shelf(si, i); }
+                            }
                         }
                     }
                 }
 
-                // Son çalınanlar
-                if view == "home": VerticalLayout {
-                    spacing: 14px;
-                    Text { text: "Son Çalınanlar"; font-family: Theme.display; font-size: 21px; font-weight: 700; letter-spacing: -0.5px; color: Theme.text-primary; }
+                // ===== Arama =====
+                if view == "search": VerticalLayout {
+                    spacing: 20px;
+                    Text {
+                        text: last-query == "" ? "Ara" : "“" + last-query + "”";
+                        font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px;
+                        color: Theme.text-primary; overflow: elide;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px; alignment: start;
+                        PillButton { pill-height: 32px; text: "Tümü"; active: source-filter == -1; clicked => { source-filter = -1; } }
+                        PillButton { pill-height: 32px; text: "YouTube Music"; active: source-filter == 0; clicked => { source-filter = 0; } }
+                        PillButton { pill-height: 32px; text: "SoundCloud · yakında"; enabled: false; }
+                        PillButton { pill-height: 32px; text: "Spotify · yakında"; enabled: false; }
+                    }
+                    if searching: Text { text: "Aranıyor…"; font-size: 14px; color: Theme.text-secondary; }
+                    if !searching && last-query != "" && results.length == 0: Text {
+                        text: "Sonuç yok. Başka bir şekilde yazmayı dene."; font-size: 14px; color: Theme.text-secondary;
+                    }
+                    if !searching && last-query == "": Text {
+                        text: "Yukarıdaki kutuya yaz ve Enter'a bas."; font-size: 14px; color: Theme.text-secondary;
+                    }
                     VerticalLayout {
                         spacing: 2px;
-                        for t[i] in tracks: TrackRow {
+                        for t[i] in results: TrackRow {
+                            visible: source-filter == -1 || t.source == source-filter;
+                            height: self.visible ? 56px : 0px;
                             track: t; index: i;
-                            playing: i == now-index; is-running: playing;
-                            clicked => { root.play-track(i); }
+                            playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                            clicked => { root.play-result(i); }
                         }
+                    }
+                }
+
+                // ===== Henüz yapılmayan ekranlar =====
+                if view != "home" && view != "search": Rectangle {
+                    height: 420px;
+                    VerticalLayout {
+                        alignment: center; spacing: 8px;
+                        Text { text: "Bu ekran sonraki aşamada"; horizontal-alignment: center; font-family: Theme.display; font-size: 28px; font-weight: 800; color: Theme.text-primary; }
+                        Text { text: "Şu an ana sayfa, arama ve oynatma hazır."; horizontal-alignment: center; font-size: 14px; color: Theme.text-secondary; }
                     }
                 }
             }
         }
     }
 
-    // ---------- Kuyruk çekmecesi (varsayılan kapalı, kayarak gelir) ----------
-    drawer := Rectangle {
-        width: 328px;
+    // ---------- Kuyruk çekmecesi ----------
+    Rectangle {
+        width: 340px;
         y: 72px;
         height: root.height - 72px - Theme.player-clearance + 12px;
         x: drawer-open ? root.width - self.width - 16px : root.width + 24px;
@@ -271,36 +329,54 @@ export component AppWindow inherits Window {
         border-radius: Theme.r-lg;
         background: Theme.drawer;
         drop-shadow-blur: 48px; drop-shadow-offset-x: -20px; drop-shadow-color: #00000099;
+        clip: true;
 
-        TouchArea { } // altına tıklama geçmesin
+        TouchArea { }
 
         VerticalLayout {
-            padding: 20px; spacing: 10px; alignment: start;
+            padding: 20px; spacing: 10px;
             HorizontalLayout {
-                Text { text: "Sıradakiler"; font-family: Theme.display; font-size: 17px; font-weight: 700; color: Theme.text-primary; vertical-alignment: center; }
+                Text { text: "Kuyruk"; font-family: Theme.display; font-size: 17px; font-weight: 700; color: Theme.text-primary; vertical-alignment: center; }
                 Rectangle { horizontal-stretch: 1; }
                 IconButton { icon: Icons.x; clicked => { drawer-open = false; } }
             }
-            for t[i] in queue: Rectangle {
-                height: 52px; border-radius: Theme.r-sm;
-                background: qi-ta.has-hover ? Theme.surface-1 : Theme.surface-subtle;
-                animate background { duration: Theme.micro; }
-                qi-ta := TouchArea { mouse-cursor: pointer; }
-                HorizontalLayout {
-                    padding-left: 12px; padding-right: 12px; spacing: 10px;
-                    VerticalLayout {
-                        alignment: center;
-                        Text { text: t.title; font-size: 13.5px; font-weight: 600; color: Theme.text-primary; overflow: elide; }
-                        Text { text: t.artist; font-size: 12px; color: Theme.text-secondary; overflow: elide; }
+            if queue.length == 0: Text { text: "Kuyruk boş."; font-size: 13px; color: Theme.text-secondary; }
+            Flickable {
+                content-height: qlist.preferred-height;
+                qlist := VerticalLayout {
+                    spacing: 6px; alignment: start;
+                    for t[i] in queue: Rectangle {
+                        height: 56px; border-radius: Theme.r-sm;
+                        background: i == queue-index ? Theme.surface-2 : qi-ta.has-hover ? Theme.surface-1 : Theme.surface-subtle;
+                        animate background { duration: Theme.micro; }
+                        qi-ta := TouchArea { mouse-cursor: pointer; clicked => { root.play-queue(i); } }
+                        HorizontalLayout {
+                            padding-left: 10px; padding-right: 12px; spacing: 10px;
+                            Cover { width: 38px; height: 38px; y: 9px; radius: 7px; art: t.art; has-art: t.has-art; }
+                            VerticalLayout {
+                                alignment: center;
+                                Text { text: t.title; font-size: 13.5px; font-weight: 600; color: i == queue-index ? Theme.accent : Theme.text-primary; overflow: elide; }
+                                Text { text: t.artist; font-size: 12px; color: Theme.text-secondary; overflow: elide; }
+                            }
+                            Text { text: t.duration > 0 ? Fmt.time(t.duration) : ""; vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; horizontal-alignment: right; }
+                        }
                     }
-                    Text { text: Fmt.time(t.duration); vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; horizontal-alignment: right; }
                 }
             }
         }
     }
 
+    // ---------- Bildirim ----------
+    if toast != "": Rectangle {
+        y: root.height - Theme.player-clearance - 12px;
+        x: (root.width - self.width) / 2;
+        width: tt.preferred-width + 32px; height: 36px;
+        border-radius: 18px; background: Theme.surface-3;
+        tt := Text { text: toast; font-size: 13px; font-weight: 600; color: Theme.text-primary; }
+    }
+
     // ---------- Yüzen oynatma çubuğu ----------
-    player := Rectangle {
+    Rectangle {
         x: 20px; width: root.width - 40px;
         height: Theme.player-height;
         y: root.height - self.height - Theme.player-offset;
@@ -310,62 +386,60 @@ export component AppWindow inherits Window {
 
         TouchArea { }
 
-        // Sol: çalan şarkı
         HorizontalLayout {
             x: 20px; width: 290px; spacing: 14px; alignment: start;
             Cover {
                 width: 44px; height: 44px; y: (Theme.player-height - 44px) / 2;
                 radius: Theme.r-sm;
-                album: albums[now.cover];
+                art: now.art; has-art: has-now && now.has-art;
             }
             VerticalLayout {
                 alignment: center;
-                Text { text: now.title; font-size: 14px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
-                Text { text: now.artist; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                Text { text: has-now ? now.title : "Çalan yok"; font-size: 14px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
+                Text { text: has-now ? now.artist : "—"; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
             }
             IconButton {
                 y: (Theme.player-height - self.height) / 2;
                 icon: Icons.heart; tint: liked ? Theme.accent : Theme.text-secondary;
+                enabled: has-now;
                 clicked => { liked = !liked; }
             }
         }
 
-        // Orta: kontroller ve ilerleme
         VerticalLayout {
             x: (parent.width - self.width) / 2; width: Math.min(560px, parent.width - 640px);
             alignment: center; spacing: 4px;
             HorizontalLayout {
                 alignment: center; spacing: 10px;
-                IconButton { icon: Icons.shuffle; y: 3px; }
-                IconButton { icon: Icons.skip-back; y: 3px; clicked => { root.prev(); } }
-                IconButton { icon: playing ? Icons.pause : Icons.play; primary: true; clicked => { root.toggle-play(); } }
-                IconButton { icon: Icons.skip-forward; y: 3px; clicked => { root.next(); } }
-                IconButton { icon: Icons.repeat; y: 3px; }
+                IconButton { icon: Icons.shuffle; y: 3px; enabled: false; }
+                IconButton { icon: Icons.skip-back; y: 3px; enabled: has-now; clicked => { root.prev(); } }
+                IconButton { icon: playing ? Icons.pause : Icons.play; primary: true; enabled: has-now; clicked => { root.toggle-play(); } }
+                IconButton { icon: Icons.skip-forward; y: 3px; enabled: has-now; clicked => { root.next(); } }
+                IconButton { icon: Icons.repeat; y: 3px; enabled: false; }
             }
             HorizontalLayout {
                 spacing: 12px;
                 Text { text: Fmt.time(position); vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
                 Scrubber {
                     horizontal-stretch: 1;
-                    value: now.duration > 0 ? position / now.duration : 0;
-                    seek(f) => { root.seek(f); }
+                    enabled: has-now && duration > 0;
+                    value: duration > 0 ? position / duration : 0;
+                    seek(f) => { root.seek(f * duration); }
                 }
-                Text { text: Fmt.time(now.duration); vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
+                Text { text: Fmt.time(duration); vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
             }
         }
 
-        // Sağ: araçlar ve ses
         HorizontalLayout {
             x: parent.width - self.width - 20px; width: 290px;
             alignment: end; spacing: 6px;
             IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.mic; clicked => { view = "lyrics"; } }
             IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.list-music; tint: drawer-open ? Theme.accent : Theme.text-secondary; clicked => { drawer-open = !drawer-open; } }
-            IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.pip; }
             Icon { y: (Theme.player-height - self.height) / 2; commands: Icons.volume; }
             Scrubber {
-                width: 64px; y: (Theme.player-height - self.height) / 2;
+                width: 72px; y: (Theme.player-height - self.height) / 2;
                 value: volume;
-                seek(f) => { volume = f; }
+                seek(f) => { volume = f; root.set-volume(f); }
             }
         }
     }
