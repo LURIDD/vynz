@@ -1,6 +1,8 @@
 // Kaynaktan bağımsız ortak veri modeli.
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Source {
     Ytm,
     SoundCloud,
@@ -18,7 +20,7 @@ impl Source {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TrackInfo {
     pub source: Source,
     pub id: String,
@@ -30,6 +32,7 @@ pub struct TrackInfo {
     /// Kapak adresi (büyük boy).
     pub thumb: String,
     /// Sayfa adresi (SoundCloud gibi kimlikten adres türetilemeyen kaynaklar için).
+    #[serde(default)]
     pub url: Option<String>,
 }
 
