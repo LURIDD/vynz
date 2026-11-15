@@ -206,6 +206,35 @@ pub fn gap(l: &Lyrics, pos: f32) -> Option<f32> {
     Some(((pos - start) / (end - start)).clamp(0.0, 1.0))
 }
 
+/// Satırları çevir (Google Çeviri'nin herkese açık uç noktası, tek istekte).
+/// Dönen: (kaynak dil, çeviriler). Kaynak hedefle aynıysa çeviri boş döner.
+pub fn translate(lines: &[String], target: &str) -> Result<(String, Vec<String>), String> {
+    let text = lines.join("\n");
+    let mut resp = ureq::get("https://translate.googleapis.com/translate_a/single")
+        .query("client", "gtx")
+        .query("sl", "auto")
+        .query("tl", target)
+        .query("dt", "t")
+        .query("q", &text)
+        .header("User-Agent", "Mozilla/5.0")
+        .call()
+        .map_err(|e| format!("çeviri: {e}"))?;
+    let body = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
+    let v: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+    let src = v.get(2).and_then(Value::as_str).unwrap_or("").to_string();
+    if src == target {
+        return Ok((src, Vec::new()));
+    }
+    let joined: String = v
+        .get(0)
+        .and_then(Value::as_array)
+        .map(|segs| segs.iter().filter_map(|s| s.get(0).and_then(Value::as_str)).collect())
+        .unwrap_or_default();
+    let mut out: Vec<String> = joined.split('\n').map(|x| x.trim().to_string()).collect();
+    out.resize(lines.len(), String::new());
+    Ok((src, out))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

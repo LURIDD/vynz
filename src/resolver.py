@@ -215,8 +215,58 @@ def collection(kind, key):
     return {"title": p.get("title") or "", "sub": (p.get("author") or {}).get("name") if isinstance(p.get("author"), dict) else "", "tracks": [x for x in (track_of(t) for t in p.get("tracks") or []) if x]}
 
 
+def search(q):
+    y = ytmusic()
+    res = y.search(q, limit=20)
+    out = {"top": None, "songs": [], "albums": [], "artists": [], "playlists": []}
+    for r in res:
+        rt = r.get("resultType")
+        top = r.get("category") in ("Top result", "En iyi sonuç") and out["top"] is None
+        if rt in ("song", "video"):
+            t = track_of(r)
+            if not t:
+                continue
+            if top:
+                out["top"] = {"kind": "song", "track": t, "title": t["title"], "sub": "Şarkı · " + t["artist"]}
+            # videolar (klipler) de çalınabilir ama şarkılardan sonra gelsin
+            out["songs"].append(t) if rt == "song" else out.setdefault("videos", []).append(t)
+        elif rt == "album" and r.get("browseId"):
+            c = {"kind": "album", "key": r["browseId"], "title": r.get("title") or "", "sub": " · ".join(x for x in [r.get("type") or "Albüm", names(r), str(r.get("year") or "")] if x), "thumb": thumb_of(r)}
+            out["albums"].append(c)
+            if top:
+                out["top"] = {**c, "card": c}
+        elif rt == "artist":
+            a = (r.get("artists") or [{}])[0]
+            key = r.get("browseId") or a.get("id")
+            if not key:
+                continue
+            c = {"kind": "artist", "key": key, "title": r.get("artist") or a.get("name") or "", "sub": "Sanatçı", "thumb": thumb_of(r)}
+            out["artists"].append(c)
+            if top:
+                out["top"] = {**c, "card": c}
+        elif rt == "playlist" and r.get("browseId"):
+            key = r["browseId"][2:] if r["browseId"].startswith("VL") else r["browseId"]
+            c = {"kind": "playlist", "key": key, "title": r.get("title") or "", "sub": "Liste · " + (r.get("author") or ""), "thumb": thumb_of(r)}
+            out["playlists"].append(c)
+            if top:
+                out["top"] = {**c, "card": c}
+    out["songs"] += out.pop("videos", [])
+    # En iyi sonuç sanatçıysa altındaki ilk şarkılarda sanatçı alanı boş gelir: onunla doldur.
+    if out["top"] and out["top"].get("kind") == "artist":
+        for t in out["songs"]:
+            if not t["artist"]:
+                t["artist"] = out["top"]["title"]
+    return out
+
+
 def handle(req):
     op = req.get("op")
+    if op == "search":
+        try:
+            send({"rid": req["rid"], "ok": True, "data": search(req.get("q") or "")})
+        except Exception as e:  # noqa: BLE001
+            send({"rid": req["rid"], "ok": False, "error": str(e).splitlines()[0][:300] if str(e) else "hata"})
+        return
     if op in ("explore", "collection"):
         try:
             data = explore() if op == "explore" else collection(req.get("kind"), req.get("key"))

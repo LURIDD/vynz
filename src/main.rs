@@ -110,6 +110,27 @@ struct State {
     seek_pending: bool,
     /// Son konum bilgisi ve geldiği an: sözlerde ara konum hesabı için
     last_pos: (f32, std::time::Instant),
+    /// Sayfa geçmişi (geri düğmesi)
+    nav: Vec<String>,
+    nav_skip: bool,
+    /// Arama: en iyi sonuç, bölümler, yazarken gecikme
+    top: Option<Top>,
+    search_shelves: Vec<Section>,
+    search_timer: Timer,
+    /// Söz çevirileri: (şarkı, hedef dil) -> (kaynak dil, satırlar); None = alınamadı
+    translations: HashMap<(String, i32), Option<(String, Vec<String>)>>,
+    tr_pending: HashSet<(String, i32)>,
+    /// Bekçi: yüklenen parça ne zaman yüklendi, ilerledi mi
+    load_at: Option<std::time::Instant>,
+    progressed: bool,
+    watchdog: Timer,
+}
+
+/// Arama "En iyi sonuç"u: çalınabilir şarkı ya da açılabilir kart.
+#[derive(Clone)]
+enum Top {
+    Song(TrackInfo),
+    Card(Card),
 }
 
 /// Ana sayfanın ham parçaları; ~/.cache/vynz/home.json içinde saklanır.
@@ -318,6 +339,18 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
         }
     }
     update_cards(&ui.get_browse_cards(), &key, &img);
+    let ss = ui.get_search_shelves();
+    for i in 0..ss.row_count() {
+        if let Some(s) = ss.row_data(i) {
+            update_cards(&s.cards, &key, &img);
+        }
+    }
+    if ui.get_has_top() && with_state(|st| st.top.as_ref().map(top_key)) == Some(key.clone()) {
+        let mut t = ui.get_search_top();
+        t.art = img.clone();
+        t.has_art = true;
+        ui.set_search_top(t);
+    }
     update_rows(&ui.get_coll_tracks(), &key, &img);
     update_rows(&ui.get_results(), &key, &img);
     update_rows(&ui.get_queue(), &key, &img);
@@ -382,6 +415,10 @@ fn request_big(st: &mut State, t: &TrackInfo) {
 
 fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
     start_listen(Some(t));
+    with_state(|st| {
+        st.load_at = Some(std::time::Instant::now());
+        st.progressed = false;
+    });
     with_state(|st| {
         st.mpris.send(mpris::Msg::Track {
             key: t.key(),
@@ -464,33 +501,94 @@ fn lyric_tick(ui: &AppWindow) {
     update_lyrics(ui, pos);
 }
 
+const TR_TARGET: [&str; 3] = ["", "tr", "en"];
+
+/// Çeviri açıksa ve henüz yoksa arka planda iste.
+fn request_translation(ui: &AppWindow) {
+    let mode = ui.get_lyrics_translate();
+    if mode <= 0 {
+        return;
+    }
+    let key = ui.get_now().key.to_string();
+    let lines = with_state(|st| {
+        let k = (key.clone(), mode);
+        if st.translations.contains_key(&k) || st.tr_pending.contains(&k) {
+            return None;
+        }
+        let l = st.lyrics.get(&key)?.as_ref()?;
+        st.tr_pending.insert(k);
+        Some(l.lines.iter().map(|x| x.text.clone()).collect::<Vec<_>>())
+    });
+    let Some(lines) = lines else { return };
+    ui.set_lyric_tr_note("Çevriliyor…".into());
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let res = lyrics::translate(&lines, TR_TARGET[mode as usize]).ok();
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            with_state(|st| {
+                st.tr_pending.remove(&(key.clone(), mode));
+                st.translations.insert((key.clone(), mode), res);
+            });
+            if ui.get_now().key == key.as_str() {
+                render_lyrics(&ui);
+            }
+        });
+    });
+}
+
 /// Çalan şarkının söz durumunu baştan kur.
 fn render_lyrics(ui: &AppWindow) {
     let key = ui.get_now().key.to_string();
-    let (state, source, plain, offset, lines) = with_state(|st| {
+    let mode = ui.get_lyrics_translate();
+    let (state, source, lines, offset, note) = with_state(|st| {
         st.lyr_line = None;
         st.lyr_spoken = usize::MAX;
         let offset = st.lyr_offsets.get(&key).copied().unwrap_or(0.0);
-        match st.lyrics.get(&key) {
-            None => (if st.lyr_pending.contains(&key) { 1 } else { 0 }, String::new(), Vec::new(), offset, Vec::new()),
-            Some(None) => (4, String::new(), Vec::new(), offset, Vec::new()),
-            Some(Some(l)) if l.synced => {
-                let lines = l.lines.iter().map(|x| LyricLine { text: x.text.as_str().into(), t: x.t, state: 1, dist: 9 }).collect();
-                (2, l.source.clone(), Vec::new(), offset, lines)
+        // Çeviri satırları ve not
+        let (trs, note): (Vec<String>, String) = if mode <= 0 {
+            (Vec::new(), String::new())
+        } else {
+            match st.translations.get(&(key.clone(), mode)) {
+                Some(Some((src, v))) if v.is_empty() => (Vec::new(), if src == "tr" { "Şarkı zaten Türkçe".into() } else { "Şarkı zaten bu dilde".into() }),
+                Some(Some((_, v))) => (v.clone(), String::new()),
+                Some(None) => (Vec::new(), "Çeviri alınamadı".into()),
+                None => (Vec::new(), "Çevriliyor…".into()),
             }
-            Some(Some(l)) => (3, l.source.clone(), l.lines.iter().map(|x| x.text.clone()).collect(), offset, Vec::new()),
+        };
+        let mk = |l: &lyrics::Lyrics| -> Vec<LyricLine> {
+            l.lines.iter().enumerate().map(|(i, x)| LyricLine {
+                text: x.text.as_str().into(),
+                tr: trs.get(i).filter(|t| !t.is_empty() && **t != x.text).map(|t| t.as_str().into()).unwrap_or_default(),
+                t: x.t,
+                state: 1,
+                dist: 9,
+            }).collect()
+        };
+        match st.lyrics.get(&key) {
+            None => (if st.lyr_pending.contains(&key) { 1 } else { 0 }, String::new(), Vec::new(), offset, String::new()),
+            Some(None) => (4, String::new(), Vec::new(), offset, String::new()),
+            Some(Some(l)) => (if l.synced { 2 } else { 3 }, l.source.clone(), mk(l), offset, note),
         }
     });
     ui.set_lyric_state(state);
     ui.set_lyric_source(source.into());
     ui.set_lyric_offset(offset);
-    ui.set_lyric_plain(ModelRc::new(VecModel::from(plain.into_iter().map(Into::into).collect::<Vec<slint::SharedString>>())));
-    ui.set_lyric_lines(ModelRc::new(VecModel::from(lines)));
+    ui.set_lyric_tr_note(note.into());
+    if state == 3 {
+        ui.set_lyric_plain(ModelRc::new(VecModel::from(lines.clone())));
+        ui.set_lyric_lines(ModelRc::new(VecModel::from(Vec::<LyricLine>::new())));
+    } else {
+        ui.set_lyric_plain(ModelRc::new(VecModel::from(Vec::<LyricLine>::new())));
+        ui.set_lyric_lines(ModelRc::new(VecModel::from(lines)));
+    }
     ui.set_lyric_active(-1);
     ui.set_lyric_gap(-1.0);
     ui.set_lyric_row0(ModelRc::new(VecModel::from(Vec::<LyricWord>::new())));
     ui.set_lyric_row1(ModelRc::new(VecModel::from(Vec::<LyricWord>::new())));
     update_lyrics(ui, ui.get_position());
+    if state >= 2 && state <= 3 {
+        request_translation(ui);
+    }
 }
 
 /// Uzun satırı kelime sınırından iki dengeli satıra böl (Slint'te kelime kaydırma için).
@@ -787,6 +885,23 @@ fn on_ended(ui: &AppWindow) {
     }
 }
 
+/// Bekçi: parça 8 sn'de ilerlemezse adres bozuktur (ör. yavaşlatılmış akış); yedek yoldan aç.
+fn watchdog_check(ui: &AppWindow) {
+    let stuck = with_state(|st| {
+        let Some(at) = st.load_at else { return None };
+        if st.progressed || at.elapsed() < Duration::from_secs(8) || !ui.get_playing() {
+            return None;
+        }
+        st.load_at = None;
+        st.index.and_then(|i| st.queue.get(i)).map(|t| t.key())
+    });
+    if let Some(key) = stuck {
+        dbg(&format!("takıldı {key}: adres unutuldu, yedek yol"));
+        with_state(|st| st.resolver.invalidate(&key));
+        on_error(ui, "akış ilerlemedi".into());
+    }
+}
+
 fn on_error(ui: &AppWindow, e: String) {
     let retried = with_state(|st| {
         if st.fallback_tried {
@@ -816,6 +931,9 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
     match ev {
         Ev::Time(t) => {
             with_state(|st| {
+                if t > 0.4 {
+                    st.progressed = true;
+                }
                 st.mpris.send(mpris::Msg::Position(t));
                 if st.seek_pending {
                     st.seek_pending = false;
@@ -1530,50 +1648,140 @@ fn save_collection(ui: &AppWindow) {
     }
 }
 
+fn top_ui(t: &Top) -> TopResult {
+    let (kind, title, sub, key) = match t {
+        Top::Song(t) => (0, t.title.clone(), format!("Şarkı · {}", t.artist), t.key()),
+        Top::Card(c) => (card_kind(&c.kind).min(3), c.title.clone(), c.sub.clone(), c.art_key()),
+    };
+    let (art, has_art) = ARTS.with(|a| a.borrow().get(&key).map(|(i, _)| (i.clone(), true))).unwrap_or_default();
+    TopResult { kind, title: title.into(), sub: sub.into(), art, has_art }
+}
+
+fn top_key(t: &Top) -> String {
+    match t {
+        Top::Song(t) => t.key(),
+        Top::Card(c) => c.art_key(),
+    }
+}
+
+/// Arama: YouTube Music (sıcak yardımcı, ~0.5-1 sn) hemen gösterilir; SoundCloud arkadan eklenir.
 fn search(ui: &AppWindow, query: String) {
-    let (providers, seq) = with_state(|st| {
+    let (seq, resolver, sc) = with_state(|st| {
         st.search_seq += 1;
-        (st.providers.clone(), st.search_seq)
+        (st.search_seq, st.resolver.clone(), provider(st, Source::SoundCloud))
     });
     ui.set_searching(true);
+    ui.set_sc_searching(sc.is_some());
     ui.set_last_query(query.as_str().into());
     let weak = ui.as_weak();
-    thread::spawn(move || {
-        // Kaynaklar paralel sorgulanır; sonuçlar kaynak sırasıyla birleşir.
-        let outcomes: Vec<_> = thread::scope(|s| {
-            let handles: Vec<_> = providers
-                .iter()
-                .map(|p| s.spawn(|| (p.source(), p.search(&query, 20))))
-                .collect();
-            handles.into_iter().filter_map(|h| h.join().ok()).collect()
-        });
-        let mut found = Vec::new();
-        let mut errors = Vec::new();
-        for (src, r) in outcomes {
-            match r {
-                Ok(mut r) => found.append(&mut r),
-                Err(e) => errors.push(format!("{}: {e}", source_name(src))),
-            }
-        }
+    let req = serde_json::json!({"op": "search", "q": query});
+    resolver.request(req, Prio::Now, Box::new(move |res| {
         let _ = weak.upgrade_in_event_loop(move |ui| {
             if with_state(|st| st.search_seq) != seq {
                 return; // daha yeni bir arama var
             }
-            let model = model_of(&found);
+            ui.set_searching(false);
+            let d = match res {
+                Ok(d) => d,
+                Err(e) => {
+                    toast(&ui, &format!("Arama hatası: {e}"));
+                    return;
+                }
+            };
+            let songs: Vec<TrackInfo> = d.get("songs").and_then(|x| x.as_array()).map(|a| a.iter().filter_map(track_from_json).collect()).unwrap_or_default();
+            let mut shelves = Vec::new();
+            for (k, title, style) in [("albums", "Albümler", 2), ("artists", "Sanatçılar", 3), ("playlists", "Listeler", 2)] {
+                let cards = cards_from_json(d.get(k));
+                if !cards.is_empty() {
+                    shelves.push(Section { title: title.into(), items: Vec::new(), cards, style });
+                }
+            }
+            let top = d.get("top").filter(|t| !t.is_null()).and_then(|t| {
+                if t.get("kind").and_then(|k| k.as_str()) == Some("song") {
+                    t.get("track").and_then(track_from_json).map(Top::Song)
+                } else {
+                    t.get("card").and_then(|c| serde_json::from_value::<Card>(c.clone()).ok()).map(|mut c| {
+                        c.thumb = sources::ytm::big_thumb(&c.thumb);
+                        Top::Card(c)
+                    })
+                }
+            });
             with_state(|st| {
-                for t in &found {
+                for t in songs.iter().take(20) {
                     request_art(st, t);
                 }
-                for t in found.iter().take(2) {
+                for s in &shelves {
+                    for c in s.cards.iter().take(10) {
+                        request_card_art(st, c);
+                    }
+                }
+                match &top {
+                    Some(Top::Song(t)) => {
+                        request_art(st, t);
+                        speculate(st, t);
+                    }
+                    Some(Top::Card(c)) => request_card_art(st, c),
+                    None => {}
+                }
+                for t in songs.iter().take(2) {
                     speculate(st, t);
                 }
-                st.results = found;
+                st.results = songs.clone();
+                st.search_shelves = shelves.clone();
+                st.top = top.clone();
             });
-            ui.set_results(model);
-            ui.set_searching(false);
-            if let Some(e) = errors.first() {
-                toast(&ui, &format!("Arama hatası: {e}"));
+            ui.set_results(model_of(&songs));
+            ui.set_has_top(top.is_some());
+            if let Some(t) = &top {
+                ui.set_search_top(top_ui(t));
             }
+            let sh: Vec<Shelf> = shelves.iter().map(|s| Shelf { title: s.title.as_str().into(), items: model_of(&s.items), cards: cards_of(&s.cards), style: s.style }).collect();
+            ui.set_search_shelves(ModelRc::new(VecModel::from(sh)));
+        });
+    }));
+    // SoundCloud arkadan (yavaş, ~3-5 sn): gelince listeye eklenir.
+    if let Some(sc) = sc {
+        let weak = ui.as_weak();
+        thread::spawn(move || {
+            let r = sc.search(&query, 15);
+            let _ = weak.upgrade_in_event_loop(move |ui| {
+                if with_state(|st| st.search_seq) != seq {
+                    return;
+                }
+                ui.set_sc_searching(false);
+                if let Ok(found) = r {
+                    let all = with_state(|st| {
+                        for t in &found {
+                            request_art(st, t);
+                        }
+                        st.results.extend(found);
+                        st.results.clone()
+                    });
+                    ui.set_results(model_of(&all));
+                }
+            });
+        });
+    }
+}
+
+/// Yazarken: 380 ms duraklayınca ara.
+fn search_edited(ui: &AppWindow, text: String) {
+    let q = text.trim().to_string();
+    let weak = ui.as_weak();
+    with_state(|st| {
+        if q.chars().count() < 2 {
+            st.search_timer.stop();
+            return;
+        }
+        st.search_timer.start(TimerMode::SingleShot, Duration::from_millis(380), move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if ui.get_last_query() == q.as_str() {
+                return;
+            }
+            if ui.get_view() != "search" {
+                ui.invoke_go("search".into());
+            }
+            search(&ui, q.clone());
         });
     });
 }
@@ -1948,6 +2156,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_lyrics_size(s.lyrics_size);
     ui.set_lyrics_align(s.lyrics_align);
     ui.set_lyrics_motion(s.lyrics_motion);
+    ui.set_lyrics_translate(s.lyrics_translate);
     ui.set_keep_index(s.keep_index());
 }
 
@@ -1963,6 +2172,7 @@ fn apply_settings(ui: &AppWindow) {
         lyrics_size: ui.get_lyrics_size(),
         lyrics_align: ui.get_lyrics_align(),
         lyrics_motion: ui.get_lyrics_motion(),
+        lyrics_translate: ui.get_lyrics_translate(),
         keep_days: settings::KEEP_DAYS[ui.get_keep_index().clamp(0, 3) as usize],
     };
     with_state(|st| {
@@ -2127,6 +2337,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             mpris: mpris_server.clone(),
             seek_pending: false,
             last_pos: (0.0, std::time::Instant::now()),
+            nav: vec!["home".into()],
+            nav_skip: false,
+            top: None,
+            search_shelves: Vec::new(),
+            search_timer: Timer::default(),
+            translations: HashMap::new(),
+            tr_pending: HashSet::new(),
+            load_at: None,
+            progressed: false,
+            watchdog: Timer::default(),
         })
     });
     refresh_playlists(&ui);
@@ -2233,6 +2453,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = weak.clone();
         move |v| {
             let Some(ui) = weak.upgrade() else { return };
+            let can = with_state(|st| {
+                if st.nav_skip {
+                    st.nav_skip = false;
+                } else if st.nav.last().map(|x| x.as_str()) != Some(v.as_str()) {
+                    st.nav.push(v.to_string());
+                    if st.nav.len() > 30 {
+                        st.nav.remove(0);
+                    }
+                }
+                st.nav.len() > 1
+            });
+            ui.set_can_back(can);
             if v == "profile" {
                 refresh_profile(&ui);
             }
@@ -2246,6 +2478,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let list = with_state(|st| st.prof_tracks.clone());
             if !list.is_empty() {
                 play_list(&ui, list, i as usize);
+            }
+        }
+    });
+    ui.on_go_back({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let prev = with_state(|st| {
+                if st.nav.len() < 2 {
+                    return None;
+                }
+                st.nav.pop();
+                st.nav_skip = true;
+                st.nav.last().cloned()
+            });
+            if let Some(p) = prev {
+                ui.set_lyrics_open(false);
+                ui.set_view(p.into());
+                ui.set_can_back(with_state(|st| st.nav.len() > 1));
+            }
+        }
+    });
+    ui.on_search_edited({
+        let weak = weak.clone();
+        move |t| {
+            if let Some(ui) = weak.upgrade() {
+                search_edited(&ui, t.to_string());
+            }
+        }
+    });
+    ui.on_play_top({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            match with_state(|st| st.top.clone()) {
+                Some(Top::Song(t)) => {
+                    let mut list = vec![t.clone()];
+                    list.extend(with_state(|st| st.results.clone()).into_iter().filter(|x| x.key() != t.key()));
+                    play_list(&ui, list, 0);
+                }
+                Some(Top::Card(c)) => open_card(&ui, c),
+                None => {}
+            }
+        }
+    });
+    ui.on_open_search_card({
+        let weak = weak.clone();
+        move |si, i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let c = with_state(|st| st.search_shelves.get(si as usize).and_then(|s| s.cards.get(i as usize)).cloned());
+            if let Some(c) = c {
+                open_card(&ui, c);
             }
         }
     });
@@ -2390,6 +2674,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    ui.on_lyrics_web_search({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let now = ui.get_now();
+            let q = format!("{} {} şarkı sözleri", now.artist, now.title);
+            let enc: String = q
+                .bytes()
+                .map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else if b == b' ' { "+".into() } else { format!("%{b:02X}") })
+                .collect();
+            let _ = std::process::Command::new("xdg-open").arg(format!("https://www.google.com/search?q={enc}")).spawn();
+        }
+    });
     ui.on_lyric_tick({
         let weak = weak.clone();
         move || {
@@ -2411,9 +2708,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move || {
             let Some(ui) = weak.upgrade() else { return };
             apply_settings(&ui);
-            // Boyut değişince satır bölme yeniden hesaplansın
-            with_state(|st| st.lyr_spoken = usize::MAX);
-            update_lyrics(&ui, ui.get_position());
+            // Boyut ya da çeviri değişince satırlar yeniden kurulsun
+            render_lyrics(&ui);
         }
     });
     ui.on_lyric_shift({
@@ -2518,6 +2814,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+
+    with_state(|st| {
+        let weak = weak.clone();
+        st.watchdog.start(TimerMode::Repeated, Duration::from_secs(1), move || {
+            if let Some(ui) = weak.upgrade() {
+                watchdog_check(&ui);
+            }
+        });
+    });
 
     refresh_usage(&ui);
     load_home(&ui);

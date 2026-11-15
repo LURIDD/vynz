@@ -68,6 +68,8 @@ export struct LyricWord {
 // Söz satırı: state -1 geçti, 0 şu an, 1 sırada; dist = etkin satıra uzaklık
 export struct LyricLine {
     text: string,
+    // çeviri (kapalıysa boş)
+    tr: string,
     t: float,
     state: int,
     dist: int,

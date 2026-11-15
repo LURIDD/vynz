@@ -9,6 +9,119 @@ import { Track, Shelf, ImportRow, PlaylistInfo, LyricWord, LyricLine, LyricStyle
 
 export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord, LyricLine, CardUi, ArtistStat }
 
+// Başlıklı, sayfalı yatay raf: üzerine gelince oklar belirir, şerit kayar.
+// style: 0 şarkı kartı, 1 hızlı erişim kutucuğu, 2 liste/albüm, 3 sanatçı, 4 ruh hâli
+component ShelfRow inherits VerticalLayout {
+    in property <Shelf> shelf;
+    in property <string> now-key;
+    in property <bool> wide;
+    callback play(int);
+    callback open(int);
+    callback hover(int, bool);
+    callback menu(int, length, length);
+
+    spacing: 16px;
+    Text { text: root.shelf.title; font-family: Theme.display; font-size: 21px; font-weight: 700; letter-spacing: -0.5px; color: Theme.text-primary; }
+    car := Rectangle {
+        property <int> style: root.shelf.style;
+        property <bool> grid: style == 1 || style == 4;
+        property <length> gap: grid ? 12px : 20px;
+        property <int> cols: style == 1 ? (root.wide ? 4 : 2)
+            : style == 4 ? (root.wide ? 5 : 3)
+            : style == 3 ? Math.max(3, Math.floor((self.width + gap) / (150px + gap)))
+            : Math.max(3, Math.floor((self.width + gap) / (176px + gap)));
+        property <int> per-page: grid ? cols * 2 : cols;
+        property <int> n: style == 0 || style == 1 ? root.shelf.items.length : root.shelf.cards.length;
+        property <int> pages: Math.max(1, Math.ceil(n / per-page));
+        property <int> page: 0;
+        property <bool> hot;
+        property <length> cell-w: (self.width - gap * (cols - 1)) / cols;
+        property <length> cell-h: style == 1 ? 60px : style == 4 ? 84px : style == 3 ? cell-w + 46px : cell-w + 52px;
+        height: grid ? cell-h * Math.min(2, Math.ceil(n / cols)) + gap * (n > cols ? 1 : 0) : cell-h;
+
+        Rectangle {
+            x: -12px; y: -16px; width: parent.width + 24px; height: parent.height + 40px;
+            clip: true;
+            Rectangle {
+                x: 12px - car.page * (car.width + car.gap);
+                y: 16px;
+                animate x { duration: 340ms; easing: ease-in-out; }
+                if car.style == 0: Rectangle {
+                    for t[i] in root.shelf.items: TrackCard {
+                        visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
+                        x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(i, car.per-page) * (car.cell-w + car.gap);
+                        y: 0; width: car.cell-w; height: car.cell-h;
+                        track: t;
+                        active: root.now-key != "" && t.key == root.now-key;
+                        clicked => { root.play(i); }
+                        hovered(on) => { car.hot = on; root.hover(i, on); }
+                        menu(x, y) => { root.menu(i, x, y); }
+                    }
+                }
+                if car.style == 1: Rectangle {
+                    for t[i] in root.shelf.items: Tile {
+                        property <int> r: Math.mod(i, car.per-page);
+                        visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
+                        x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(r, car.cols) * (car.cell-w + car.gap);
+                        y: Math.floor(r / car.cols) * (car.cell-h + car.gap);
+                        width: car.cell-w;
+                        track: t;
+                        active: root.now-key != "" && t.key == root.now-key;
+                        clicked => { root.play(i); }
+                        hovered(on) => { car.hot = on; root.hover(i, on); }
+                        menu(x, y) => { root.menu(i, x, y); }
+                    }
+                }
+                if car.style == 2 || car.style == 3: Rectangle {
+                    for c[i] in root.shelf.cards: CardTile {
+                        visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
+                        x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(i, car.per-page) * (car.cell-w + car.gap);
+                        y: 0; width: car.cell-w; height: car.cell-h;
+                        card: c;
+                        clicked => { root.open(i); }
+                        hovered(on) => { car.hot = on; }
+                    }
+                }
+                if car.style == 4: Rectangle {
+                    for c[i] in root.shelf.cards: MoodTile {
+                        property <int> r: Math.mod(i, car.per-page);
+                        visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
+                        x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(r, car.cols) * (car.cell-w + car.gap);
+                        y: Math.floor(r / car.cols) * (car.cell-h + car.gap);
+                        width: car.cell-w; height: car.cell-h;
+                        card: c; index: i;
+                        clicked => { root.open(i); }
+                        hovered(on) => { car.hot = on; }
+                    }
+                }
+            }
+        }
+        la := PagerArrow {
+            left: true;
+            x: -20px;
+            y: (car.grid ? car.height : car.cell-w) / 2 - 20px;
+            shown: (car.hot || self.hovering || ra.hovering) && car.page > 0;
+            clicked => { car.page = Math.max(0, car.page - 1); }
+        }
+        ra := PagerArrow {
+            left: false;
+            x: car.width - 20px;
+            y: (car.grid ? car.height : car.cell-w) / 2 - 20px;
+            shown: (car.hot || self.hovering || la.hovering) && car.page < car.pages - 1;
+            clicked => { car.page = Math.min(car.pages - 1, car.page + 1); }
+        }
+    }
+}
+
+// Arama: "En iyi sonuç" kartı. kind 0 şarkı, 1 albüm, 2 sanatçı, 3 liste
+export struct TopResult {
+    kind: int,
+    title: string,
+    sub: string,
+    art: image,
+    has-art: bool,
+}
+
 component SettingGroup inherits Rectangle {
     in property <string> title;
     in property <string> note;
@@ -26,6 +139,7 @@ component SettingGroup inherits Rectangle {
 export component AppWindow inherits Window {
     in property <string> window-title: "vynz";
     title: window-title;
+    forward-focus: keys;
     preferred-width: 1400px;
     preferred-height: 860px;
     min-width: 900px;
@@ -38,6 +152,7 @@ export component AppWindow inherits Window {
     in property <bool> home-loading: true;
     in property <[Track]> results;
     in property <bool> searching;
+    in property <bool> sc-searching;
     in property <string> last-query;
     in property <[Track]> queue;
     in property <int> queue-index: -1;
@@ -107,7 +222,11 @@ export component AppWindow inherits Window {
     in-out property <bool> lyrics-motion: true;
     in-out property <bool> lyrics-wide;
     callback lyrics-style-changed();
-    in property <[string]> lyric-plain;
+    in property <[LyricLine]> lyric-plain;
+    // Çeviri: 0 kapalı, 1 Türkçe, 2 İngilizce; not ("Çevriliyor…", "Şarkı zaten Türkçe")
+    in-out property <int> lyrics-translate: 0;
+    in property <string> lyric-tr-note;
+    callback lyrics-web-search();
     in property <string> lyric-source;
     in property <float> lyric-offset;
     in property <image> now-blur;
@@ -190,6 +309,25 @@ export component AppWindow inherits Window {
     in property <[CardUi]> browse-cards;
     callback open-browse-card(int);
 
+    // Gezinme: sayfa geçmişi (geri)
+    in property <bool> can-back;
+    callback go-back();
+    // Sayfa değiştir: sözleri ve menüleri kapat
+    public function go(v: string) {
+        lyrics-open = false;
+        menu-open = false;
+        drawer-open = false;
+        view = v;
+    }
+
+    // Arama: yazarken (gecikmeli) ve sonuç bölümleri
+    callback search-edited(string);
+    in property <bool> has-top;
+    in property <TopResult> search-top;
+    callback play-top();
+    in property <[Shelf]> search-shelves;
+    callback open-search-card(int, int);
+
     callback hover-shelf(int, int, bool);
     callback hover-result(int, bool);
     callback play-shelf(int, int);
@@ -201,6 +339,28 @@ export component AppWindow inherits Window {
     callback toggle-play();
     callback next();
     callback prev();
+
+    // Klavye kısayolları: odak arama kutusundayken yalnız Esc/Ctrl+K dinlenir.
+    keys := FocusScope {
+    init => { self.focus(); }
+    key-pressed(e) => {
+        if (e.modifiers.control && (e.text == "k" || e.text == "K")) { search-input.focus(); search-input.select-all(); return accept; }
+        if (e.text == Key.Escape) {
+            if (menu-open) { menu-open = false; return accept; }
+            if (search-input.has-focus) { keys.focus(); return accept; }
+            if (lyrics-open) { lyrics-open = false; return accept; }
+            if (drawer-open) { drawer-open = false; return accept; }
+            return accept;
+        }
+        if (search-input.has-focus) { return reject; }
+        if (e.text == "/") { search-input.focus(); return accept; }
+        if (e.text == " ") { root.toggle-play(); return accept; }
+        if (e.modifiers.alt && e.text == Key.LeftArrow) { root.go-back(); return accept; }
+        if (e.modifiers.control && e.text == Key.RightArrow) { root.next(); return accept; }
+        if (e.modifiers.control && e.text == Key.LeftArrow) { root.prev(); return accept; }
+        if (e.text == "l" || e.text == "L") { lyrics-open = !lyrics-open; return accept; }
+        return reject;
+    }
 
     // Kapaktan türeyen ortam ışığı
     Rectangle {
@@ -253,12 +413,11 @@ export component AppWindow inherits Window {
             Rectangle { height: 24px; }
             if !compact: Text { text: "Kütüphane"; font-size: 11px; font-weight: 700; color: Theme.text-muted; x: 12px; height: 22px; }
 
-            NavButton { icon: Icons.home; label: "Şimdi Dinle"; compact: compact; active: view == "home"; clicked => { view = "home"; } }
-            NavButton { icon: Icons.search; label: "Ara"; compact: compact; active: view == "search"; clicked => { view = "search"; search-input.focus(); } }
-            NavButton { icon: Icons.arrows; label: "Liste Aktarma"; compact: compact; active: view == "import"; clicked => { view = "import"; } }
-            NavButton { icon: Icons.radio; label: "Dinleme Odası"; compact: compact; active: view == "room"; clicked => { view = "room"; } }
-            NavButton { icon: Icons.audio-lines; label: "Frekans & Profil"; compact: compact; active: view == "profile"; clicked => { view = "profile"; } }
-            NavButton { icon: Icons.settings; label: "Ayarlar"; compact: compact; active: view == "settings"; clicked => { view = "settings"; } }
+            NavButton { icon: Icons.home; label: "Şimdi Dinle"; compact: compact; active: view == "home"; clicked => { root.go("home"); } }
+            NavButton { icon: Icons.search; label: "Ara"; compact: compact; active: view == "search"; clicked => { root.go("search"); search-input.focus(); } }
+            NavButton { icon: Icons.arrows; label: "Liste Aktarma"; compact: compact; active: view == "import"; clicked => { root.go("import"); } }
+            NavButton { icon: Icons.audio-lines; label: "Frekans & Profil"; compact: compact; active: view == "profile"; clicked => { root.go("profile"); } }
+            NavButton { icon: Icons.settings; label: "Ayarlar"; compact: compact; active: view == "settings"; clicked => { root.go("settings"); } }
 
             Rectangle { height: 24px; }
             if !compact: Text { text: "Listelerim"; font-size: 11px; font-weight: 700; color: Theme.text-muted; x: 12px; height: 22px; }
@@ -268,7 +427,7 @@ export component AppWindow inherits Window {
             for p[i] in playlists: NavButton {
                 icon: Icons.list-music; label: p.name; compact: compact;
                 active: view == "playlist" && current-playlist == i;
-                clicked => { root.open-playlist(i); view = "playlist"; }
+                clicked => { root.open-playlist(i); root.go("playlist"); }
             }
 
             Rectangle { height: 24px; }
@@ -295,57 +454,62 @@ export component AppWindow inherits Window {
     main := Rectangle {
         x: sidebar-w; y: 0; width: root.width - sidebar-w; height: root.height;
 
-        // Üst çubuk
+        // Üst çubuk: arama ortada, kuyruk sağda
         Rectangle {
             x: 0; y: 0; width: parent.width; height: 60px;
-            HorizontalLayout {
-                padding-left: 32px; padding-right: 32px; spacing: 10px;
-                Rectangle {
-                    width: Math.min(420px, main.width * 0.45);
-                    height: 38px; y: 11px;
-                    border-radius: 19px;
-                    background: search-input.has-focus ? Theme.surface-2 : Theme.surface-1;
-                    animate background { duration: Theme.micro; }
-                    TouchArea { mouse-cursor: text; clicked => { search-input.focus(); } }
-                    HorizontalLayout {
-                        padding-left: 16px; padding-right: 16px; spacing: 10px;
-                        Icon { width: 15px; height: 15px; y: (38px - 15px) / 2; commands: Icons.search; stroke: Theme.text-muted; }
-                        Rectangle {
-                            horizontal-stretch: 1;
-                            search-input := TextInput {
-                                width: parent.width; height: parent.height;
-                                vertical-alignment: center;
-                                font-size: 13.5px; font-weight: 500;
-                                color: Theme.text-primary;
-                                single-line: true;
-                                accepted => {
-                                    if (self.text != "") {
-                                        view = "search";
-                                        root.search(self.text);
-                                    }
+            Rectangle {
+                width: Math.min(520px, parent.width - 260px);
+                height: 40px; y: 10px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 20px;
+                background: search-input.has-focus ? Theme.surface-2 : Theme.surface-1;
+                border-width: search-input.has-focus ? 1px : 0px;
+                border-color: Theme.accent.with-alpha(0.5);
+                animate background { duration: Theme.micro; }
+                TouchArea { mouse-cursor: text; clicked => { search-input.focus(); } }
+                HorizontalLayout {
+                    padding-left: 16px; padding-right: 14px; spacing: 10px;
+                    Icon { width: 16px; height: 16px; y: 12px; commands: Icons.search; stroke: search-input.has-focus ? Theme.text-primary : Theme.text-muted; }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        search-input := TextInput {
+                            width: parent.width; height: parent.height;
+                            vertical-alignment: center;
+                            font-size: 13.5px; font-weight: 500;
+                            color: Theme.text-primary;
+                            single-line: true;
+                            edited => { root.search-edited(self.text); }
+                            accepted => {
+                                if (self.text != "") {
+                                    root.go("search");
+                                    root.search(self.text);
                                 }
-                            }
-                            if search-input.text == "": Text {
-                                x: 0; height: parent.height; vertical-alignment: center;
-                                text: "Şarkı, sanatçı ya da bağlantı";
-                                font-size: 13.5px; color: Theme.text-muted;
+                                keys.focus();
                             }
                         }
-                        Text { text: "Enter"; vertical-alignment: center; font-size: 11px; font-weight: 600; color: Theme.text-muted; }
+                        if search-input.text == "": Text {
+                            x: 0; height: parent.height; vertical-alignment: center;
+                            text: "Şarkı, sanatçı, albüm ya da bağlantı";
+                            font-size: 13.5px; color: Theme.text-muted;
+                        }
+                    }
+                    Rectangle {
+                        width: kb.preferred-width + 12px; height: 22px; y: 9px; border-radius: 6px;
+                        background: Theme.surface-2;
+                        kb := Text { text: search-input.has-focus ? "Esc" : "Ctrl K"; font-family: Theme.mono; font-size: 10.5px; color: Theme.text-muted; }
                     }
                 }
-                Rectangle { horizontal-stretch: 1; }
-                Rectangle {
-                    min-width: 96px; max-width: 96px; height: 34px; y: 13px;
-                    border-radius: 17px;
-                    background: drawer-open || q-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
-                    animate background { duration: Theme.micro; }
-                    q-ta := TouchArea { mouse-cursor: pointer; clicked => { drawer-open = !drawer-open; } }
-                    HorizontalLayout {
-                        x: 14px; spacing: 6px;
-                        Text { text: "Kuyruk"; vertical-alignment: center; font-size: 12.5px; font-weight: 600; color: drawer-open ? Theme.text-primary : Theme.text-secondary; }
-                        Text { text: queue.length; vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
-                    }
+            }
+            Rectangle {
+                width: 96px; height: 34px; y: 13px; x: parent.width - self.width - 32px;
+                border-radius: 17px;
+                background: drawer-open || q-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
+                animate background { duration: Theme.micro; }
+                q-ta := TouchArea { mouse-cursor: pointer; clicked => { drawer-open = !drawer-open; } }
+                HorizontalLayout {
+                    x: 14px; spacing: 6px;
+                    Text { text: "Kuyruk"; vertical-alignment: center; font-size: 12.5px; font-weight: 600; color: drawer-open ? Theme.text-primary : Theme.text-secondary; }
+                    Text { text: queue.length; vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
                 }
             }
         }
@@ -416,99 +580,12 @@ export component AppWindow inherits Window {
 
                 if view == "home": VerticalLayout {
                     spacing: 36px;
-                    for shelf[si] in shelves: VerticalLayout {
-                        spacing: 16px;
-                        Text { text: shelf.title; font-family: Theme.display; font-size: 21px; font-weight: 700; letter-spacing: -0.5px; color: Theme.text-primary; }
-                        // Sayfalı yatay şerit: üzerine gelince oklar belirir, şerit kayar.
-                        car := Rectangle {
-                            property <int> style: shelf.style;
-                            property <bool> grid: style == 1 || style == 4;
-                            property <length> gap: grid ? 12px : 20px;
-                            property <int> cols: style == 1 ? (main.width > 1150px ? 4 : 2)
-                                : style == 4 ? (main.width > 1150px ? 5 : 3)
-                                : style == 3 ? Math.max(3, Math.floor((self.width + gap) / (150px + gap)))
-                                : Math.max(3, Math.floor((self.width + gap) / (176px + gap)));
-                            property <int> per-page: grid ? cols * 2 : cols;
-                            property <int> n: style == 0 || style == 1 ? shelf.items.length : shelf.cards.length;
-                            property <int> pages: Math.max(1, Math.ceil(n / per-page));
-                            property <int> page: 0;
-                            property <bool> hot;
-                            property <length> cell-w: (self.width - gap * (cols - 1)) / cols;
-                            property <length> cell-h: style == 1 ? 60px : style == 4 ? 84px : style == 3 ? cell-w + 46px : cell-w + 52px;
-                            height: grid ? cell-h * Math.min(2, Math.ceil(n / cols)) + gap * (n > cols ? 1 : 0) : cell-h;
-
-                            Rectangle {
-                                x: -12px; y: -16px; width: parent.width + 24px; height: parent.height + 40px;
-                                clip: true;
-                                Rectangle {
-                                    x: 12px - car.page * (car.width + car.gap);
-                                    y: 16px;
-                                    animate x { duration: 340ms; easing: ease-in-out; }
-                                    if car.style == 0: Rectangle {
-                                        for t[i] in shelf.items: TrackCard {
-                                            visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
-                                            x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(i, car.per-page) * (car.cell-w + car.gap);
-                                            y: 0; width: car.cell-w; height: car.cell-h;
-                                            track: t;
-                                            active: has-now && t.key == now.key;
-                                            clicked => { root.play-shelf(si, i); }
-                                            hovered(on) => { car.hot = on; root.hover-shelf(si, i, on); }
-                                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(0, si, i); }
-                                        }
-                                    }
-                                    if car.style == 1: Rectangle {
-                                        for t[i] in shelf.items: Tile {
-                                            property <int> r: Math.mod(i, car.per-page);
-                                            visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
-                                            x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(r, car.cols) * (car.cell-w + car.gap);
-                                            y: Math.floor(r / car.cols) * (car.cell-h + car.gap);
-                                            width: car.cell-w;
-                                            track: t;
-                                            active: has-now && t.key == now.key;
-                                            clicked => { root.play-shelf(si, i); }
-                                            hovered(on) => { car.hot = on; root.hover-shelf(si, i, on); }
-                                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(0, si, i); }
-                                        }
-                                    }
-                                    if car.style == 2 || car.style == 3: Rectangle {
-                                        for c[i] in shelf.cards: CardTile {
-                                            visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
-                                            x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(i, car.per-page) * (car.cell-w + car.gap);
-                                            y: 0; width: car.cell-w; height: car.cell-h;
-                                            card: c;
-                                            clicked => { root.open-card(si, i); }
-                                            hovered(on) => { car.hot = on; }
-                                        }
-                                    }
-                                    if car.style == 4: Rectangle {
-                                        for c[i] in shelf.cards: MoodTile {
-                                            property <int> r: Math.mod(i, car.per-page);
-                                            visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
-                                            x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(r, car.cols) * (car.cell-w + car.gap);
-                                            y: Math.floor(r / car.cols) * (car.cell-h + car.gap);
-                                            width: car.cell-w; height: car.cell-h;
-                                            card: c; index: i;
-                                            clicked => { root.open-card(si, i); }
-                                            hovered(on) => { car.hot = on; }
-                                        }
-                                    }
-                                }
-                            }
-                            la := PagerArrow {
-                                left: true;
-                                x: -20px;
-                                y: (car.grid ? car.height : (car.style == 1 ? car.height : car.cell-w)) / 2 - 20px;
-                                shown: (car.hot || self.hovering || ra.hovering) && car.page > 0;
-                                clicked => { car.page = Math.max(0, car.page - 1); }
-                            }
-                            ra := PagerArrow {
-                                left: false;
-                                x: car.width - 20px;
-                                y: (car.grid ? car.height : car.cell-w) / 2 - 20px;
-                                shown: (car.hot || self.hovering || la.hovering) && car.page < car.pages - 1;
-                                clicked => { car.page = Math.min(car.pages - 1, car.page + 1); }
-                            }
-                        }
+                    for shelf[si] in shelves: ShelfRow {
+                        shelf: shelf; now-key: has-now ? now.key : ""; wide: main.width > 1150px;
+                        play(i) => { root.play-shelf(si, i); }
+                        open(i) => { root.open-card(si, i); }
+                        hover(i, on) => { root.hover-shelf(si, i, on); }
+                        menu(i, x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(0, si, i); }
                     }
                 }
 
@@ -519,7 +596,11 @@ export component AppWindow inherits Window {
                         spacing: 16px;
                         VerticalLayout {
                             horizontal-stretch: 1; spacing: 4px;
-                            Text { text: coll-kind == 1 ? "Albüm" : coll-kind == 2 ? "Sanatçı" : "Liste"; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                            HorizontalLayout {
+                                spacing: 8px; alignment: start;
+                                if can-back: IconButton { icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.go-back(); } }
+                                Text { text: coll-kind == 1 ? "Albüm" : coll-kind == 2 ? "Sanatçı" : "Liste"; vertical-alignment: center; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                            }
                             Text { text: coll-title; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; overflow: elide; }
                             Text { text: coll-loading ? "Yükleniyor…" : coll-sub + (coll-sub != "" ? " · " : "") + coll-tracks.length + " şarkı"; font-size: 14px; color: Theme.text-secondary; overflow: elide; }
                         }
@@ -548,7 +629,11 @@ export component AppWindow inherits Window {
                     spacing: 20px;
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Ruh hâli ve türler"; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                        HorizontalLayout {
+                            spacing: 8px; alignment: start;
+                            if can-back: IconButton { icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.go-back(); } }
+                            Text { text: "Ruh hâli ve türler"; vertical-alignment: center; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                        }
                         Text { text: browse-title; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; }
                     }
                     if coll-loading: Text { text: "Listeler getiriliyor…"; font-size: 14px; color: Theme.text-secondary; }
@@ -569,36 +654,128 @@ export component AppWindow inherits Window {
 
                 // ===== Arama =====
                 if view == "search": VerticalLayout {
-                    spacing: 20px;
-                    Text {
-                        text: last-query == "" ? "Ara" : "“" + last-query + "”";
-                        font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px;
-                        color: Theme.text-primary; overflow: elide;
-                    }
+                    spacing: 30px;
                     HorizontalLayout {
-                        spacing: 8px; alignment: start;
-                        PillButton { pill-height: 32px; text: "Tümü"; active: source-filter == -1; clicked => { source-filter = -1; } }
-                        PillButton { pill-height: 32px; text: "YouTube Music"; active: source-filter == 0; clicked => { source-filter = 0; } }
-                        PillButton { pill-height: 32px; text: "SoundCloud"; active: source-filter == 1; clicked => { source-filter = 1; } }
-                        PillButton { pill-height: 32px; text: "Spotify · yakında"; enabled: false; }
+                        spacing: 12px;
+                        Text {
+                            text: last-query == "" ? "Ara" : "“" + last-query + "”";
+                            font-family: Theme.display; font-size: 38px; font-weight: 800; letter-spacing: -1.4px;
+                            color: Theme.text-primary; overflow: elide; horizontal-stretch: 1;
+                        }
+                        if searching: Text { text: "Aranıyor…"; vertical-alignment: center; font-size: 13px; color: Theme.text-secondary; }
                     }
-                    if searching: Text { text: "Aranıyor…"; font-size: 14px; color: Theme.text-secondary; }
-                    if !searching && last-query != "" && results.length == 0: Text {
-                        text: "Sonuç yok. Başka bir şekilde yazmayı dene."; font-size: 14px; color: Theme.text-secondary;
+                    if last-query == "": Text {
+                        text: "Yazmaya başla; durduğunda sonuçlar gelir. Ctrl+K ya da / ile buraya, Esc ile geri.";
+                        font-size: 14px; color: Theme.text-secondary;
                     }
-                    if !searching && last-query == "": Text {
-                        text: "Yukarıdaki kutuya yaz ve Enter'a bas."; font-size: 14px; color: Theme.text-secondary;
+
+                    // Üst bölüm: en iyi sonuç + şarkılar
+                    if last-query != "": HorizontalLayout {
+                        spacing: 28px;
+                        // En iyi sonuç
+                        VerticalLayout {
+                            horizontal-stretch: 2; spacing: 14px; alignment: start;
+                            Text { text: "En iyi sonuç"; font-family: Theme.display; font-size: 21px; font-weight: 700; color: Theme.text-primary; }
+                            top-card := Rectangle {
+                                height: 250px; border-radius: Theme.r-lg;
+                                background: top-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
+                                animate background { duration: Theme.micro; }
+                                top-ta := TouchArea { enabled: has-top; mouse-cursor: pointer; clicked => { root.play-top(); } }
+                                // Yükleniyor: iskelet
+                                if !has-top: Rectangle {
+                                    Rectangle { x: 24px; y: 24px; width: 116px; height: 116px; border-radius: Theme.r-md; background: Theme.surface-2; }
+                                    Rectangle { x: 24px; y: 162px; width: parent.width * 0.5; height: 26px; border-radius: 8px; background: Theme.surface-2; }
+                                    Rectangle { x: 24px; y: 200px; width: parent.width * 0.3; height: 14px; border-radius: 7px; background: Theme.surface-2; }
+                                }
+                                if has-top: Rectangle {
+                                    Cover {
+                                        x: 24px; y: 24px; width: 116px; height: 116px;
+                                        radius: search-top.kind == 2 ? 58px : Theme.r-md;
+                                        art: search-top.art; has-art: search-top.has-art;
+                                        drop-shadow-blur: 30px; drop-shadow-offset-y: 12px; drop-shadow-color: #00000080;
+                                    }
+                                    Text {
+                                        x: 24px; y: 156px; width: parent.width - 120px;
+                                        text: search-top.title; overflow: elide;
+                                        font-family: Theme.display; font-size: 30px; font-weight: 800; letter-spacing: -1px; color: Theme.text-primary;
+                                    }
+                                    Rectangle {
+                                        x: 24px; y: 202px; height: 24px; width: sub-t.preferred-width + 20px; border-radius: 12px; background: Theme.surface-2;
+                                        sub-t := Text { text: search-top.sub; font-size: 12px; font-weight: 600; color: Theme.text-secondary; }
+                                    }
+                                    // Oynat düğmesi: üzerine gelince belirginleşir
+                                    Rectangle {
+                                        width: 56px; height: 56px; border-radius: 28px;
+                                        x: parent.width - 80px;
+                                        y: parent.height - (top-ta.has-hover ? 80px : 72px);
+                                        opacity: top-ta.has-hover ? 1 : 0.0;
+                                        animate y, opacity { duration: Theme.card; easing: ease-out; }
+                                        background: Theme.accent;
+                                        drop-shadow-blur: 24px; drop-shadow-offset-y: 10px; drop-shadow-color: #00000099;
+                                        Icon { x: 20px; width: 20px; height: 20px; commands: search-top.kind == 0 ? Icons.play : Icons.chevron-right; stroke: Theme.on-primary; fill: search-top.kind == 0 ? Theme.on-primary : transparent; stroke-width: 2px; }
+                                    }
+                                }
+                            }
+                        }
+                        // Şarkılar (ilk dört)
+                        VerticalLayout {
+                            horizontal-stretch: 3; spacing: 14px; alignment: start;
+                            Text { text: "Şarkılar"; font-family: Theme.display; font-size: 21px; font-weight: 700; color: Theme.text-primary; }
+                            if searching && results.length == 0: VerticalLayout {
+                                spacing: 6px;
+                                for k in 4: Rectangle {
+                                    height: 56px; border-radius: Theme.r-sm; background: Theme.surface-subtle;
+                                    Rectangle { x: 14px; y: 8px; width: 40px; height: 40px; border-radius: 8px; background: Theme.surface-2; }
+                                    Rectangle { x: 68px; y: 14px; width: parent.width * (0.35 + 0.1 * k); height: 12px; border-radius: 6px; background: Theme.surface-2; }
+                                    Rectangle { x: 68px; y: 32px; width: parent.width * 0.2; height: 10px; border-radius: 5px; background: Theme.surface-1; }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 0px;
+                                for t[i] in results: TrackRow {
+                                    visible: i < 4;
+                                    height: i < 4 ? 56px : 0px;
+                                    track: t; index: i;
+                                    playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                                    clicked => { root.play-result(i); }
+                                    hovered(on) => { root.hover-result(i, on); }
+                                    menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(1, i, 0); }
+                                }
+                            }
+                            if !searching && last-query != "" && results.length == 0 && !sc-searching: Text {
+                                text: "Şarkı bulunamadı. Başka bir şekilde yazmayı dene."; font-size: 14px; color: Theme.text-secondary;
+                            }
+                        }
                     }
-                    VerticalLayout {
-                        spacing: 0px; // gizlenen satırlar boşluk bırakmasın
-                        for t[i] in results: TrackRow {
-                            visible: source-filter == -1 || t.source == source-filter;
-                            height: self.visible ? 56px : 0px;
-                            track: t; index: i;
-                            playing: has-now && t.key == now.key; is-running: playing && !buffering;
-                            clicked => { root.play-result(i); }
-                            hovered(on) => { root.hover-result(i, on); }
-                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(1, i, 0); }
+
+                    // Albümler, sanatçılar, listeler
+                    for sh[si] in search-shelves: ShelfRow {
+                        shelf: sh; now-key: has-now ? now.key : ""; wide: main.width > 1150px;
+                        open(i) => { root.open-search-card(si, i); }
+                    }
+
+                    // Tüm şarkılar (YouTube Music + SoundCloud)
+                    if results.length > 4 || sc-searching: VerticalLayout {
+                        spacing: 14px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text { text: "Tüm şarkılar"; font-family: Theme.display; font-size: 21px; font-weight: 700; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
+                            if sc-searching: Text { text: "SoundCloud aranıyor…"; vertical-alignment: center; font-size: 12.5px; color: Theme.text-muted; }
+                            PillButton { pill-height: 30px; text: "Tümü"; active: source-filter == -1; clicked => { source-filter = -1; } }
+                            PillButton { pill-height: 30px; text: "YouTube Music"; active: source-filter == 0; clicked => { source-filter = 0; } }
+                            PillButton { pill-height: 30px; text: "SoundCloud"; active: source-filter == 1; clicked => { source-filter = 1; } }
+                        }
+                        VerticalLayout {
+                            spacing: 0px;
+                            for t[i] in results: TrackRow {
+                                visible: i >= 4 && (source-filter == -1 || t.source == source-filter);
+                                height: self.visible ? 56px : 0px;
+                                track: t; index: i;
+                                playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                                clicked => { root.play-result(i); }
+                                hovered(on) => { root.hover-result(i, on); }
+                                menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(1, i, 0); }
+                            }
                         }
                     }
                 }
@@ -825,7 +1002,11 @@ export component AppWindow inherits Window {
                         spacing: 16px;
                         VerticalLayout {
                             horizontal-stretch: 1; spacing: 4px;
-                            Text { text: "Liste"; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                            HorizontalLayout {
+                                spacing: 8px; alignment: start;
+                                if can-back: IconButton { icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.go-back(); } }
+                                Text { text: "Liste"; vertical-alignment: center; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                            }
                             Text { text: playlists[current-playlist].name; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; overflow: elide; }
                             Text { text: playlists[current-playlist].count + " şarkı"; font-size: 14px; color: Theme.text-secondary; }
                         }
@@ -1043,6 +1224,7 @@ export component AppWindow inherits Window {
                         PillButton { pill-height: 30px; text: "+0.5 sn"; clicked => { root.lyric-shift(0.5); } }
                     }
                     if lyric-source != "": Text { text: "Kaynak: " + lyric-source + (lyric-state == 2 ? " · satıra tıkla, oraya atla" : ""); font-size: 11.5px; color: Theme.text-muted; }
+                    if lyrics-translate > 0 && lyric-tr-note != "": Text { text: lyric-tr-note; font-size: 11.5px; color: Theme.accent; }
                 }
 
                 // Sağ: kayan söz akışı
@@ -1104,6 +1286,12 @@ export component AppWindow inherits Window {
                                             }
                                         }
                                     }
+                                    if l.tr != "": Text {
+                                        text: l.tr; wrap: word-wrap;
+                                        horizontal-alignment: lyr.centered ? center : left;
+                                        font-family: Theme.sans; font-weight: 500; font-size: lyr.fsz * 0.46; font-italic: true;
+                                        color: active ? Theme.accent.with-alpha(0.95) : #FFFFFFaa;
+                                    }
                                     if active && lyric-gap >= 0: HorizontalLayout {
                                         alignment: lyr.centered ? center : start;
                                         padding-top: lyr.fsz * 0.4;
@@ -1118,19 +1306,102 @@ export component AppWindow inherits Window {
                         plain := VerticalLayout {
                             spacing: 12px; alignment: start;
                             Text { text: "Bu şarkının sözleri zamanlı değil."; font-size: 12.5px; color: Theme.text-muted; }
-                            for l in lyric-plain: Text {
-                                text: l; wrap: word-wrap;
-                                horizontal-alignment: lyr.centered ? center : left;
-                                font-family: lyr.fam; font-weight: lyr.wgt; font-size: lyr.fsz * 0.62; color: Theme.text-secondary;
+                            for l in lyric-plain: VerticalLayout {
+                                spacing: 2px;
+                                Text {
+                                    text: l.text; wrap: word-wrap;
+                                    horizontal-alignment: lyr.centered ? center : left;
+                                    font-family: lyr.fam; font-weight: lyr.wgt; font-size: lyr.fsz * 0.62; color: Theme.text-secondary;
+                                }
+                                if l.tr != "": Text {
+                                    text: l.tr; wrap: word-wrap;
+                                    horizontal-alignment: lyr.centered ? center : left;
+                                    font-size: lyr.fsz * 0.36; font-italic: true; color: Theme.accent.with-alpha(0.9);
+                                }
                             }
                         }
                     }
-                    if lyric-state <= 1 || lyric-state == 4: VerticalLayout {
-                        alignment: center;
+                    // Yükleniyor: nabız gibi atan satır iskeleti
+                    if lyric-state == 1: VerticalLayout {
+                        alignment: center; spacing: 22px;
+                        property <bool> pulse;
+                        Timer { interval: 700ms; running: lyrics-open; triggered => { parent.pulse = !parent.pulse; } }
+                        for k in 6: Rectangle {
+                            height: lyr.fsz * 0.7; border-radius: 10px;
+                            width: lview.width * (k == 2 ? 0.62 : 0.32 + Math.mod(k * 37, 40) / 100);
+                            x: lyr.centered ? (lview.width - self.width) / 2 : 0;
+                            background: #ffffff;
+                            opacity: (k == 2 ? 0.16 : 0.07) * (parent.pulse ? 1.3 : 0.8);
+                            animate opacity { duration: 650ms; }
+                        }
+                    }
+                    // Söz yok: müziğe yer açan bir sahne
+                    if lyric-state == 4 || (lyric-state == 0 && has-now): VerticalLayout {
+                        alignment: center; spacing: 18px;
+                        // Hareketli ses çubukları (saniyede ~4 adım)
+                        bars := Rectangle {
+                            height: 120px;
+                            property <int> tick;
+                            Timer { interval: 240ms; running: lyrics-open && playing; triggered => { bars.tick += 1; } }
+                            property <length> bw: 10px;
+                            property <int> n: 28;
+                            for i in 28: Rectangle {
+                                property <float> h: Math.abs(Math.sin((bars.tick * (23 + Math.mod(i * 7, 11)) + i * 41) * 1deg));
+                                x: (lyr.centered ? (lview.width - bars.n * 16px) / 2 : 0px) + i * 16px;
+                                width: bars.bw; border-radius: 5px;
+                                height: 12px + (playing ? 100px * h : 8px);
+                                y: (bars.height - self.height) / 2;
+                                background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent.with-alpha(0.35) 100%);
+                                animate height { duration: 230ms; easing: ease-in-out; }
+                            }
+                        }
                         Text {
-                            text: !has-now ? "Bir şarkı çaldığında sözleri burada akar." : lyric-state == 4 ? "Bu şarkı için söz bulunamadı." : "Sözler getiriliyor…";
+                            text: "Bu şarkının sözleri bulunamadı";
                             horizontal-alignment: lyr.centered ? center : left;
-                            font-family: lyr.fam; font-size: 30px; font-weight: lyr.wgt; color: Theme.text-secondary;
+                            font-family: lyr.fam; font-weight: lyr.wgt; font-size: 34px; letter-spacing: lyr.lsp; color: Theme.text-primary;
+                        }
+                        Text {
+                            text: "Enstrümantal olabilir ya da söz kaynaklarında henüz yok. Arkana yaslan, müziğin tadını çıkar.";
+                            wrap: word-wrap; horizontal-alignment: lyr.centered ? center : left;
+                            font-size: 15px; color: Theme.text-secondary;
+                        }
+                        HorizontalLayout {
+                            spacing: 10px; alignment: lyr.centered ? center : start;
+                            PillButton { text: "Sözleri web'de ara"; primary: true; clicked => { root.lyrics-web-search(); } }
+                            if queue-index + 1 < queue.length: PillButton { text: "Sıradakine geç"; clicked => { root.next(); } }
+                        }
+                        // Sırada ne var
+                        if queue-index >= 0 && queue-index + 1 < queue.length: HorizontalLayout {
+                            alignment: lyr.centered ? center : start;
+                            Rectangle {
+                                width: 340px; height: 72px; border-radius: Theme.r-md;
+                                background: nx-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
+                                nx-ta := TouchArea { mouse-cursor: pointer; clicked => { root.next(); } }
+                                HorizontalLayout {
+                                    padding: 12px; spacing: 12px;
+                                    Cover { width: 48px; height: 48px; radius: 8px; art: queue[queue-index + 1].art; has-art: queue[queue-index + 1].has-art; }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: "Sırada"; font-size: 11px; font-weight: 700; color: Theme.accent; }
+                                        Text { text: queue[queue-index + 1].title; font-size: 14px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
+                                        Text { text: queue[queue-index + 1].artist; font-size: 12px; color: Theme.text-secondary; overflow: elide; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Hiçbir şey çalmıyor
+                    if lyric-state == 0 && !has-now: VerticalLayout {
+                        alignment: center; spacing: 16px;
+                        Text {
+                            text: "Bir şarkı çaldığında sözleri burada akar.";
+                            horizontal-alignment: lyr.centered ? center : left;
+                            font-family: lyr.fam; font-weight: lyr.wgt; font-size: 34px; color: Theme.text-primary;
+                        }
+                        Text { text: "Kelime kelime dolan satırlar, istersen çevirisiyle."; horizontal-alignment: lyr.centered ? center : left; font-size: 15px; color: Theme.text-secondary; }
+                        HorizontalLayout {
+                            alignment: lyr.centered ? center : start;
+                            if has-mix: PillButton { text: "Karışımı çal"; primary: true; clicked => { root.play-mix(); } }
                         }
                     }
                 }
@@ -1177,6 +1448,11 @@ export component AppWindow inherits Window {
                         spacing: 6px;
                         PillButton { pill-height: 30px; text: "Sola"; active: lyrics-align == 0; clicked => { lyrics-align = 0; root.lyrics-style-changed(); } }
                         PillButton { pill-height: 30px; text: "Ortaya"; active: lyrics-align == 1; clicked => { lyrics-align = 1; root.lyrics-style-changed(); } }
+                    }
+                    Text { text: "Çeviri"; font-size: 12px; font-weight: 700; color: Theme.text-muted; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        for name[i] in ["Kapalı", "Türkçe", "English"]: PillButton { pill-height: 30px; text: name; active: lyrics-translate == i; clicked => { lyrics-translate = i; root.lyrics-style-changed(); } }
                     }
                     Text { text: "Zemin"; font-size: 12px; font-weight: 700; color: Theme.text-muted; }
                     HorizontalLayout {
@@ -1375,5 +1651,6 @@ export component AppWindow inherits Window {
             MenuItem { icon: Icons.radio; text: "Radyo başlat"; clicked => { root.menu-action(3); } }
             MenuItem { icon: Icons.heart; text: menu-liked ? "Beğenmekten vazgeç" : "Beğen"; clicked => { root.menu-action(4); } }
         }
+    }
     }
 }
