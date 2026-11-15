@@ -221,6 +221,13 @@ export component AppWindow inherits Window {
     in-out property <int> lyrics-align: 0;
     in-out property <bool> lyrics-motion: true;
     in-out property <bool> lyrics-wide;
+    // Şimdi Çalıyor sahnesi: true = sözler, false = büyük kapak
+    in-out property <bool> lyrics-mode: true;
+    // Sahneyi istenen kipte aç; zaten o kipte açıksa kapat.
+    public function show-now(lm: bool) {
+        if (lyrics-open && lyrics-mode == lm) { lyrics-open = false; }
+        else { lyrics-mode = lm; lyrics-open = true; }
+    }
     callback lyrics-style-changed();
     in property <[LyricLine]> lyric-plain;
     // Çeviri: 0 kapalı, 1 Türkçe, 2 İngilizce; not ("Çevriliyor…", "Şarkı zaten Türkçe")
@@ -369,7 +376,7 @@ export component AppWindow inherits Window {
         if (e.modifiers.alt && e.text == Key.LeftArrow) { if (sheet != "") { root.sheet-back(); } else { root.go-back(); } return accept; }
         if (e.modifiers.control && e.text == Key.RightArrow) { root.next(); return accept; }
         if (e.modifiers.control && e.text == Key.LeftArrow) { root.prev(); return accept; }
-        if (e.text == "l" || e.text == "L") { lyrics-open = !lyrics-open; return accept; }
+        if (e.text == "l" || e.text == "L") { root.show-now(true); return accept; }
         return reject;
     }
 
@@ -581,7 +588,7 @@ export component AppWindow inherits Window {
                         HorizontalLayout {
                             spacing: 12px; alignment: start;
                             if !has-now && has-mix: PillButton { text: "Karışımı çal"; primary: true; clicked => { root.play-mix(); } }
-                            if has-now: PillButton { text: lyrics-open ? "Sözleri kapat" : "Sözler"; primary: true; clicked => { lyrics-open = !lyrics-open; } }
+                            if has-now: PillButton { text: lyrics-open && lyrics-mode ? "Sözleri kapat" : "Sözler"; primary: true; clicked => { root.show-now(true); } }
                             if has-now: PillButton { text: radio-busy ? "Radyo hazırlanıyor…" : "Bu şarkıdan radyo"; enabled: !radio-busy; clicked => { root.radio-from-current(); } }
                             PillButton { text: "Önerileri yenile"; clicked => { root.refresh-home(); } }
                         }
@@ -1248,6 +1255,12 @@ export component AppWindow inherits Window {
             Rectangle { background: @linear-gradient(90deg, #090A0Df0 0%, #090A0Db8 42%, #090A0Dc8 100%); }
             Rectangle { background: @linear-gradient(180deg, #090A0D99 0%, transparent 30%, transparent 70%, #090A0Dbb 100%); }
 
+            // ----- Söz kipi -----
+            Rectangle {
+                x: lyrics-mode ? 0 : 40px;
+                opacity: lyrics-mode ? 1 : 0;
+                visible: self.opacity > 0;
+                animate x, opacity { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
             HorizontalLayout {
                 padding: 48px; padding-right: 64px; spacing: 64px;
                 // Sol: kapak ve kimlik
@@ -1452,11 +1465,74 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+            }
+
+            // ----- Kapak kipi: büyük kapak, kimlik, hızlı işlemler, canlı söz satırı -----
+            now-scene := Rectangle {
+                property <length> cs: Math.max(200px, Math.min(410px, self.height - 330px));
+                property <string> cur-line: lyric-active >= 0 && lyric-active < lyric-lines.length ? lyric-lines[lyric-active].text : "";
+                x: lyrics-mode ? -40px : 0;
+                opacity: lyrics-mode ? 0 : 1;
+                visible: self.opacity > 0;
+                animate x, opacity { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                VerticalLayout {
+                    alignment: center; padding-left: 64px; padding-right: 64px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Cover {
+                            width: now-scene.cs; height: now-scene.cs; radius: Theme.r-xl;
+                            art: now.art; has-art: has-now && now.has-art;
+                            drop-shadow-blur: 80px; drop-shadow-offset-y: 36px; drop-shadow-color: #000000c0;
+                            transform-scale: lyrics-mode ? 0.9 : (playing ? 1.0 : 0.96);
+                            animate transform-scale { duration: 420ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                        }
+                    }
+                    Rectangle { height: 30px; }
+                    Text {
+                        text: has-now ? now.title : "Çalan yok"; horizontal-alignment: center; overflow: elide;
+                        font-family: Theme.display; font-size: 40px; font-weight: 800; letter-spacing: -1.4px; color: Theme.text-primary;
+                    }
+                    Rectangle { height: 8px; }
+                    HorizontalLayout {
+                        alignment: center; spacing: 8px;
+                        if has-now: Text { text: now.artist; font-size: 15px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
+                        if has-now && now.album != "": Text { text: "·"; font-size: 15px; color: Theme.text-secondary; }
+                        if has-now && now.album != "": Text { text: now.album; font-size: 15px; color: Theme.text-secondary; overflow: elide; }
+                        if has-now: SourceBadge { y: 0px; source: now.source; }
+                    }
+                    Rectangle { height: 24px; }
+                    HorizontalLayout {
+                        alignment: center; spacing: 10px;
+                        PillButton { text: liked ? "Beğenildi" : "Beğen"; active: liked; enabled: has-now; clicked => { root.toggle-like(); } }
+                        PillButton { text: "Sözleri göster"; primary: true; enabled: has-now; clicked => { lyrics-mode = true; } }
+                        PillButton { text: radio-busy ? "Radyo hazırlanıyor…" : "Bu şarkıdan radyo"; enabled: has-now && !radio-busy; clicked => { root.radio-from-current(); } }
+                    }
+                    Rectangle { height: 22px; }
+                    // Canlı söz satırı: tıklayınca söz kipine geçer
+                    HorizontalLayout {
+                        alignment: center; height: 30px;
+                        if lyric-state == 2 || lyric-state == 3: Rectangle {
+                            width: Math.min(cur.preferred-width + 32px, now-scene.width - 160px);
+                            border-radius: 15px;
+                            background: cl-ta.has-hover ? #ffffff14 : transparent;
+                            cl-ta := TouchArea { mouse-cursor: pointer; clicked => { lyrics-mode = true; } }
+                            cur := Text {
+                                text: lyric-state == 3 ? "Sözler hazır, görmek için tıkla" : now-scene.cur-line != "" ? "“" + now-scene.cur-line + "”" : "♪";
+                                horizontal-alignment: center; vertical-alignment: center; overflow: elide;
+                                width: parent.width - 32px;
+                                font-family: "Instrument Serif"; font-italic: true; font-size: 19px;
+                                color: cl-ta.has-hover ? Theme.text-primary : Theme.text-secondary;
+                            }
+                        }
+                    }
+                }
+            }
 
             // Sağ üst: stil, genişlet, kapat
             HorizontalLayout {
                 x: parent.width - self.preferred-width - 16px; y: 16px; spacing: 6px;
-                IconButton { icon: Icons.type; tint: lyr.menu ? Theme.accent : Theme.text-secondary; clicked => { lyr.menu = !lyr.menu; } }
+                IconButton { icon: Icons.mic; tint: lyrics-mode ? Theme.accent : Theme.text-secondary; clicked => { lyrics-mode = !lyrics-mode; lyr.menu = false; } }
+                if lyrics-mode: IconButton { icon: Icons.type; tint: lyr.menu ? Theme.accent : Theme.text-secondary; clicked => { lyr.menu = !lyr.menu; } }
                 IconButton { icon: lyrics-wide ? Icons.shrink : Icons.expand; clicked => { lyrics-wide = !lyrics-wide; } }
                 IconButton { icon: Icons.x; clicked => { lyrics-open = false; lyr.menu = false; } }
             }
@@ -1586,6 +1662,15 @@ export component AppWindow inherits Window {
 
         TouchArea { }
 
+        // Kapak ve başlık: Şimdi Çalıyor sahnesini aç/kapat
+        Rectangle {
+            x: 10px; y: 8px; width: 250px; height: parent.height - 16px;
+            border-radius: Theme.r-md;
+            background: now-ta.has-hover && has-now ? Theme.surface-1 : transparent;
+            animate background { duration: Theme.micro; }
+            now-ta := TouchArea { enabled: has-now; mouse-cursor: pointer; clicked => { root.show-now(false); } }
+        }
+
         HorizontalLayout {
             x: 20px; width: 290px; spacing: 14px; alignment: start;
             Cover {
@@ -1642,7 +1727,7 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             x: parent.width - self.width - 20px; width: 290px;
             alignment: end; spacing: 6px;
-            IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.mic; tint: lyrics-open ? Theme.accent : Theme.text-secondary; clicked => { lyrics-open = !lyrics-open; } }
+            IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.mic; tint: lyrics-open && lyrics-mode ? Theme.accent : Theme.text-secondary; clicked => { root.show-now(true); } }
             IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.list-music; tint: drawer-open ? Theme.accent : Theme.text-secondary; clicked => { drawer-open = !drawer-open; } }
             // Hoparlör: tıkla = sessize al / geri aç; tekerlek = ses
             Rectangle {
