@@ -2410,6 +2410,7 @@ fn apply_settings(ui: &AppWindow) {
         lyrics_motion: ui.get_lyrics_motion(),
         lyrics_translate: ui.get_lyrics_translate(),
         keep_days: settings::KEEP_DAYS[ui.get_keep_index().clamp(0, 3) as usize],
+        volume: ui.get_volume(),
     };
     with_state(|st| {
         st.player.send(Cmd::Readahead(s.readahead_secs));
@@ -2571,6 +2572,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = weak.upgrade_in_event_loop(move |ui| on_player_event(&ui, ev));
         })?
     };
+    ui.set_volume(settings.volume.clamp(0.0, 1.0));
     player.send(Cmd::Volume(ui.get_volume() as f64));
 
     let metered = Arc::new(AtomicBool::new(false));
@@ -3213,6 +3215,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     load_home(&ui);
     ui.run()?;
     save_session(&ui);
+    // Ses düzeyi bir dahaki açılışta aynı gelsin.
+    with_state(|st| {
+        st.settings.volume = ui.get_volume();
+        if let Err(e) = st.settings.save() {
+            eprintln!("ayarlar kaydedilemedi: {e}");
+        }
+    });
     with_state(|st| st.viz = None);
     start_listen(None); // son dinlemeyi kaydet
     resolver.shutdown();
