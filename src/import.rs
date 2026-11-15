@@ -343,29 +343,171 @@ pub fn run(
         }
         Link::Spotify { kind, id } => {
             let (name, wanted, truncated) = spotify(&kind, &id)?;
-            let total = wanted.len();
-            progress(0, total);
-            let rows: Vec<Mutex<Option<Row>>> = (0..total).map(|_| Mutex::new(None)).collect();
-            let next = AtomicUsize::new(0);
-            let done = AtomicUsize::new(0);
-            thread::scope(|s| {
-                for _ in 0..4 {
-                    s.spawn(|| loop {
-                        let i = next.fetch_add(1, Ordering::Relaxed);
-                        if i >= total {
-                            break;
-                        }
-                        let row = match_one(&wanted[i], ytm.as_ref(), Some(sc.as_ref()));
-                        *rows[i].lock().unwrap() = Some(row);
-                        let d = done.fetch_add(1, Ordering::Relaxed) + 1;
-                        progress(d, total);
-                    });
-                }
-            });
-            let rows = rows.into_iter().filter_map(|m| m.into_inner().ok().flatten()).collect();
-            Ok(Fetched { name, source_label: "Spotify", rows, truncated })
+            Ok(match_all(name, "Spotify", wanted, truncated, ytm, sc, progress))
         }
     }
+}
+
+/// Kaynak listedeki şarkıları paralel eşleştir (4 iş parçacığı).
+pub fn match_all(
+    name: String,
+    label: &'static str,
+    wanted: Vec<Wanted>,
+    truncated: bool,
+    ytm: Arc<dyn Provider>,
+    sc: Arc<dyn Provider>,
+    progress: impl Fn(usize, usize) + Send + Sync,
+) -> Fetched {
+    let total = wanted.len();
+    progress(0, total);
+    let rows: Vec<Mutex<Option<Row>>> = (0..total).map(|_| Mutex::new(None)).collect();
+    let next = AtomicUsize::new(0);
+    let done = AtomicUsize::new(0);
+    thread::scope(|s| {
+        for _ in 0..4 {
+            s.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                if i >= total {
+                    break;
+                }
+                let row = match_one(&wanted[i], ytm.as_ref(), Some(sc.as_ref()));
+                *rows[i].lock().unwrap() = Some(row);
+                let d = done.fetch_add(1, Ordering::Relaxed) + 1;
+                progress(d, total);
+            });
+        }
+    });
+    let rows = rows.into_iter().filter_map(|m| m.into_inner().ok().flatten()).collect();
+    Fetched { name, source_label: label, rows, truncated }
+}
+
+// ---------- Dosyadan aktarma ----------
+
+/// Dosyadaki bir liste (eşleştirilmemiş).
+#[derive(Clone, Debug)]
+pub struct FileList {
+    pub name: String,
+    pub tracks: Vec<Wanted>,
+}
+
+/// Spotify veri dışa aktarımı (Playlist*.json, YourLibrary.json) ya da CSV.
+pub fn read_file(path: &str) -> Result<Vec<FileList>, String> {
+    let path = path.trim().trim_start_matches("file://");
+    let path = if let Some(rest) = path.strip_prefix("~/") {
+        format!("{}/{rest}", std::env::var("HOME").unwrap_or_default())
+    } else {
+        path.to_string()
+    };
+    let raw = std::fs::read(&path).map_err(|e| format!("Dosya okunamadı: {e}"))?;
+    let text = String::from_utf8_lossy(&raw);
+    let stem = std::path::Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or("Liste").to_string();
+    let lists = if path.to_lowercase().ends_with(".json") { from_json(&text)? } else { from_csv(&text, &stem)? };
+    let lists: Vec<FileList> = lists.into_iter().filter(|l| !l.tracks.is_empty()).collect();
+    if lists.is_empty() {
+        return Err("Dosyada şarkı bulunamadı. Spotify dışa aktarımındaki Playlist/YourLibrary JSON dosyalarını ya da bir CSV seç.".into());
+    }
+    Ok(lists)
+}
+
+fn from_json(text: &str) -> Result<Vec<FileList>, String> {
+    let v: Value = serde_json::from_str(text).map_err(|e| format!("JSON okunamadı: {e}"))?;
+    let mut out = Vec::new();
+    // Playlist1.json: {"playlists":[{"name":..,"items":[{"track":{"trackName","artistName","albumName"}}]}]}
+    if let Some(pls) = v.get("playlists").and_then(Value::as_array) {
+        for p in pls {
+            let name = p.get("name").and_then(Value::as_str).unwrap_or("Liste").to_string();
+            let tracks = p
+                .get("items")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|it| {
+                            let t = it.get("track")?;
+                            Some(Wanted {
+                                title: t.get("trackName")?.as_str()?.to_string(),
+                                artist: t.get("artistName").and_then(Value::as_str).unwrap_or("").to_string(),
+                                duration: 0.0,
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            out.push(FileList { name, tracks });
+        }
+    }
+    // YourLibrary.json: {"tracks":[{"artist","album","track","uri"}]}
+    if let Some(ts) = v.get("tracks").and_then(Value::as_array) {
+        let tracks = ts
+            .iter()
+            .filter_map(|t| {
+                Some(Wanted {
+                    title: t.get("track")?.as_str()?.to_string(),
+                    artist: t.get("artist").and_then(Value::as_str).unwrap_or("").to_string(),
+                    duration: 0.0,
+                })
+            })
+            .collect();
+        out.push(FileList { name: "Beğenilen Şarkılar (Spotify)".into(), tracks });
+    }
+    if out.is_empty() {
+        return Err("Bu JSON dosyası tanınmadı (Spotify Playlist ya da YourLibrary dosyası değil).".into());
+    }
+    Ok(out)
+}
+
+/// Tırnaklı alanları ve kaçışlı tırnakları destekleyen basit CSV ayrıştırıcı.
+fn csv_rows(text: &str) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+    let mut row = Vec::new();
+    let mut field = String::new();
+    let mut quoted = false;
+    let mut chars = text.trim_start_matches('\u{feff}').chars().peekable();
+    while let Some(c) = chars.next() {
+        match (c, quoted) {
+            ('"', true) if chars.peek() == Some(&'"') => {
+                field.push('"');
+                chars.next();
+            }
+            ('"', true) => quoted = false,
+            ('"', false) if field.is_empty() => quoted = true,
+            (',', false) | (';', false) => row.push(std::mem::take(&mut field)),
+            ('\n', false) => {
+                row.push(std::mem::take(&mut field));
+                rows.push(std::mem::take(&mut row));
+            }
+            ('\r', false) => {}
+            _ => field.push(c),
+        }
+    }
+    if !field.is_empty() || !row.is_empty() {
+        row.push(field);
+        rows.push(row);
+    }
+    rows
+}
+
+fn from_csv(text: &str, name: &str) -> Result<Vec<FileList>, String> {
+    let rows = csv_rows(text);
+    let header: Vec<String> = rows.first().ok_or("CSV boş")?.iter().map(|h| h.trim().to_lowercase()).collect();
+    let find = |names: &[&str]| header.iter().position(|h| names.iter().any(|n| h == n));
+    let ti = find(&["track name", "track", "title", "name", "song", "şarkı", "şarkı adı"]).ok_or("CSV'de şarkı adı sütunu bulunamadı")?;
+    let ai = find(&["artist name(s)", "artist name", "artist", "artists", "sanatçı"]);
+    let di = find(&["duration (ms)", "duration_ms", "duration", "süre"]);
+    let tracks = rows
+        .iter()
+        .skip(1)
+        .filter_map(|r| {
+            let title = r.get(ti)?.trim().to_string();
+            if title.is_empty() {
+                return None;
+            }
+            let artist = ai.and_then(|i| r.get(i)).map(|a| a.trim().to_string()).unwrap_or_default();
+            let d = di.and_then(|i| r.get(i)).and_then(|d| d.trim().parse::<f32>().ok()).unwrap_or(0.0);
+            Some(Wanted { title, artist, duration: if d > 10_000.0 { d / 1000.0 } else { d } })
+        })
+        .collect();
+    Ok(vec![FileList { name: name.to_string(), tracks }])
 }
 
 fn direct(name: String, label: &'static str, tracks: Vec<TrackInfo>) -> Fetched {
@@ -420,6 +562,26 @@ mod tests {
     fn unrelated_is_missing() {
         let w = Wanted { title: "Housewife".into(), artist: "Tate McRae".into(), duration: 208.0 };
         assert_eq!(classify(score(&w, &t("Bir Derdim Var", "Mor ve Ötesi", 214.0))), Status::Missing);
+    }
+
+    #[test]
+    fn csv_exportify_and_quotes() {
+        let csv = "\u{feff}Track URI,Track Name,Artist Name(s),Album Name,Duration (ms)\nspotify:x,\"Dönence\",\"Barış Manço\",Sözüm Meclisten Dışarı,308000\nspotify:y,\"Hello, \"\"World\"\"\",A,B,1000\n";
+        let l = from_csv(csv, "x").unwrap();
+        assert_eq!(l[0].tracks.len(), 2);
+        assert_eq!(l[0].tracks[0].title, "Dönence");
+        assert!((l[0].tracks[0].duration - 308.0).abs() < 0.1);
+        assert_eq!(l[0].tracks[1].title, "Hello, \"World\"");
+    }
+
+    #[test]
+    fn spotify_export_json() {
+        let pl = r#"{"playlists":[{"name":"Yol","items":[{"track":{"trackName":"Cemalim","artistName":"Erkin Koray","albumName":"x","trackUri":"u"}},{"episode":null}]}]}"#;
+        let l = from_json(pl).unwrap();
+        assert_eq!(l[0].name, "Yol");
+        assert_eq!(l[0].tracks.len(), 1);
+        let lib = r#"{"tracks":[{"artist":"BLOK3","album":"a","track":"Sebebi Yar","uri":"u"}]}"#;
+        assert_eq!(from_json(lib).unwrap()[0].tracks[0].artist, "BLOK3");
     }
 
     #[test]

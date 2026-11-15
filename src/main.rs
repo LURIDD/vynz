@@ -102,6 +102,8 @@ struct State {
     viz: Option<viz::Viz>,
     /// Profildeki en çok dinlenen şarkılar
     prof_tracks: Vec<TrackInfo>,
+    /// Seçilen dosyadaki listeler (birden çoksa kullanıcı seçer)
+    file_lists: Vec<import::FileList>,
 }
 
 /// Ana sayfanın ham parçaları; ~/.cache/vynz/home.json içinde saklanır.
@@ -1541,7 +1543,103 @@ fn refresh_import(ui: &AppWindow) {
     ui.set_import_note(note.into());
 }
 
+fn looks_like_file(s: &str) -> bool {
+    let s = s.trim();
+    s.starts_with('/') || s.starts_with("~/") || s.starts_with("file://")
+}
+
+/// Sistem dosya seçicisini aç (zenity, yoksa kdialog); seçilen yolla aktar.
+fn pick_file(ui: &AppWindow) {
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let tries: [(&str, &[&str]); 2] = [
+            ("zenity", &["--file-selection", "--title=Liste dosyası seç", "--file-filter=Listeler | *.json *.csv", "--file-filter=Tümü | *"]),
+            ("kdialog", &["--getopenfilename", ".", "*.json *.csv"]),
+        ];
+        let mut path = None;
+        let mut found = false;
+        for (cmd, args) in tries {
+            match std::process::Command::new(cmd).args(args).output() {
+                Ok(o) => {
+                    found = true;
+                    let p = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if o.status.success() && !p.is_empty() {
+                        path = Some(p);
+                    }
+                    break;
+                }
+                Err(_) => continue,
+            }
+        }
+        let _ = weak.upgrade_in_event_loop(move |ui| match path {
+            Some(p) => start_file_import(&ui, p),
+            None if !found => toast(&ui, "Dosya seçici yok; dosya yolunu kutuya yazıp Enter'a bas."),
+            None => {}
+        });
+    });
+}
+
+fn start_file_import(ui: &AppWindow, path: String) {
+    ui.set_import_busy(true);
+    ui.set_import_done(0);
+    ui.set_import_total(0);
+    ui.set_file_lists(ModelRc::new(VecModel::from(Vec::<slint::SharedString>::new())));
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let res = import::read_file(&path);
+        let _ = weak.upgrade_in_event_loop(move |ui| match res {
+            Ok(lists) if lists.len() == 1 => {
+                let l = lists.into_iter().next().unwrap();
+                with_state(|st| st.import_origin = format!("dosya: {path}"));
+                match_file_list(&ui, l);
+            }
+            Ok(lists) => {
+                ui.set_import_busy(false);
+                let labels: Vec<slint::SharedString> = lists.iter().map(|l| format!("{} · {} şarkı", l.name, l.tracks.len()).into()).collect();
+                with_state(|st| {
+                    st.import_origin = format!("dosya: {path}");
+                    st.file_lists = lists;
+                });
+                ui.set_file_lists(ModelRc::new(VecModel::from(labels)));
+            }
+            Err(e) => {
+                ui.set_import_busy(false);
+                toast(&ui, &e);
+            }
+        });
+    });
+}
+
+/// Dosyadan gelen listeyi eşleştir ve inceleme ekranına koy.
+fn match_file_list(ui: &AppWindow, l: import::FileList) {
+    let providers = with_state(|st| provider(st, Source::Ytm).zip(provider(st, Source::SoundCloud)));
+    let Some((ytm, sc)) = providers else { return };
+    ui.set_import_busy(true);
+    ui.set_import_filter(-1);
+    ui.set_file_lists(ModelRc::new(VecModel::from(Vec::<slint::SharedString>::new())));
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let w = Mutex::new(weak.clone());
+        let f = import::match_all(l.name, "Dosya", l.tracks, false, ytm, sc, |done, total| {
+            let w = w.lock().unwrap().clone();
+            let _ = w.upgrade_in_event_loop(move |ui| {
+                ui.set_import_done(done as i32);
+                ui.set_import_total(total as i32);
+            });
+        });
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            ui.set_import_busy(false);
+            with_state(|st| st.imported = Some(f));
+            refresh_import(&ui);
+        });
+    });
+}
+
 fn start_import(ui: &AppWindow, url: String) {
+    if looks_like_file(&url) {
+        start_file_import(ui, url);
+        return;
+    }
     let providers = with_state(|st| {
         st.import_origin = url.clone();
         let ytm = st.providers.iter().find(|p| p.source() == Source::Ytm).cloned();
@@ -1875,6 +1973,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             home: HomeData::default(),
             viz: None,
             prof_tracks: Vec::new(),
+            file_lists: Vec::new(),
         })
     });
     refresh_playlists(&ui);
@@ -2154,6 +2253,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |url| {
             if let Some(ui) = weak.upgrade() {
                 start_import(&ui, url.trim().to_string());
+            }
+        }
+    });
+    ui.on_pick_file({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                pick_file(&ui);
+            }
+        }
+    });
+    ui.on_import_file_list({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(l) = with_state(|st| st.file_lists.get(i as usize).cloned()) {
+                match_file_list(&ui, l);
             }
         }
     });

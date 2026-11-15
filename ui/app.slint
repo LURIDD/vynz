@@ -78,6 +78,10 @@ export component AppWindow inherits Window {
     in property <[int]> import-counts: [0, 0, 0, 0];
     in-out property <int> import-filter: -1;
     callback start-import(string);
+    callback pick-file();
+    // Seçilen dosyada birden çok liste varsa
+    in property <[string]> file-lists;
+    callback import-file-list(int);
     callback import-change(int);
     callback import-save();
 
@@ -724,9 +728,27 @@ export component AppWindow inherits Window {
                             pill-height: 44px; text: import-busy ? "Aktarılıyor…" : "Aktar"; primary: !import-busy; enabled: !import-busy;
                             clicked => { if (link-input.text != "") { root.start-import(link-input.text); } }
                         }
+                        PillButton {
+                            pill-height: 44px; text: "Dosyadan aktar"; enabled: !import-busy;
+                            clicked => { root.pick-file(); }
+                        }
+                    }
+                    if file-lists.length > 0: VerticalLayout {
+                        spacing: 8px;
+                        Text { text: "Dosyada birden çok liste var; aktarmak istediğini seç:"; font-size: 13px; font-weight: 600; color: Theme.text-secondary; }
+                        for l[i] in file-lists: Rectangle {
+                            height: 44px; border-radius: Theme.r-md;
+                            background: fl-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
+                            fl-ta := TouchArea { mouse-cursor: pointer; clicked => { root.import-file-list(i); } }
+                            HorizontalLayout {
+                                padding-left: 16px; spacing: 10px;
+                                Icon { y: 13px; commands: Icons.list-music; }
+                                Text { text: l; vertical-alignment: center; font-size: 13.5px; font-weight: 600; color: Theme.text-primary; }
+                            }
+                        }
                     }
                     Text {
-                        text: "Gizli listeler ve Beğenilen Şarkılar için: listeyi geçici olarak herkese açık yap ya da Spotify'da yeni bir herkese açık listeye kopyala. Spotify'ın gömülü sayfası en fazla 100 şarkı verir.";
+                        text: "Bağlantıyla Spotify'ın herkese açık listelerinden ilk 100 şarkı alınır. Gizli listeler, Beğenilen Şarkılar ve uzun listeler için: Spotify → Hesap → Gizlilik → \"Verilerini indir\"; gelen dosyadaki Playlist…json ya da YourLibrary.json'u \"Dosyadan aktar\" ile seç. Exportify / TuneMyMusic CSV dosyaları da olur.";
                         font-size: 12px; color: Theme.text-muted; wrap: word-wrap;
                     }
                     if import-busy: VerticalLayout {
