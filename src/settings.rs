@@ -33,11 +33,13 @@ pub struct Settings {
     pub lyrics_motion: bool,
     /// Önbellekteki şarkı bu kadar gün çalınmazsa silinir (0 = süresiz)
     pub keep_days: u32,
+    /// Söz çevirisi: 0 kapalı, 1 Türkçe, 2 İngilizce
+    pub lyrics_translate: i32,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true, lyrics_style: 0, lyrics_size: 1, lyrics_align: 0, lyrics_motion: true, keep_days: 30 }
+        Settings { cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true, lyrics_style: 0, lyrics_size: 1, lyrics_align: 0, lyrics_motion: true, keep_days: 30, lyrics_translate: 0 }
     }
 }
 

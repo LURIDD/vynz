@@ -122,6 +122,14 @@ impl Resolver {
         g.cache.get(key).filter(|r| r.expire > now() + EXPIRY_MARGIN).cloned()
     }
 
+    /// Bozuk çıkan adresi unut (bir dahaki sefere yeniden çözülsün).
+    pub fn invalidate(&self, key: &str) {
+        let mut g = self.inner.lock().unwrap();
+        if g.cache.remove(key).is_some() {
+            g.dirty = true;
+        }
+    }
+
     pub fn is_pending(&self, key: &str) -> bool {
         self.inner.lock().unwrap().waiting.contains_key(key)
     }
