@@ -1776,8 +1776,8 @@ export component AppWindow inherits Window {
         background: Theme.floating;
         drop-shadow-blur: 48px; drop-shadow-offset-y: 24px; drop-shadow-color: #000000b8;
 
-        // Çubuğun boş yerine tıklamak Şimdi Çalıyor sahnesini açar/kapatır (düğmeler kendi işini yapar).
-        TouchArea { enabled: has-now; clicked => { root.show-now(false); } }
+        // Çubuğun boş yeri: sahne açıksa (hangi kipte olursa olsun) kapatır, kapalıysa kapak kipinde açar.
+        TouchArea { enabled: has-now; clicked => { if (lyrics-open) { lyrics-open = false; } else { root.show-now(false); } } }
 
         HorizontalLayout {
             x: 20px; width: 290px; spacing: 14px; alignment: start;
