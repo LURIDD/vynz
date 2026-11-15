@@ -781,6 +781,16 @@ export component AppWindow inherits Window {
         }
     }
 
+    // Çekmece açıkken arkadaki sayfa görünmesin: ana alanı tamamen örten zemin.
+    Rectangle {
+        x: sidebar-w; width: root.width - sidebar-w; y: 0; height: root.height;
+        background: Theme.canvas;
+        opacity: lyrics-open ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: 200ms; }
+        if lyrics-open: TouchArea { }
+    }
+
     // ---------- Söz çekmecesi: ana alanın önüne aşağıdan açılır, aynı düğmeyle kapanır ----------
     Rectangle {
         x: sidebar-w + 16px; width: root.width - sidebar-w - 32px;
