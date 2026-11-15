@@ -16,6 +16,8 @@ pub const KEEP_DAYS: [u32; 4] = [14, 30, 90, 0];
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    /// Son ses düzeyi (0..1); kapanışta kaydedilir, açılışta geri gelir
+    pub volume: f32,
     pub cache_gb: f32,
     pub prefetch: bool,
     pub readahead_secs: u32,
@@ -39,7 +41,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true, lyrics_style: 0, lyrics_size: 1, lyrics_align: 0, lyrics_motion: true, keep_days: 30, lyrics_translate: 0 }
+        Settings { volume: 0.8, cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true, lyrics_style: 0, lyrics_size: 1, lyrics_align: 0, lyrics_motion: true, keep_days: 30, lyrics_translate: 0 }
     }
 }
 

@@ -1776,16 +1776,8 @@ export component AppWindow inherits Window {
         background: Theme.floating;
         drop-shadow-blur: 48px; drop-shadow-offset-y: 24px; drop-shadow-color: #000000b8;
 
-        TouchArea { }
-
-        // Kapak ve başlık: Şimdi Çalıyor sahnesini aç/kapat
-        Rectangle {
-            x: 10px; y: 8px; width: 250px; height: parent.height - 16px;
-            border-radius: Theme.r-md;
-            background: now-ta.has-hover && has-now ? Theme.surface-1 : transparent;
-            animate background { duration: Theme.micro; }
-            now-ta := TouchArea { enabled: has-now; mouse-cursor: pointer; clicked => { root.show-now(false); } }
-        }
+        // Çubuğun boş yerine tıklamak Şimdi Çalıyor sahnesini açar/kapatır (düğmeler kendi işini yapar).
+        TouchArea { enabled: has-now; clicked => { root.show-now(false); } }
 
         HorizontalLayout {
             x: 20px; width: 290px; spacing: 14px; alignment: start;
