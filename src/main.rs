@@ -108,6 +108,8 @@ struct State {
     mpris: mpris::Mpris,
     /// Atlama sonrası ilk konumda MPRIS'e "Seeked" bildirilecek
     seek_pending: bool,
+    /// Son konum bilgisi ve geldiği an: sözlerde ara konum hesabı için
+    last_pos: (f32, std::time::Instant),
 }
 
 /// Ana sayfanın ham parçaları; ~/.cache/vynz/home.json içinde saklanır.
@@ -441,6 +443,25 @@ fn request_lyrics(ui: &AppWindow, t: &TrackInfo) {
             }
         });
     });
+}
+
+fn offsets_path() -> std::path::PathBuf {
+    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    std::env::var_os("XDG_DATA_HOME").map(Into::into).unwrap_or(home.join(".local/share")).join("vynz").join("lyric-offsets.json")
+}
+
+fn load_offsets() -> HashMap<String, f32> {
+    std::fs::read(offsets_path()).ok().and_then(|r| serde_json::from_slice(&r).ok()).unwrap_or_default()
+}
+
+/// Sözler ekranı açıkken saniyede ~20 kez: son konumdan geçen süreyi ekleyerek akıcı dolum.
+fn lyric_tick(ui: &AppWindow) {
+    if !ui.get_playing() || ui.get_buffering() {
+        return;
+    }
+    let (p, at) = with_state(|st| st.last_pos);
+    let pos = p + at.elapsed().as_secs_f32().min(0.6);
+    update_lyrics(ui, pos);
 }
 
 /// Çalan şarkının söz durumunu baştan kur.
@@ -809,6 +830,7 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
                 }
             });
             ui.set_position(t as f32);
+            with_state(|st| st.last_pos = (t as f32, std::time::Instant::now()));
             update_lyrics(ui, t as f32);
             if t >= 20.0 {
                 queue_for_cache();
@@ -2088,7 +2110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             lyr_pending: HashSet::new(),
             lyr_line: None,
             lyr_spoken: 0,
-            lyr_offsets: HashMap::new(),
+            lyr_offsets: load_offsets(),
             history: history::History::load(),
             listen: None,
             shuffle_orig: None,
@@ -2104,6 +2126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             file_lists: Vec::new(),
             mpris: mpris_server.clone(),
             seek_pending: false,
+            last_pos: (0.0, std::time::Instant::now()),
         })
     });
     refresh_playlists(&ui);
@@ -2367,6 +2390,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    ui.on_lyric_tick({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                lyric_tick(&ui);
+            }
+        }
+    });
     ui.on_lyric_seek({
         let weak = weak.clone();
         move |t| {
@@ -2393,9 +2424,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let off = with_state(|st| {
                 let o = st.lyr_offsets.entry(key).or_insert(0.0);
                 *o = ((*o + d) * 10.0).round() / 10.0;
+                let v = *o;
                 st.lyr_line = None;
                 st.lyr_spoken = usize::MAX;
-                *o
+                // Şarkıya özel ayar kalıcı olsun
+                st.lyr_offsets.retain(|_, x| x.abs() > 0.01);
+                if let Some(dir) = offsets_path().parent() {
+                    let _ = std::fs::create_dir_all(dir);
+                }
+                let _ = std::fs::write(offsets_path(), serde_json::to_vec(&st.lyr_offsets).unwrap_or_default());
+                v
             });
             ui.set_lyric_offset(off);
             update_lyrics(&ui, ui.get_position());
