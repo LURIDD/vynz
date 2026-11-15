@@ -112,6 +112,10 @@ struct State {
     last_pos: (f32, std::time::Instant),
     /// Sayfa geçmişi (geri düğmesi)
     nav: Vec<String>,
+    /// Üst sayfa yığını (en çok 2: ruh hâli → liste)
+    sheets: Vec<String>,
+    /// Gelen koleksiyon yanıtı hâlâ açık sayfaya mı ait
+    coll_gen: u64,
     nav_skip: bool,
     /// Arama: en iyi sonuç, bölümler, yazarken gecikme
     top: Option<Top>,
@@ -1601,10 +1605,44 @@ fn load_home(ui: &AppWindow) {
 
 // ---------- Koleksiyonlar (liste, albüm, sanatçı, ruh hâli) ----------
 
+/// Üst sayfayı aç: ruh hâli → liste iki katlı olabilir; aynı türden yeni sayfa üsttekinin yerine geçer.
+fn open_sheet(ui: &AppWindow, kind: &str) {
+    let closed = ui.get_sheet().is_empty(); // kenar çubuğu go() ile kapatmış olabilir
+    with_state(|st| {
+        if closed {
+            st.sheets.clear();
+        }
+        if st.sheets.last().map(|x| x.as_str()) == Some(kind) {
+            st.sheets.pop();
+        }
+        st.sheets.retain(|x| x != kind);
+        st.sheets.push(kind.to_string());
+    });
+    ui.set_lyrics_open(false);
+    ui.set_sheet(kind.into());
+    ui.set_sheet_gen(ui.get_sheet_gen() + 1);
+}
+
+fn close_sheets(ui: &AppWindow) {
+    with_state(|st| st.sheets.clear());
+    ui.set_sheet("".into());
+}
+
+fn sheet_back(ui: &AppWindow) {
+    let top = with_state(|st| {
+        st.sheets.pop();
+        st.coll_gen += 1; // bekleyen yanıt kapanan sayfaya yazmasın
+        st.sheets.last().cloned()
+    });
+    ui.set_coll_loading(false);
+    ui.set_sheet(top.unwrap_or_default().into());
+}
+
 fn open_card(ui: &AppWindow, c: Card) {
     if c.kind == "saved" {
         if let Some(i) = c.key.strip_prefix("saved-").and_then(|x| x.parse::<usize>().ok()) {
             open_playlist(ui, i);
+            close_sheets(ui);
             ui.set_view("playlist".into());
         }
         return;
@@ -1614,19 +1652,25 @@ fn open_card(ui: &AppWindow, c: Card) {
     if mood {
         ui.set_browse_title(c.title.as_str().into());
         ui.set_browse_cards(ModelRc::new(VecModel::from(Vec::<CardUi>::new())));
-        ui.set_view("browse".into());
     } else {
         ui.set_coll_title(c.title.as_str().into());
         ui.set_coll_sub(c.sub.as_str().into());
         ui.set_coll_kind(card_kind(&c.kind));
         ui.set_coll_tracks(ModelRc::new(VecModel::from(Vec::<Track>::new())));
-        ui.set_view("collection".into());
     }
+    open_sheet(ui, if mood { "browse" } else { "collection" });
+    let seq = with_state(|st| {
+        st.coll_gen += 1;
+        st.coll_gen
+    });
     let resolver = with_state(|st| st.resolver.clone());
     let weak = ui.as_weak();
     let req = serde_json::json!({"op": "collection", "kind": c.kind, "key": c.key});
     resolver.request(req, Prio::Now, Box::new(move |res| {
         let _ = weak.upgrade_in_event_loop(move |ui| {
+            if with_state(|st| st.coll_gen) != seq {
+                return; // bu arada başka bir sayfa açıldı
+            }
             ui.set_coll_loading(false);
             let d = match res {
                 Ok(d) => d,
@@ -2442,6 +2486,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             seek_pending: false,
             last_pos: (0.0, std::time::Instant::now()),
             nav: vec!["home".into()],
+            sheets: Vec::new(),
+            coll_gen: 0,
             nav_skip: false,
             top: None,
             search_shelves: Vec::new(),
@@ -2599,6 +2645,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let list = with_state(|st| st.prof_tracks.clone());
             if !list.is_empty() {
                 play_list(&ui, list, i as usize);
+            }
+        }
+    });
+    ui.on_sheet_back({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                sheet_back(&ui);
             }
         }
     });
