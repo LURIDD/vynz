@@ -43,11 +43,33 @@ impl TrackInfo {
     }
 }
 
+/// Şarkı olmayan öğe: liste, albüm, sanatçı, ruh hâli ya da kayıtlı liste.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Card {
+    /// "playlist" | "album" | "artist" | "mood" | "saved"
+    pub kind: String,
+    pub key: String,
+    pub title: String,
+    #[serde(default)]
+    pub sub: String,
+    #[serde(default)]
+    pub thumb: String,
+}
+
+impl Card {
+    pub fn art_key(&self) -> String {
+        format!("c-{}", self.key.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect::<String>())
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Section {
     pub title: String,
     pub items: Vec<TrackInfo>,
-    /// 0 = kart rafı, 1 = hızlı seçim kutucukları
+    /// Kart rafları (style 2 liste/albüm, 3 sanatçı, 4 ruh hâli)
+    #[serde(default)]
+    pub cards: Vec<Card>,
+    /// 0 şarkı kartları, 1 hızlı erişim kutucukları, 2 liste/albüm, 3 sanatçı, 4 ruh hâli
     #[serde(default)]
     pub style: i32,
 }

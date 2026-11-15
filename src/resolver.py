@@ -128,7 +128,99 @@ def radio(video_id):
     return out
 
 
+def thumb_of(x):
+    th = x.get("thumbnails") or x.get("thumbnail") or []
+    if isinstance(th, dict):
+        th = th.get("thumbnails") or []
+    return th[-1]["url"] if th else ""
+
+
+def names(x):
+    return ", ".join(a.get("name", "") for a in (x.get("artists") or []) if a.get("name"))
+
+
+def track_of(t, album_thumb=""):
+    vid = t.get("videoId")
+    if not vid:
+        return None
+    return {
+        "id": vid,
+        "title": t.get("title") or "",
+        "artist": names(t),
+        "album": (t.get("album") or {}).get("name") if isinstance(t.get("album"), dict) else (t.get("album") or ""),
+        "duration": t.get("duration_seconds") or seconds(t.get("duration") or t.get("length") or 0),
+        "thumb": thumb_of(t) or album_thumb,
+    }
+
+
+def items(v):
+    if isinstance(v, dict):
+        return v.get("items") or v.get("results") or []
+    return v or []
+
+
+def explore():
+    y = ytmusic()
+    e = y.get_explore()
+    out = {"trending": [], "releases": [], "moods": [], "artists": []}
+    for t in items(e.get("trending")):
+        tr = track_of(t)
+        if tr:
+            out["trending"].append(tr)
+    for a in items(e.get("new_releases")):
+        if a.get("browseId"):
+            out["releases"].append({"kind": "album", "key": a["browseId"], "title": a.get("title") or "", "sub": names(a), "thumb": thumb_of(a)})
+    for m in items(e.get("moods_and_genres")):
+        if m.get("params"):
+            out["moods"].append({"kind": "mood", "key": m["params"], "title": m.get("title") or "", "sub": "", "thumb": ""})
+    try:
+        c = y.get_charts(country="TR")
+        for a in items(c.get("artists"))[:30]:
+            if a.get("browseId"):
+                out["artists"].append({"kind": "artist", "key": a["browseId"], "title": a.get("title") or "", "sub": a.get("subscribers") or "", "thumb": thumb_of(a)})
+    except Exception:  # noqa: BLE001 - listeler isteğe bağlı
+        pass
+    return out
+
+
+def collection(kind, key):
+    y = ytmusic()
+    if kind == "album":
+        a = y.get_album(key)
+        th = thumb_of(a)
+        tracks = [x for x in (track_of(t, th) for t in a.get("tracks") or []) if x]
+        for t in tracks:
+            t["album"] = t["album"] or a.get("title") or ""
+        return {"title": a.get("title") or "", "sub": names(a), "tracks": tracks}
+    if kind == "artist":
+        a = y.get_artist(key)
+        songs = a.get("songs") or {}
+        res = []
+        if songs.get("browseId"):
+            try:
+                res = y.get_playlist(songs["browseId"], limit=60).get("tracks") or []
+            except Exception:  # noqa: BLE001
+                res = []
+        if not res:
+            res = songs.get("results") or []
+        return {"title": a.get("name") or "", "sub": "Sanatçının en sevilen şarkıları", "tracks": [x for x in (track_of(t) for t in res) if x]}
+    if kind == "mood":
+        pls = y.get_mood_playlists(key)
+        cards = [{"kind": "playlist", "key": p["playlistId"], "title": p.get("title") or "", "sub": p.get("description") or "", "thumb": thumb_of(p)} for p in pls if p.get("playlistId")]
+        return {"title": "", "sub": "", "cards": cards}
+    p = y.get_playlist(key, limit=200)
+    return {"title": p.get("title") or "", "sub": (p.get("author") or {}).get("name") if isinstance(p.get("author"), dict) else "", "tracks": [x for x in (track_of(t) for t in p.get("tracks") or []) if x]}
+
+
 def handle(req):
+    op = req.get("op")
+    if op in ("explore", "collection"):
+        try:
+            data = explore() if op == "explore" else collection(req.get("kind"), req.get("key"))
+            send({"rid": req["rid"], "ok": True, "data": data})
+        except Exception as e:  # noqa: BLE001
+            send({"rid": req["rid"], "ok": False, "error": str(e).splitlines()[0][:300] if str(e) else "hata"})
+        return
     if req.get("op") == "radio":
         try:
             send({"rid": req["rid"], "ok": True, "tracks": radio(req["id"])})

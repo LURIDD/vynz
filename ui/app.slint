@@ -3,9 +3,9 @@ import "fonts/PlusJakartaSans.ttf";
 import "fonts/JetBrainsMono.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, LyricWord, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, LyricWord, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
 
-export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord }
+export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord, CardUi }
 
 component SettingGroup inherits Rectangle {
     in property <string> title;
@@ -133,8 +133,27 @@ export component AppWindow inherits Window {
     callback menu-for(int, int, int);
     callback menu-action(int);
 
+    // Kaydırma isteği (test ve ileride "başa dön" için)
+    in property <length> scroll-request;
+    changed scroll-request => { flick.content-y = -scroll-request; }
+    // Sayfa değişince en üstten başla
+    changed view => { flick.content-y = 0; }
+
     // Söz çekmecesi (sayfa değil; öne açılır, aynı düğmeyle kapanır)
     in-out property <bool> lyrics-open;
+
+    // Koleksiyon (liste/albüm/sanatçı) ve ruh hâli sayfaları
+    callback open-card(int, int);
+    in property <string> coll-title;
+    in property <string> coll-sub;
+    in property <int> coll-kind;
+    in property <[Track]> coll-tracks;
+    in property <bool> coll-loading;
+    callback play-collection(int);
+    callback save-collection();
+    in property <string> browse-title;
+    in property <[CardUi]> browse-cards;
+    callback open-browse-card(int);
 
     callback hover-shelf(int, int, bool);
     callback hover-result(int, bool);
@@ -365,38 +384,150 @@ export component AppWindow inherits Window {
                     for shelf[si] in shelves: VerticalLayout {
                         spacing: 16px;
                         Text { text: shelf.title; font-family: Theme.display; font-size: 21px; font-weight: 700; letter-spacing: -0.5px; color: Theme.text-primary; }
-                        if shelf.style == 1: Rectangle {
-                            property <int> cols: main.width > 1150px ? 4 : 2;
-                            property <length> gap: 12px;
-                            property <length> tile-w: (self.width - gap * (cols - 1)) / cols;
-                            height: Math.ceil(Math.min(shelf.items.length, 8) / cols) * (60px + gap) - gap;
-                            for t[i] in shelf.items: Tile {
-                                visible: i < 8;
-                                x: Math.mod(i, parent.cols) * (parent.tile-w + parent.gap);
-                                y: Math.floor(i / parent.cols) * (60px + parent.gap);
-                                width: parent.tile-w;
-                                track: t;
-                                active: has-now && t.key == now.key;
-                                clicked => { root.play-shelf(si, i); }
-                                hovered(on) => { root.hover-shelf(si, i, on); }
-                                menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(0, si, i); }
+                        // Sayfalı yatay şerit: üzerine gelince oklar belirir, şerit kayar.
+                        car := Rectangle {
+                            property <int> style: shelf.style;
+                            property <bool> grid: style == 1 || style == 4;
+                            property <length> gap: grid ? 12px : 20px;
+                            property <int> cols: style == 1 ? (main.width > 1150px ? 4 : 2)
+                                : style == 4 ? (main.width > 1150px ? 5 : 3)
+                                : style == 3 ? Math.max(3, Math.floor((self.width + gap) / (150px + gap)))
+                                : Math.max(3, Math.floor((self.width + gap) / (176px + gap)));
+                            property <int> per-page: grid ? cols * 2 : cols;
+                            property <int> n: style == 0 || style == 1 ? shelf.items.length : shelf.cards.length;
+                            property <int> pages: Math.max(1, Math.ceil(n / per-page));
+                            property <int> page: 0;
+                            property <bool> hot;
+                            property <length> cell-w: (self.width - gap * (cols - 1)) / cols;
+                            property <length> cell-h: style == 1 ? 60px : style == 4 ? 84px : style == 3 ? cell-w + 46px : cell-w + 52px;
+                            height: grid ? cell-h * Math.min(2, Math.ceil(n / cols)) + gap * (n > cols ? 1 : 0) : cell-h;
+
+                            Rectangle {
+                                x: -12px; y: -16px; width: parent.width + 24px; height: parent.height + 40px;
+                                clip: true;
+                                Rectangle {
+                                    x: 12px - car.page * (car.width + car.gap);
+                                    y: 16px;
+                                    animate x { duration: 340ms; easing: ease-in-out; }
+                                    if car.style == 0: Rectangle {
+                                        for t[i] in shelf.items: TrackCard {
+                                            visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
+                                            x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(i, car.per-page) * (car.cell-w + car.gap);
+                                            y: 0; width: car.cell-w; height: car.cell-h;
+                                            track: t;
+                                            active: has-now && t.key == now.key;
+                                            clicked => { root.play-shelf(si, i); }
+                                            hovered(on) => { car.hot = on; root.hover-shelf(si, i, on); }
+                                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(0, si, i); }
+                                        }
+                                    }
+                                    if car.style == 1: Rectangle {
+                                        for t[i] in shelf.items: Tile {
+                                            property <int> r: Math.mod(i, car.per-page);
+                                            visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
+                                            x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(r, car.cols) * (car.cell-w + car.gap);
+                                            y: Math.floor(r / car.cols) * (car.cell-h + car.gap);
+                                            width: car.cell-w;
+                                            track: t;
+                                            active: has-now && t.key == now.key;
+                                            clicked => { root.play-shelf(si, i); }
+                                            hovered(on) => { car.hot = on; root.hover-shelf(si, i, on); }
+                                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(0, si, i); }
+                                        }
+                                    }
+                                    if car.style == 2 || car.style == 3: Rectangle {
+                                        for c[i] in shelf.cards: CardTile {
+                                            visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
+                                            x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(i, car.per-page) * (car.cell-w + car.gap);
+                                            y: 0; width: car.cell-w; height: car.cell-h;
+                                            card: c;
+                                            clicked => { root.open-card(si, i); }
+                                            hovered(on) => { car.hot = on; }
+                                        }
+                                    }
+                                    if car.style == 4: Rectangle {
+                                        for c[i] in shelf.cards: MoodTile {
+                                            property <int> r: Math.mod(i, car.per-page);
+                                            visible: Math.abs(Math.floor(i / car.per-page) - car.page) <= 1;
+                                            x: Math.floor(i / car.per-page) * (car.width + car.gap) + Math.mod(r, car.cols) * (car.cell-w + car.gap);
+                                            y: Math.floor(r / car.cols) * (car.cell-h + car.gap);
+                                            width: car.cell-w; height: car.cell-h;
+                                            card: c; index: i;
+                                            clicked => { root.open-card(si, i); }
+                                            hovered(on) => { car.hot = on; }
+                                        }
+                                    }
+                                }
+                            }
+                            la := PagerArrow {
+                                left: true;
+                                x: -20px;
+                                y: (car.grid ? car.height : (car.style == 1 ? car.height : car.cell-w)) / 2 - 20px;
+                                shown: (car.hot || self.hovering || ra.hovering) && car.page > 0;
+                                clicked => { car.page = Math.max(0, car.page - 1); }
+                            }
+                            ra := PagerArrow {
+                                left: false;
+                                x: car.width - 20px;
+                                y: (car.grid ? car.height : car.cell-w) / 2 - 20px;
+                                shown: (car.hot || self.hovering || la.hovering) && car.page < car.pages - 1;
+                                clicked => { car.page = Math.min(car.pages - 1, car.page + 1); }
                             }
                         }
-                        if shelf.style == 0: row := Rectangle {
-                            property <length> gap: 20px;
-                            property <int> cols: Math.max(3, Math.floor((self.width + gap) / (176px + gap)));
-                            property <length> card-w: (self.width - gap * (cols - 1)) / cols;
-                            height: card-w + 52px;
-                            for t[i] in shelf.items: TrackCard {
-                                visible: i < row.cols;
-                                x: i * (row.card-w + row.gap); y: 0;
-                                width: row.card-w; height: row.card-w + 52px;
-                                track: t;
-                                active: has-now && t.key == now.key;
-                                clicked => { root.play-shelf(si, i); }
-                                hovered(on) => { root.hover-shelf(si, i, on); }
-                                menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(0, si, i); }
+                    }
+                }
+
+                // ===== Koleksiyon: liste / albüm / sanatçı =====
+                if view == "collection": VerticalLayout {
+                    spacing: 20px;
+                    HorizontalLayout {
+                        spacing: 16px;
+                        VerticalLayout {
+                            horizontal-stretch: 1; spacing: 4px;
+                            Text { text: coll-kind == 1 ? "Albüm" : coll-kind == 2 ? "Sanatçı" : "Liste"; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                            Text { text: coll-title; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; overflow: elide; }
+                            Text { text: coll-loading ? "Yükleniyor…" : coll-sub + (coll-sub != "" ? " · " : "") + coll-tracks.length + " şarkı"; font-size: 14px; color: Theme.text-secondary; overflow: elide; }
+                        }
+                        VerticalLayout {
+                            alignment: end;
+                            HorizontalLayout {
+                                spacing: 10px;
+                                PillButton { text: "Çal"; primary: true; enabled: coll-tracks.length > 0; clicked => { root.play-collection(0); } }
+                                PillButton { text: "Listelerim'e kaydet"; enabled: coll-tracks.length > 0; clicked => { root.save-collection(); } }
                             }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 0px;
+                        for t[i] in coll-tracks: TrackRow {
+                            track: t; index: i;
+                            playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                            clicked => { root.play-collection(i); }
+                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(4, i, 0); }
+                        }
+                    }
+                }
+
+                // ===== Ruh hâli / tür: listeler =====
+                if view == "browse": VerticalLayout {
+                    spacing: 20px;
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Ruh hâli ve türler"; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                        Text { text: browse-title; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; }
+                    }
+                    if coll-loading: Text { text: "Listeler getiriliyor…"; font-size: 14px; color: Theme.text-secondary; }
+                    grid := Rectangle {
+                        property <length> gap: 20px;
+                        property <int> cols: Math.max(3, Math.floor((self.width + gap) / (176px + gap)));
+                        property <length> cell-w: (self.width - gap * (cols - 1)) / cols;
+                        height: Math.ceil(browse-cards.length / cols) * (cell-w + 52px + gap);
+                        for c[i] in browse-cards: CardTile {
+                            x: Math.mod(i, grid.cols) * (grid.cell-w + grid.gap);
+                            y: Math.floor(i / grid.cols) * (grid.cell-w + 52px + grid.gap);
+                            width: grid.cell-w; height: grid.cell-w + 52px;
+                            card: c;
+                            clicked => { root.open-browse-card(i); }
                         }
                     }
                 }
@@ -638,7 +769,7 @@ export component AppWindow inherits Window {
                 }
 
                 // ===== Henüz yapılmayan ekranlar =====
-                if view != "home" && view != "search" && view != "settings" && view != "import" && view != "playlist" && view != "lyrics": Rectangle {
+                if view != "home" && view != "search" && view != "settings" && view != "import" && view != "playlist" && view != "lyrics" && view != "collection" && view != "browse": Rectangle {
                     height: 420px;
                     VerticalLayout {
                         alignment: center; spacing: 8px;

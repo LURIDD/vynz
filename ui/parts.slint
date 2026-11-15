@@ -20,9 +20,20 @@ export struct Track {
     has-art: bool,
 }
 
+// Şarkı olmayan kart: kind 0 liste, 1 albüm, 2 sanatçı, 3 ruh hâli, 4 kayıtlı liste
+export struct CardUi {
+    key: string,
+    kind: int,
+    title: string,
+    sub: string,
+    art: image,
+    has-art: bool,
+}
+
 export struct Shelf {
     title: string,
     items: [Track],
+    cards: [CardUi],
     // 0 kart rafı, 1 hızlı seçim kutucukları
     style: int,
 }
@@ -486,5 +497,101 @@ export component MenuItem inherits Rectangle {
         padding-left: 10px; padding-right: 12px; spacing: 10px;
         Icon { y: 9px; width: 18px; height: 18px; commands: root.icon; stroke: ta.has-hover ? Theme.text-primary : Theme.text-secondary; }
         Text { text: root.text; vertical-alignment: center; font-size: 13px; font-weight: 600; color: Theme.text-primary; }
+    }
+}
+
+// Liste / albüm / sanatçı kartı (sanatçı yuvarlak)
+export component CardTile inherits Rectangle {
+    in property <CardUi> card;
+    callback clicked;
+    callback hovered(bool);
+    property <bool> round: card.kind == 2;
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+        changed has-hover => { root.hovered(self.has-hover); }
+    }
+    Rectangle {
+        x: -10px; width: parent.width + 20px; height: parent.height + 10px;
+        y: (ta.has-hover ? -4px : 0px) - 10px;
+        animate y, background { duration: Theme.card; easing: ease-out; }
+        border-radius: Theme.r-md;
+        background: ta.has-hover ? Theme.surface-1 : transparent;
+        drop-shadow-blur: 36px; drop-shadow-offset-y: 18px;
+        drop-shadow-color: ta.has-hover ? #0000008c : transparent;
+        animate drop-shadow-color { duration: Theme.card; }
+    }
+    Rectangle {
+        y: ta.has-hover ? -4px : 0px;
+        animate y { duration: Theme.card; easing: ease-out; }
+        VerticalLayout {
+            spacing: 10px; alignment: start;
+            Cover {
+                art: root.card.art; has-art: root.card.has-art;
+                width: root.width; height: root.width;
+                radius: root.round ? root.width / 2 : Theme.r-md;
+                drop-shadow-blur: 24px; drop-shadow-offset-y: 10px; drop-shadow-color: #00000059;
+            }
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: root.card.title; overflow: elide; font-size: 14.5px; font-weight: 700; color: Theme.text-primary;
+                    horizontal-alignment: root.round ? center : left;
+                }
+                Text {
+                    text: root.card.sub; overflow: elide; font-size: 12.5px; color: Theme.text-secondary;
+                    horizontal-alignment: root.round ? center : left;
+                }
+            }
+        }
+    }
+}
+
+// Ruh hâli / tür kutucuğu: sıraya göre renk
+export component MoodTile inherits Rectangle {
+    in property <CardUi> card;
+    in property <int> index;
+    callback clicked;
+    callback hovered(bool);
+    property <[color]> palette: [#E76F51, #2A9D8F, #8E7DBE, #E9C46A, #457B9D, #F4A261, #D1495B, #43AA8B, #6D597A, #EF8354, #4D908E, #B5838D];
+    property <color> c: palette[Math.mod(index, 12)];
+
+    border-radius: Theme.r-md;
+    clip: true;
+    background: @linear-gradient(135deg, c 0%, c.darker(0.6) 100%);
+    opacity: ta.has-hover ? 1 : 0.9;
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+        changed has-hover => { root.hovered(self.has-hover); }
+    }
+    Text {
+        x: 16px; y: parent.height - self.height - 12px;
+        width: parent.width - 32px;
+        text: root.card.title; font-family: Theme.display; font-size: 16px; font-weight: 800;
+        color: #FFFFFF; overflow: elide;
+    }
+    Rectangle {
+        x: parent.width - 34px; y: -10px; width: 52px; height: 52px; border-radius: 26px;
+        background: #ffffff1f;
+    }
+}
+
+// Rafın sağında/solunda beliren ok
+export component PagerArrow inherits Rectangle {
+    in property <bool> left;
+    in property <bool> shown;
+    out property <bool> hovering: ta.has-hover;
+    callback clicked;
+    width: 40px; height: 40px; border-radius: 20px;
+    background: ta.has-hover ? #FFFFFF : Theme.floating;
+    opacity: shown ? 1 : 0;
+    animate opacity, background { duration: Theme.micro; }
+    drop-shadow-blur: 18px; drop-shadow-offset-y: 6px; drop-shadow-color: #00000099;
+    ta := TouchArea { enabled: root.shown; mouse-cursor: pointer; clicked => { root.clicked(); } }
+    Icon {
+        commands: root.left ? Icons.chevron-left : Icons.chevron-right;
+        stroke: ta.has-hover ? Theme.on-primary : Theme.text-primary; stroke-width: 2px;
     }
 }
