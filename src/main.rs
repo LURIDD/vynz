@@ -50,6 +50,8 @@ struct State {
     resolver: Resolver,
     settings: Settings,
     art_tx: mpsc::Sender<(String, String)>,
+    /// Açık sayfanın kapakları: arka plan kuyruğunun önüne geçer
+    art_hot: mpsc::Sender<(String, String)>,
     shelves: Vec<Section>,
     results: Vec<TrackInfo>,
     queue: Vec<TrackInfo>,
@@ -95,6 +97,10 @@ struct State {
     mix: Vec<TrackInfo>,
     /// Açık koleksiyon (liste/albüm/sanatçı): başlık, kart, şarkılar
     coll: Option<(Card, Vec<TrackInfo>)>,
+    /// Açık sanatçı sayfası: kart, popüler şarkılar, raflar
+    artist: Option<(Card, Vec<TrackInfo>, Vec<Section>)>,
+    /// Yüklenmesi beklenen afişin anahtarı
+    banner_key: String,
     /// Ruh hâli sayfasındaki listeler
     browse: Vec<Card>,
     /// Son ana sayfa verisi (kayıtlı listeler değişince yeniden dizmek için)
@@ -256,6 +262,15 @@ fn request_art(st: &mut State, t: &TrackInfo) {
     let _ = st.art_tx.send((key, t.thumb.clone()));
 }
 
+/// Açık sayfadaki kapak: arka plan kuyruğunu beklemeden yüklensin.
+fn request_art_hot(st: &mut State, key: String, url: &str) {
+    if url.is_empty() || ARTS.with(|a| a.borrow().contains_key(&key)) {
+        return;
+    }
+    st.requested.insert(key.clone());
+    let _ = st.art_hot.send((key, url.to_string()));
+}
+
 fn toast(ui: &AppWindow, msg: &str) {
     ui.set_toast(msg.into());
     let weak = ui.as_weak();
@@ -270,21 +285,41 @@ fn toast(ui: &AppWindow, msg: &str) {
 
 // ---------- Kapaklar ----------
 
-fn start_art_pool(weak: Weak<AppWindow>) -> mpsc::Sender<(String, String)> {
+type ArtTx = mpsc::Sender<(String, String)>;
+
+/// Kapak işçileri: önce "sıcak" kuyruk (açık sayfa), sonra arka plan kuyruğu.
+fn start_art_pool(weak: Weak<AppWindow>) -> (ArtTx, ArtTx) {
     let (tx, rx) = mpsc::channel::<(String, String)>();
+    let (hot_tx, hot_rx) = mpsc::channel::<(String, String)>();
     let rx = Arc::new(Mutex::new(rx));
+    let hot_rx = Arc::new(Mutex::new(hot_rx));
     for _ in 0..6 {
         let rx = rx.clone();
+        let hot_rx = hot_rx.clone();
         let weak = weak.clone();
         thread::spawn(move || loop {
-            let job = rx.lock().unwrap().recv();
+            let hot = hot_rx.lock().unwrap().try_recv();
+            let job = match hot {
+                Ok(j) => Ok(j),
+                Err(mpsc::TryRecvError::Disconnected) => break,
+                Err(mpsc::TryRecvError::Empty) => match rx.lock().unwrap().recv_timeout(Duration::from_millis(60)) {
+                    Ok(j) => Ok(j),
+                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => Err(()),
+                },
+            };
             let Ok((key, url)) = job else { break };
             // "B|" önekli istek: çalan şarkının büyük kapağı (aynı önbellek dosyası).
-            let (file_key, size) = match key.strip_prefix("B|") {
-                Some(k) => (k.to_string(), art::BIG),
-                None => (key.clone(), art::SMALL),
+            let res = if let Some(k) = key.strip_prefix("W|") {
+                art::load_wide(k, &url, 1440, 600)
+            } else {
+                let (file_key, size) = match key.strip_prefix("B|") {
+                    Some(k) => (k.to_string(), art::BIG),
+                    None => (key.clone(), art::SMALL),
+                };
+                art::load(&file_key, &url, size)
             };
-            match art::load(&file_key, &url, size) {
+            match res {
                 Ok(a) => {
                     let _ = weak.upgrade_in_event_loop(move |ui| apply_art(&ui, key, a));
                 }
@@ -292,7 +327,7 @@ fn start_art_pool(weak: Weak<AppWindow>) -> mpsc::Sender<(String, String)> {
             }
         });
     }
-    tx
+    (tx, hot_tx)
 }
 
 fn update_rows(model: &ModelRc<Track>, key: &str, img: &Image) {
@@ -320,6 +355,14 @@ fn update_cards(model: &ModelRc<CardUi>, key: &str, img: &Image) {
 }
 
 fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
+    if let Some(k) = key.strip_prefix("W|") {
+        if with_state(|st| st.banner_key == k) {
+            let img = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.rgba, a.width, a.height));
+            ui.set_artist_banner(img);
+            ui.set_has_banner(true);
+        }
+        return;
+    }
     if let Some(k) = key.strip_prefix("B|") {
         let img = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.rgba, a.width, a.height));
         BIGS.with(|m| {
@@ -363,6 +406,13 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
         ui.set_search_top(t);
     }
     update_rows(&ui.get_coll_tracks(), &key, &img);
+    update_rows(&ui.get_artist_tracks(), &key, &img);
+    let ash = ui.get_artist_shelves();
+    for i in 0..ash.row_count() {
+        if let Some(s) = ash.row_data(i) {
+            update_cards(&s.cards, &key, &img);
+        }
+    }
     update_rows(&ui.get_results(), &key, &img);
     update_rows(&ui.get_queue(), &key, &img);
     update_rows(&ui.get_playlist_tracks(), &key, &img);
@@ -1366,6 +1416,7 @@ fn menu_target(st: &State, kind: i32, a: i32, b: i32) -> Option<TrackInfo> {
         2 => st.current_pl.and_then(|p| st.playlists.get(p)).and_then(|p| p.tracks.get(a)).cloned(),
         3 => st.queue.get(a).cloned(),
         4 => st.coll.as_ref().and_then(|c| c.1.get(a)).cloned(),
+        5 => st.artist.as_ref().and_then(|c| c.1.get(a)).cloned(),
         _ => None,
     }
 }
@@ -1623,6 +1674,110 @@ fn open_sheet(ui: &AppWindow, kind: &str) {
     ui.set_sheet_gen(ui.get_sheet_gen() + 1);
 }
 
+/// Sanatçı sayfası: afiş, popüler şarkılar, albümler, single'lar, benzer sanatçılar, hakkında.
+fn open_artist(ui: &AppWindow, c: Card) {
+    ui.set_artist_name(c.title.as_str().into());
+    ui.set_artist_sub("".into());
+    ui.set_artist_desc("".into());
+    ui.set_artist_tracks(ModelRc::new(VecModel::from(Vec::<Track>::new())));
+    ui.set_artist_shelves(ModelRc::new(VecModel::from(Vec::<Shelf>::new())));
+    ui.set_has_banner(false);
+    ui.set_artist_expanded(false);
+    ui.set_artist_loading(true);
+    open_sheet(ui, "artist");
+    let seq = with_state(|st| {
+        st.coll_gen += 1;
+        st.artist = None;
+        st.banner_key = format!("banner-{}", c.art_key());
+        st.coll_gen
+    });
+    let resolver = with_state(|st| st.resolver.clone());
+    let weak = ui.as_weak();
+    let req = serde_json::json!({"op": "collection", "kind": "artist", "key": c.key});
+    resolver.request(req, Prio::Now, Box::new(move |res| {
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            if with_state(|st| st.coll_gen) != seq {
+                return;
+            }
+            ui.set_artist_loading(false);
+            let d = match res {
+                Ok(d) => d,
+                Err(e) => {
+                    toast(&ui, &format!("Sanatçı açılamadı: {e}"));
+                    return;
+                }
+            };
+            let text = |k: &str| d.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let tracks: Vec<TrackInfo> = d.get("tracks").and_then(|x| x.as_array()).map(|a| a.iter().filter_map(track_from_json).collect()).unwrap_or_default();
+            let shelves: Vec<Section> = d
+                .get("shelves")
+                .and_then(|x| x.as_array())
+                .map(|a| {
+                    a.iter()
+                        .map(|s| Section {
+                            title: s.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                            items: Vec::new(),
+                            cards: cards_from_json(s.get("cards")),
+                            style: s.get("style").and_then(|x| x.as_i64()).unwrap_or(2) as i32,
+                        })
+                        .filter(|s| !s.cards.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let name = text("title");
+            if !name.is_empty() {
+                ui.set_artist_name(name.into());
+            }
+            ui.set_artist_sub(text("sub").into());
+            ui.set_artist_desc(text("desc").into());
+            let banner = text("banner");
+            with_state(|st| {
+                for t in tracks.iter().take(12) {
+                    request_art_hot(st, t.key(), &t.thumb);
+                }
+                for t in tracks.iter().take(2) {
+                    speculate(st, t);
+                }
+                for s in &shelves {
+                    for c in s.cards.iter().take(8) {
+                        request_art_hot(st, c.art_key(), &c.thumb);
+                    }
+                }
+                st.artist = Some((c, tracks.clone(), shelves.clone()));
+            });
+            // Afiş kapak kuyruğunu beklemesin: kendi iş parçacığında.
+            if !banner.is_empty() {
+                let key = format!("W|{}", with_state(|st| st.banner_key.clone()));
+                let weak = ui.as_weak();
+                thread::spawn(move || {
+                    if let Ok(a) = art::load_wide(&key[2..], &banner, 1440, 600) {
+                        let _ = weak.upgrade_in_event_loop(move |ui| apply_art(&ui, key, a));
+                    }
+                });
+            }
+            ui.set_artist_tracks(model_of(&tracks));
+            let sh: Vec<Shelf> = shelves.iter().map(|s| Shelf { title: s.title.as_str().into(), items: model_of(&s.items), cards: cards_of(&s.cards), style: s.style }).collect();
+            ui.set_artist_shelves(ModelRc::new(VecModel::from(sh)));
+            // Test kancası: sanal masaüstünde tekerlek Slint'e ulaşmıyor.
+            if let Some(px) = std::env::var("VYNZ_SHEET_SCROLL").ok().and_then(|v| v.parse::<f32>().ok()) {
+                ui.set_scroll_request(px);
+            }
+        });
+    }));
+}
+
+/// Basit karıştırma (xorshift; ek bağımlılık gerekmez).
+fn shuffled(mut v: Vec<TrackInfo>) -> Vec<TrackInfo> {
+    let mut x = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7) | 1;
+    for i in (1..v.len()).rev() {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        v.swap(i, (x % (i as u64 + 1)) as usize);
+    }
+    v
+}
+
 fn close_sheets(ui: &AppWindow) {
     with_state(|st| st.sheets.clear());
     ui.set_sheet("".into());
@@ -1635,6 +1790,7 @@ fn sheet_back(ui: &AppWindow) {
         st.sheets.last().cloned()
     });
     ui.set_coll_loading(false);
+    ui.set_artist_loading(false);
     ui.set_sheet(top.unwrap_or_default().into());
 }
 
@@ -1645,6 +1801,10 @@ fn open_card(ui: &AppWindow, c: Card) {
             close_sheets(ui);
             ui.set_view("playlist".into());
         }
+        return;
+    }
+    if c.kind == "artist" {
+        open_artist(ui, c);
         return;
     }
     let mood = c.kind == "mood";
@@ -1683,7 +1843,7 @@ fn open_card(ui: &AppWindow, c: Card) {
                 let cards = cards_from_json(d.get("cards"));
                 with_state(|st| {
                     for c in cards.iter().take(40) {
-                        request_card_art(st, c);
+                        request_art_hot(st, c.art_key(), &c.thumb);
                     }
                     st.browse = cards.clone();
                 });
@@ -1695,7 +1855,7 @@ fn open_card(ui: &AppWindow, c: Card) {
                 }
                 with_state(|st| {
                     for t in tracks.iter().take(40) {
-                        request_art(st, t);
+                        request_art_hot(st, t.key(), &t.thumb);
                     }
                     for t in tracks.iter().take(2) {
                         speculate(st, t);
@@ -2437,13 +2597,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    let pool = start_art_pool(weak.clone());
     STATE.with(|s| {
         *s.borrow_mut() = Some(State {
             providers: vec![Arc::new(Ytm), Arc::new(SoundCloud)],
             player,
             resolver: resolver.clone(),
             settings,
-            art_tx: start_art_pool(weak.clone()),
+            art_tx: pool.0,
+            art_hot: pool.1,
             shelves: Vec::new(),
             results: Vec::new(),
             queue: Vec::new(),
@@ -2477,6 +2639,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             menu: None,
             mix: Vec::new(),
             coll: None,
+            artist: None,
+            banner_key: String::new(),
             browse: Vec::new(),
             home: HomeData::default(),
             viz: None,
@@ -2735,6 +2899,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !list.is_empty() {
                     play_list(&ui, list, i.max(0) as usize);
                 }
+            }
+        }
+    });
+    ui.on_play_artist({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let list = with_state(|st| st.artist.as_ref().map(|a| a.1.clone())).unwrap_or_default();
+            if !list.is_empty() {
+                play_list(&ui, list, i.max(0) as usize);
+            }
+        }
+    });
+    ui.on_shuffle_artist({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let list = with_state(|st| st.artist.as_ref().map(|a| a.1.clone())).unwrap_or_default();
+            if !list.is_empty() {
+                play_list(&ui, shuffled(list), 0);
+            }
+        }
+    });
+    ui.on_radio_artist({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(t) = with_state(|st| st.artist.as_ref().and_then(|a| a.1.first().cloned())) {
+                start_radio(&ui, t);
+            }
+        }
+    });
+    ui.on_open_artist_card({
+        let weak = weak.clone();
+        move |si, i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let c = with_state(|st| st.artist.as_ref().and_then(|a| a.2.get(si as usize)).and_then(|s| s.cards.get(i as usize)).cloned());
+            if let Some(c) = c {
+                open_card(&ui, c);
             }
         }
     });

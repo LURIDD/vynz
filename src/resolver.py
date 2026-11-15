@@ -9,6 +9,7 @@
 #         {"rid": 1, "ok": false, "error": "..."}
 
 import json
+import re
 import queue
 import sys
 import threading
@@ -196,23 +197,65 @@ def collection(kind, key):
             t["album"] = t["album"] or a.get("title") or ""
         return {"title": a.get("title") or "", "sub": names(a), "tracks": tracks}
     if kind == "artist":
-        a = y.get_artist(key)
-        songs = a.get("songs") or {}
-        res = []
-        if songs.get("browseId"):
-            try:
-                res = y.get_playlist(songs["browseId"], limit=60).get("tracks") or []
-            except Exception:  # noqa: BLE001
-                res = []
-        if not res:
-            res = songs.get("results") or []
-        return {"title": a.get("name") or "", "sub": "Sanatçının en sevilen şarkıları", "tracks": [x for x in (track_of(t) for t in res) if x]}
+        return artist_page(y, key)
     if kind == "mood":
         pls = y.get_mood_playlists(key)
         cards = [{"kind": "playlist", "key": p["playlistId"], "title": p.get("title") or "", "sub": p.get("description") or "", "thumb": thumb_of(p)} for p in pls if p.get("playlistId")]
         return {"title": "", "sub": "", "cards": cards}
     p = y.get_playlist(key, limit=200)
     return {"title": p.get("title") or "", "sub": (p.get("author") or {}).get("name") if isinstance(p.get("author"), dict) else "", "tracks": [x for x in (track_of(t) for t in p.get("tracks") or []) if x]}
+
+
+def artist_page(y, key):
+    a = y.get_artist(key)
+    songs = a.get("songs") or {}
+    res = []
+    if songs.get("browseId"):
+        try:
+            res = y.get_playlist(songs["browseId"], limit=50).get("tracks") or []
+        except Exception:  # noqa: BLE001
+            res = []
+    if not res:
+        res = songs.get("results") or []
+    name = a.get("name") or ""
+    tracks = [x for x in (track_of(t) for t in res) if x][:50]
+    for t in tracks:
+        t["artist"] = t["artist"] or name
+
+    def releases(v, default):
+        out = []
+        for r in items(v):
+            if not r.get("browseId"):
+                continue
+            sub = " · ".join(x for x in [r.get("type") or default, str(r.get("year") or "")] if x)
+            out.append({"kind": "album", "key": r["browseId"], "title": r.get("title") or "", "sub": sub, "thumb": thumb_of(r)})
+        return out
+
+    related = []
+    for r in items(a.get("related")):
+        if r.get("browseId"):
+            related.append({"kind": "artist", "key": r["browseId"], "title": r.get("title") or "", "sub": r.get("subscribers") or "", "thumb": thumb_of(r)})
+    shelves = []
+    for title, style, cards in (
+        ("Albümler", 2, releases(a.get("albums"), "Albüm")),
+        ("Single ve EP'ler", 2, releases(a.get("singles"), "Single")),
+        ("Benzer sanatçılar", 3, related),
+    ):
+        if cards:
+            shelves.append({"title": title, "style": style, "cards": cards})
+    listeners = (a.get("monthlyListeners") or "").replace("Aylık kitle:", "").strip()
+    sub = f"Aylık {listeners} dinleyici" if listeners else (f"{a['subscribers']} abone" if a.get("subscribers") else "")
+    desc = " ".join((a.get("description") or "").split())
+    if len(desc) > 420:
+        desc = desc[:420].rsplit(" ", 1)[0] + "…"
+    return {
+        "title": name,
+        "sub": sub,
+        "desc": desc,
+        "banner": re.sub(r"=w\d+-h\d+", "=w1440-h600", thumb_of(a)),
+        "tracks": tracks,
+        "shelves": shelves,
+    }
 
 
 def search(q):

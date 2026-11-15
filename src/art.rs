@@ -30,6 +30,22 @@ pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
     if url.is_empty() {
         return Err("kapak yok".into());
     }
+    let bytes = fetch(key, url)?;
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?.to_rgba8();
+    // YouTube video küçük resimlerindeki siyah bantları (letterbox) kes.
+    let (x, y, w, h) = content_box(&img);
+    let img = image::DynamicImage::ImageRgba8(image::imageops::crop_imm(&img, x, y, w, h).to_image());
+    let img = img.resize_to_fill(size, size, image::imageops::FilterType::Triangle).to_rgba8();
+    let accent = accent_of(&img);
+    // Ucuz bulanıklık: küçült, bulanıklaştır; arayüz büyütünce yumuşak görünür.
+    let small = image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle);
+    let blur = image::imageops::blur(&small, 6.0).into_raw();
+    let (width, height) = img.dimensions();
+    Ok(Art { rgba: img.into_raw(), width, height, accent, blur })
+}
+
+/// Görseli önbellekten ya da ağdan getir (ham bayt).
+fn fetch(key: &str, url: &str) -> Result<Vec<u8>, String> {
     let dir = cache_dir();
     let path = dir.join(format!("{key}.img"));
     let bytes = match std::fs::read(&path) {
@@ -53,17 +69,19 @@ pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
             b
         }
     };
-    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?.to_rgba8();
-    // YouTube video küçük resimlerindeki siyah bantları (letterbox) kes.
-    let (x, y, w, h) = content_box(&img);
-    let img = image::DynamicImage::ImageRgba8(image::imageops::crop_imm(&img, x, y, w, h).to_image());
-    let img = img.resize_to_fill(size, size, image::imageops::FilterType::Triangle).to_rgba8();
-    let accent = accent_of(&img);
-    // Ucuz bulanıklık: küçült, bulanıklaştır; arayüz büyütünce yumuşak görünür.
-    let small = image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle);
-    let blur = image::imageops::blur(&small, 6.0).into_raw();
+    Ok(bytes)
+}
+
+/// Sanatçı sayfasının geniş afişi (kırpma yok, vurgu ve bulanıklık hesaplanmaz).
+pub fn load_wide(key: &str, url: &str, w: u32, h: u32) -> Result<Art, String> {
+    if url.is_empty() {
+        return Err("afiş yok".into());
+    }
+    let bytes = fetch(key, url)?;
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let img = img.resize_to_fill(w, h, image::imageops::FilterType::Triangle).to_rgba8();
     let (width, height) = img.dimensions();
-    Ok(Art { rgba: img.into_raw(), width, height, accent, blur })
+    Ok(Art { rgba: img.into_raw(), width, height, accent: (0, 0, 0), blur: Vec::new() })
 }
 
 /// Kenarlardaki neredeyse siyah satır/sütunları atlayan içerik kutusu.

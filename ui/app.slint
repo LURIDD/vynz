@@ -282,7 +282,12 @@ export component AppWindow inherits Window {
 
     // Kaydırma isteği (test ve ileride "başa dön" için)
     in property <length> scroll-request;
-    changed scroll-request => { flick.content-y = -scroll-request; }
+    changed scroll-request => {
+        if (sheet == "artist") { artist-flick.content-y = -scroll-request; }
+        else if (sheet == "collection") { coll-flick.content-y = -scroll-request; }
+        else if (sheet == "browse") { browse-flick.content-y = -scroll-request; }
+        else { flick.content-y = -scroll-request; }
+    }
     // Sayfa değişince en üstten başla
     changed view => { flick.content-y = 0; root.view-changed(view); }
     callback view-changed(string);
@@ -323,8 +328,24 @@ export component AppWindow inherits Window {
     changed sheet-gen => {
         if (sheet == "collection") { coll-flick.content-y = 0; }
         if (sheet == "browse") { browse-flick.content-y = 0; }
+        if (sheet == "artist") { artist-flick.content-y = 0; }
     }
     callback sheet-back();
+
+    // Sanatçı sayfası
+    in property <string> artist-name;
+    in property <string> artist-sub;
+    in property <string> artist-desc;
+    in property <image> artist-banner;
+    in property <bool> has-banner;
+    in property <bool> artist-loading;
+    in-out property <bool> artist-expanded;
+    in property <[Track]> artist-tracks;
+    in property <[Shelf]> artist-shelves;
+    callback play-artist(int);
+    callback shuffle-artist();
+    callback radio-artist();
+    callback open-artist-card(int, int);
 
     // Gezinme: sayfa geçmişi (geri)
     in property <bool> can-back;
@@ -1194,6 +1215,91 @@ export component AppWindow inherits Window {
                             }
                         }
 
+            }
+        }
+        artist-flick := Flickable {
+            visible: sheet == "artist";
+            content-width: self.width;
+            content-height: artist-body.preferred-height;
+            artist-body := VerticalLayout {
+                width: artist-flick.width;
+                padding-bottom: Theme.player-clearance + 24px;
+                spacing: 32px;
+                // Afiş ve kimlik: yuvarlak köşeli kart (kenarı bilinçli; zeminle karışmaya çalışmaz)
+                HorizontalLayout {
+                padding-left: 24px; padding-right: 24px; padding-top: 4px;
+                Rectangle {
+                    height: Math.min(380px, Math.max(280px, artist-flick.width * 0.3));
+                    border-radius: Theme.r-xl;
+                    clip: true;
+                    background: Theme.surface-1;
+                    if has-banner: Image {
+                        width: parent.width; height: parent.height;
+                        source: artist-banner; image-fit: cover;
+                    }
+                    if !has-banner: Rectangle {
+                        background: @linear-gradient(160deg, Theme.accent.with-alpha(0.28) 0%, Theme.accent.with-alpha(0.06) 55%, transparent 100%);
+                    }
+                    Rectangle { background: @linear-gradient(180deg, #090A0D66 0%, #090A0D00 28%, #090A0D99 66%, #090A0Df0 100%); }
+                    Rectangle { background: @linear-gradient(90deg, #090A0Dcc 0%, #090A0D33 50%, transparent 75%); }
+                    IconButton { x: 16px; y: 16px; icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.sheet-back(); } }
+                    VerticalLayout {
+                        x: 36px; width: parent.width - 72px;
+                        height: self.preferred-height;
+                        y: parent.height - self.height - 30px;
+                        spacing: 6px;
+                        Text { text: "Sanatçı"; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                        Text { text: artist-name; font-family: Theme.display; font-size: 64px; font-weight: 800; letter-spacing: -2.4px; color: Theme.text-primary; overflow: elide; }
+                        Text { text: artist-loading ? "Yükleniyor…" : artist-sub; font-size: 14px; color: Theme.text-secondary; }
+                        Rectangle { height: 10px; }
+                        HorizontalLayout {
+                            spacing: 10px; alignment: start;
+                            PillButton { text: "Çal"; primary: true; enabled: artist-tracks.length > 0; clicked => { root.play-artist(0); } }
+                            PillButton { text: "Karıştır"; enabled: artist-tracks.length > 0; clicked => { root.shuffle-artist(); } }
+                            PillButton { text: radio-busy ? "Radyo hazırlanıyor…" : "Sanatçı radyosu"; enabled: artist-tracks.length > 0 && !radio-busy; clicked => { root.radio-artist(); } }
+                        }
+                    }
+                }
+                }
+                VerticalLayout {
+                    padding-left: 36px; padding-right: 36px; spacing: 36px;
+                    // İskelet
+                    if artist-loading: VerticalLayout {
+                        spacing: 10px;
+                        for k in 5: Rectangle { height: 44px; border-radius: Theme.r-sm; background: Theme.surface-1; opacity: 1 - k * 0.15; }
+                    }
+                    if artist-tracks.length > 0: VerticalLayout {
+                        spacing: 12px;
+                        HorizontalLayout {
+                            Text { text: "Popüler"; horizontal-stretch: 1; vertical-alignment: center; font-family: Theme.display; font-size: 21px; font-weight: 700; color: Theme.text-primary; }
+                            if artist-tracks.length > 5: PillButton {
+                                pill-height: 30px;
+                                text: artist-expanded ? "Daha az" : "Tümünü göster (" + artist-tracks.length + ")";
+                                clicked => { artist-expanded = !artist-expanded; }
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 0px;
+                            for t[i] in artist-tracks: TrackRow {
+                                height: i < (artist-expanded ? 50 : 5) ? 56px : 0px;
+                                visible: i < (artist-expanded ? 50 : 5);
+                                track: t; index: i;
+                                playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                                clicked => { root.play-artist(i); }
+                                menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(5, i, 0); }
+                            }
+                        }
+                    }
+                    for sh[si] in artist-shelves: ShelfRow {
+                        shelf: sh; now-key: has-now ? now.key : ""; wide: artist-flick.width > 1150px;
+                        open(i) => { root.open-artist-card(si, i); }
+                    }
+                    if artist-desc != "": VerticalLayout {
+                        spacing: 10px;
+                        Text { text: "Hakkında"; font-family: Theme.display; font-size: 21px; font-weight: 700; color: Theme.text-primary; }
+                        Text { text: artist-desc; wrap: word-wrap; font-size: 14px; color: Theme.text-secondary; }
+                    }
+                }
             }
         }
     }
