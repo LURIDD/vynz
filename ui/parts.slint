@@ -63,6 +63,12 @@ export struct LyricWord {
     row: int,
 }
 
+export struct ArtistStat {
+    name: string,
+    label: string,
+    frac: float,
+}
+
 export struct PlaylistInfo {
     name: string,
     count: int,
@@ -104,17 +110,24 @@ export component Cover inherits Rectangle {
     }
 }
 
+// Çalan şarkı göstergesi. Her karede değil, saniyede ~4 kez güncellenir (işlemci için).
 export component EqBars inherits Rectangle {
     in property <bool> running: true;
+    property <int> tick;
     width: 16px;
     height: 14px;
+    Timer {
+        interval: 260ms;
+        running: root.running;
+        triggered => { root.tick += 1; }
+    }
     for i in 3: Rectangle {
         x: i * 5.5px;
         width: 3px;
         border-radius: 1.5px;
         background: Theme.accent;
         property <float> phase: running
-            ? Math.abs(Math.sin((animation-tick() / 1ms) * (0.25 + i * 0.07) * 1deg + i * 50deg))
+            ? Math.abs(Math.sin((root.tick * (37 + i * 23) + i * 50) * 1deg))
             : 0.35 + i * 0.2;
         height: parent.height * (0.25 + 0.75 * phase);
         y: parent.height - self.height;
