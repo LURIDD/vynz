@@ -309,6 +309,15 @@ export component AppWindow inherits Window {
     in property <[CardUi]> browse-cards;
     callback open-browse-card(int);
 
+    // Üst sayfa: "" kapalı, "browse" ya da "collection". sheet-gen artınca o sayfa başa döner.
+    in-out property <string> sheet;
+    in property <int> sheet-gen;
+    changed sheet-gen => {
+        if (sheet == "collection") { coll-flick.content-y = 0; }
+        if (sheet == "browse") { browse-flick.content-y = 0; }
+    }
+    callback sheet-back();
+
     // Gezinme: sayfa geçmişi (geri)
     in property <bool> can-back;
     callback go-back();
@@ -317,6 +326,7 @@ export component AppWindow inherits Window {
         lyrics-open = false;
         menu-open = false;
         drawer-open = false;
+        sheet = "";
         view = v;
     }
 
@@ -350,12 +360,13 @@ export component AppWindow inherits Window {
             if (search-input.has-focus) { keys.focus(); return accept; }
             if (lyrics-open) { lyrics-open = false; return accept; }
             if (drawer-open) { drawer-open = false; return accept; }
+            if (sheet != "") { root.sheet-back(); return accept; }
             return accept;
         }
         if (search-input.has-focus) { return reject; }
         if (e.text == "/") { search-input.focus(); return accept; }
         if (e.text == " ") { root.toggle-play(); return accept; }
-        if (e.modifiers.alt && e.text == Key.LeftArrow) { root.go-back(); return accept; }
+        if (e.modifiers.alt && e.text == Key.LeftArrow) { if (sheet != "") { root.sheet-back(); } else { root.go-back(); } return accept; }
         if (e.modifiers.control && e.text == Key.RightArrow) { root.next(); return accept; }
         if (e.modifiers.control && e.text == Key.LeftArrow) { root.prev(); return accept; }
         if (e.text == "l" || e.text == "L") { lyrics-open = !lyrics-open; return accept; }
@@ -516,6 +527,9 @@ export component AppWindow inherits Window {
 
         flick := Flickable {
             x: 0; y: 60px; width: parent.width; height: parent.height - 60px;
+            opacity: sheet == "" ? 1 : 0;
+            visible: self.opacity > 0;
+            animate opacity { duration: 140ms; }
             content-width: self.width;
             content-height: content.preferred-height;
 
@@ -586,69 +600,6 @@ export component AppWindow inherits Window {
                         open(i) => { root.open-card(si, i); }
                         hover(i, on) => { root.hover-shelf(si, i, on); }
                         menu(i, x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(0, si, i); }
-                    }
-                }
-
-                // ===== Koleksiyon: liste / albüm / sanatçı =====
-                if view == "collection": VerticalLayout {
-                    spacing: 20px;
-                    HorizontalLayout {
-                        spacing: 16px;
-                        VerticalLayout {
-                            horizontal-stretch: 1; spacing: 4px;
-                            HorizontalLayout {
-                                spacing: 8px; alignment: start;
-                                if can-back: IconButton { icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.go-back(); } }
-                                Text { text: coll-kind == 1 ? "Albüm" : coll-kind == 2 ? "Sanatçı" : "Liste"; vertical-alignment: center; font-size: 12px; font-weight: 700; color: Theme.accent; }
-                            }
-                            Text { text: coll-title; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; overflow: elide; }
-                            Text { text: coll-loading ? "Yükleniyor…" : coll-sub + (coll-sub != "" ? " · " : "") + coll-tracks.length + " şarkı"; font-size: 14px; color: Theme.text-secondary; overflow: elide; }
-                        }
-                        VerticalLayout {
-                            alignment: end;
-                            HorizontalLayout {
-                                spacing: 10px;
-                                PillButton { text: "Çal"; primary: true; enabled: coll-tracks.length > 0; clicked => { root.play-collection(0); } }
-                                PillButton { text: "Listelerim'e kaydet"; enabled: coll-tracks.length > 0; clicked => { root.save-collection(); } }
-                            }
-                        }
-                    }
-                    VerticalLayout {
-                        spacing: 0px;
-                        for t[i] in coll-tracks: TrackRow {
-                            track: t; index: i;
-                            playing: has-now && t.key == now.key; is-running: playing && !buffering;
-                            clicked => { root.play-collection(i); }
-                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(4, i, 0); }
-                        }
-                    }
-                }
-
-                // ===== Ruh hâli / tür: listeler =====
-                if view == "browse": VerticalLayout {
-                    spacing: 20px;
-                    VerticalLayout {
-                        spacing: 4px;
-                        HorizontalLayout {
-                            spacing: 8px; alignment: start;
-                            if can-back: IconButton { icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.go-back(); } }
-                            Text { text: "Ruh hâli ve türler"; vertical-alignment: center; font-size: 12px; font-weight: 700; color: Theme.accent; }
-                        }
-                        Text { text: browse-title; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; }
-                    }
-                    if coll-loading: Text { text: "Listeler getiriliyor…"; font-size: 14px; color: Theme.text-secondary; }
-                    grid := Rectangle {
-                        property <length> gap: 20px;
-                        property <int> cols: Math.max(3, Math.floor((self.width + gap) / (176px + gap)));
-                        property <length> cell-w: (self.width - gap * (cols - 1)) / cols;
-                        height: Math.ceil(browse-cards.length / cols) * (cell-w + 52px + gap);
-                        for c[i] in browse-cards: CardTile {
-                            x: Math.mod(i, grid.cols) * (grid.cell-w + grid.gap);
-                            y: Math.floor(i / grid.cols) * (grid.cell-w + 52px + grid.gap);
-                            width: grid.cell-w; height: grid.cell-w + 52px;
-                            card: c;
-                            clicked => { root.open-browse-card(i); }
-                        }
                     }
                 }
 
@@ -1131,6 +1082,101 @@ export component AppWindow inherits Window {
                         Text { text: "Şu an ana sayfa, arama ve oynatma hazır."; horizontal-alignment: center; font-size: 14px; color: Theme.text-secondary; }
                     }
                 }
+            }
+        }
+    }
+
+    // ---------- Üst sayfa (ruh hâli, liste, albüm, sanatçı): ana sayfanın önüne açılır ----------
+    // Alttaki sayfa ve kaydırma konumu yerinde kalır; geri/Esc üst sayfayı kapatır.
+    sheet-layer := Rectangle {
+        x: sidebar-w + (sheet != "" ? 0 : 24px); y: 60px;
+        width: root.width - sidebar-w; height: root.height - 60px;
+        opacity: sheet != "" ? 1 : 0;
+        visible: self.opacity > 0;
+        animate x, opacity { duration: 180ms; easing: ease-out; }
+        if sheet != "": TouchArea { }
+
+        coll-flick := Flickable {
+            visible: sheet == "collection";
+            content-width: self.width;
+            content-height: coll-body.preferred-height;
+            coll-body := VerticalLayout {
+                width: coll-flick.width;
+                padding-left: 36px; padding-right: 36px; padding-top: 12px;
+                padding-bottom: Theme.player-clearance + 24px;
+                        // ===== Koleksiyon: liste / albüm / sanatçı =====
+                        VerticalLayout {
+                            spacing: 20px;
+                            HorizontalLayout {
+                                spacing: 16px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1; spacing: 4px;
+                                    HorizontalLayout {
+                                        spacing: 8px; alignment: start;
+                                        IconButton { icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.sheet-back(); } }
+                                        Text { text: coll-kind == 1 ? "Albüm" : coll-kind == 2 ? "Sanatçı" : "Liste"; vertical-alignment: center; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                                    }
+                                    Text { text: coll-title; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; overflow: elide; }
+                                    Text { text: coll-loading ? "Yükleniyor…" : coll-sub + (coll-sub != "" ? " · " : "") + coll-tracks.length + " şarkı"; font-size: 14px; color: Theme.text-secondary; overflow: elide; }
+                                }
+                                VerticalLayout {
+                                    alignment: end;
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        PillButton { text: "Çal"; primary: true; enabled: coll-tracks.length > 0; clicked => { root.play-collection(0); } }
+                                        PillButton { text: "Listelerim'e kaydet"; enabled: coll-tracks.length > 0; clicked => { root.save-collection(); } }
+                                    }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 0px;
+                                for t[i] in coll-tracks: TrackRow {
+                                    track: t; index: i;
+                                    playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                                    clicked => { root.play-collection(i); }
+                                    menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(4, i, 0); }
+                                }
+                            }
+                        }
+
+            }
+        }
+        browse-flick := Flickable {
+            visible: sheet == "browse";
+            content-width: self.width;
+            content-height: browse-body.preferred-height;
+            browse-body := VerticalLayout {
+                width: browse-flick.width;
+                padding-left: 36px; padding-right: 36px; padding-top: 12px;
+                padding-bottom: Theme.player-clearance + 24px;
+                        // ===== Ruh hâli / tür: listeler =====
+                        VerticalLayout {
+                            spacing: 20px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    IconButton { icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.sheet-back(); } }
+                                    Text { text: "Ruh hâli ve türler"; vertical-alignment: center; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                                }
+                                Text { text: browse-title; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; }
+                            }
+                            if coll-loading: Text { text: "Listeler getiriliyor…"; font-size: 14px; color: Theme.text-secondary; }
+                            bgrid := Rectangle {
+                                property <length> gap: 20px;
+                                property <int> cols: Math.max(3, Math.floor((self.width + gap) / (176px + gap)));
+                                property <length> cell-w: (self.width - gap * (cols - 1)) / cols;
+                                height: Math.ceil(browse-cards.length / cols) * (cell-w + 52px + gap);
+                                for c[i] in browse-cards: CardTile {
+                                    x: Math.mod(i, bgrid.cols) * (bgrid.cell-w + bgrid.gap);
+                                    y: Math.floor(i / bgrid.cols) * (bgrid.cell-w + 52px + bgrid.gap);
+                                    width: bgrid.cell-w; height: bgrid.cell-w + 52px;
+                                    card: c;
+                                    clicked => { root.open-browse-card(i); }
+                                }
+                            }
+                        }
+
             }
         }
     }
