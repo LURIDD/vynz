@@ -18,6 +18,8 @@ mod recommend;
 mod resolve;
 mod settings;
 mod sources;
+mod stats;
+mod viz;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -96,6 +98,10 @@ struct State {
     browse: Vec<Card>,
     /// Son ana sayfa verisi (kayıtlı listeler değişince yeniden dizmek için)
     home: HomeData,
+    /// Canlı spektrum (yalnız profil ekranında, çalarken)
+    viz: Option<viz::Viz>,
+    /// Profildeki en çok dinlenen şarkılar
+    prof_tracks: Vec<TrackInfo>,
 }
 
 /// Ana sayfanın ham parçaları; ~/.cache/vynz/home.json içinde saklanır.
@@ -713,7 +719,10 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
             }
         }
         Ev::Duration(d) => ui.set_duration(d as f32),
-        Ev::Paused(p) => ui.set_playing(!p && ui.get_has_now()),
+        Ev::Paused(p) => {
+            ui.set_playing(!p && ui.get_has_now());
+            update_viz(ui);
+        }
         Ev::Buffering(b) => {
             if !b {
                 dbg("ses başladı");
@@ -1624,6 +1633,72 @@ fn delete_playlist(ui: &AppWindow, i: usize) {
     refresh_playlists(ui);
 }
 
+// ---------- Profil ve canlı spektrum ----------
+
+fn refresh_profile(ui: &AppWindow) {
+    let (s, tracks) = with_state(|st| {
+        let s = stats::compute(&st.history);
+        let tracks: Vec<TrackInfo> = s.top_tracks.iter().map(|t| t.0.clone()).collect();
+        for t in &tracks {
+            request_art(st, t);
+        }
+        st.prof_tracks = tracks.clone();
+        (s, tracks)
+    });
+    ui.set_prof_total(stats::human(s.total_secs).into());
+    ui.set_prof_week(stats::human(s.week_secs).into());
+    ui.set_prof_tracks_count(s.tracks as i32);
+    ui.set_prof_artists_count(s.artists as i32);
+    ui.set_prof_likes(s.likes as i32);
+    let max_a = s.top_artists.first().map(|a| a.1).unwrap_or(1.0).max(1.0);
+    let artists: Vec<ArtistStat> = s
+        .top_artists
+        .iter()
+        .map(|(n, secs)| ArtistStat { name: n.as_str().into(), label: stats::human(*secs).into(), frac: secs / max_a })
+        .collect();
+    ui.set_prof_top_artists(ModelRc::new(VecModel::from(artists)));
+    ui.set_prof_top_tracks(model_of(&tracks));
+    let max_h = s.hours.iter().cloned().fold(0.0f32, f32::max).max(1.0);
+    ui.set_prof_hours(ModelRc::new(VecModel::from(s.hours.iter().map(|h| h / max_h).collect::<Vec<f32>>())));
+    let peak = s.hours.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map(|(h, _)| h).unwrap_or(0);
+    ui.set_prof_peak(if s.total_secs > 0.0 {
+        format!("En çok {:02}:00 civarında dinliyorsun.", peak).into()
+    } else {
+        "Dinledikçe burası dolacak.".into()
+    });
+}
+
+/// Spektrumu yalnız profil ekranı açıkken ve çalarken çalıştır.
+fn update_viz(ui: &AppWindow) {
+    let want = ui.get_view() == "profile" && ui.get_playing();
+    let running = with_state(|st| st.viz.is_some());
+    if want == running {
+        return;
+    }
+    if !want {
+        with_state(|st| st.viz = None); // Drop cava'yı kapatır
+        ui.set_viz_on(false);
+        ui.set_spectrum(ModelRc::new(VecModel::from(vec![0.0f32; viz::BARS])));
+        return;
+    }
+    ui.set_spectrum(ModelRc::new(VecModel::from(vec![0.0f32; viz::BARS])));
+    let weak = ui.as_weak();
+    match viz::Viz::start(move |frame| {
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            let m = ui.get_spectrum();
+            for (i, v) in frame.into_iter().enumerate() {
+                m.set_row_data(i, v);
+            }
+        });
+    }) {
+        Ok(v) => {
+            with_state(|st| st.viz = Some(v));
+            ui.set_viz_on(true);
+        }
+        Err(e) => eprintln!("spektrum: {e}"),
+    }
+}
+
 // ---------- Ayarlar ----------
 
 fn human_bytes(b: u64) -> String {
@@ -1756,6 +1831,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             coll: None,
             browse: Vec::new(),
             home: HomeData::default(),
+            viz: None,
+            prof_tracks: Vec::new(),
         })
     });
     refresh_playlists(&ui);
@@ -1853,6 +1930,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    ui.on_view_changed({
+        let weak = weak.clone();
+        move |v| {
+            let Some(ui) = weak.upgrade() else { return };
+            if v == "profile" {
+                refresh_profile(&ui);
+            }
+            update_viz(&ui);
+        }
+    });
+    ui.on_play_profile_track({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let list = with_state(|st| st.prof_tracks.clone());
+            if !list.is_empty() {
+                play_list(&ui, list, i as usize);
+            }
+        }
+    });
     ui.on_open_card({
         let weak = weak.clone();
         move |si, i| {
@@ -2076,6 +2173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     refresh_usage(&ui);
     load_home(&ui);
     ui.run()?;
+    with_state(|st| st.viz = None);
     start_listen(None); // son dinlemeyi kaydet
     resolver.shutdown();
     Ok(())

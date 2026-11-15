@@ -3,9 +3,9 @@ import "fonts/PlusJakartaSans.ttf";
 import "fonts/JetBrainsMono.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, LyricWord, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, LyricWord, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
 
-export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord, CardUi }
+export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord, CardUi, ArtistStat }
 
 component SettingGroup inherits Rectangle {
     in property <string> title;
@@ -137,7 +137,22 @@ export component AppWindow inherits Window {
     in property <length> scroll-request;
     changed scroll-request => { flick.content-y = -scroll-request; }
     // Sayfa değişince en üstten başla
-    changed view => { flick.content-y = 0; }
+    changed view => { flick.content-y = 0; root.view-changed(view); }
+    callback view-changed(string);
+
+    // Profil
+    in property <string> prof-total;
+    in property <string> prof-week;
+    in property <int> prof-tracks-count;
+    in property <int> prof-artists-count;
+    in property <int> prof-likes;
+    in property <[ArtistStat]> prof-top-artists;
+    in property <[Track]> prof-top-tracks;
+    in property <[float]> prof-hours;
+    in property <string> prof-peak;
+    in property <[float]> spectrum;
+    in property <bool> viz-on;
+    callback play-profile-track(int);
 
     // Söz çekmecesi (sayfa değil; öne açılır, aynı düğmeyle kapanır)
     in-out property <bool> lyrics-open;
@@ -568,6 +583,114 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // ===== Frekans & Profil =====
+                if view == "profile": VerticalLayout {
+                    spacing: 24px;
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Frekans & Profil"; font-size: 12px; font-weight: 700; color: Theme.accent; }
+                        Text { text: "Dinleme profilin"; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; }
+                        Text { text: prof-peak; font-size: 14px; color: Theme.text-secondary; }
+                    }
+                    // Özet kartları
+                    HorizontalLayout {
+                        spacing: 14px;
+                        for st in [
+                            { label: "Toplam dinleme", value: prof-total },
+                            { label: "Bu hafta", value: prof-week },
+                            { label: "Şarkı", value: prof-tracks-count },
+                            { label: "Sanatçı", value: prof-artists-count },
+                            { label: "Beğeni", value: prof-likes },
+                        ]: Rectangle {
+                            height: 92px; border-radius: Theme.r-lg; background: Theme.surface-1;
+                            VerticalLayout {
+                                padding: 18px; spacing: 6px; alignment: center;
+                                Text { text: st.label; font-size: 12px; font-weight: 700; color: Theme.text-muted; }
+                                Text { text: st.value; font-family: Theme.display; font-size: 26px; font-weight: 800; color: Theme.text-primary; }
+                            }
+                        }
+                    }
+                    // Canlı spektrum
+                    Rectangle {
+                        height: 190px; border-radius: Theme.r-lg; background: Theme.surface-1; clip: true;
+                        Text { x: 22px; y: 18px; text: "Canlı spektrum"; font-size: 15px; font-weight: 700; color: Theme.text-primary; }
+                        Text {
+                            x: 22px; y: 40px;
+                            text: viz-on ? "Çalan sesin frekansları, kapağın renginde" : "Müzik çalınca burada canlanır";
+                            font-size: 12.5px; color: Theme.text-secondary;
+                        }
+                        spec := Rectangle {
+                            x: 22px; y: 70px; width: parent.width - 44px; height: parent.height - 88px;
+                            property <length> bw: (self.width - 5px * 31) / 32;
+                            for v[i] in spectrum: Rectangle {
+                                x: i * (spec.bw + 5px); width: spec.bw;
+                                height: Math.max(4px, spec.height * v);
+                                y: spec.height - self.height;
+                                border-radius: spec.bw / 2;
+                                background: Theme.accent.with-alpha(0.55 + 0.45 * v);
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 18px;
+                        // En çok dinlenen sanatçılar
+                        Rectangle {
+                            border-radius: Theme.r-lg; background: Theme.surface-1;
+                            VerticalLayout {
+                                padding: 22px; spacing: 12px; alignment: start;
+                                Text { text: "En çok dinlediğin sanatçılar"; font-size: 15px; font-weight: 700; color: Theme.text-primary; }
+                                if prof-top-artists.length == 0: Text { text: "Henüz yok."; font-size: 13px; color: Theme.text-muted; }
+                                for a in prof-top-artists: VerticalLayout {
+                                    spacing: 5px;
+                                    HorizontalLayout {
+                                        Text { text: a.name; font-size: 13.5px; font-weight: 600; color: Theme.text-primary; overflow: elide; horizontal-stretch: 1; }
+                                        Text { text: a.label; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
+                                    }
+                                    Rectangle {
+                                        height: 6px; border-radius: 3px; background: Theme.surface-2;
+                                        Rectangle { x: 0; width: parent.width * a.frac; height: parent.height; border-radius: 3px; background: Theme.accent; }
+                                    }
+                                }
+                            }
+                        }
+                        // Günün saatleri
+                        Rectangle {
+                            border-radius: Theme.r-lg; background: Theme.surface-1;
+                            VerticalLayout {
+                                padding: 22px; spacing: 12px; alignment: start;
+                                Text { text: "Günün saatlerine göre"; font-size: 15px; font-weight: 700; color: Theme.text-primary; }
+                                hrs := Rectangle {
+                                    height: 150px;
+                                    property <length> bw: (self.width - 4px * 23) / 24;
+                                    for v[i] in prof-hours: Rectangle {
+                                        x: i * (hrs.bw + 4px); width: hrs.bw;
+                                        height: Math.max(3px, (hrs.height - 18px) * v);
+                                        y: hrs.height - 18px - self.height;
+                                        border-radius: 3px;
+                                        background: v > 0.99 ? Theme.accent : Theme.accent.with-alpha(0.35 + 0.5 * v);
+                                    }
+                                    for h[k] in ["00", "06", "12", "18"]: Text {
+                                        x: k * 6 * (hrs.bw + 4px); y: hrs.height - 14px;
+                                        text: h; font-family: Theme.mono; font-size: 10px; color: Theme.text-muted;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if prof-top-tracks.length > 0: VerticalLayout {
+                        spacing: 10px;
+                        Text { text: "En çok dinlediğin şarkılar"; font-family: Theme.display; font-size: 21px; font-weight: 700; color: Theme.text-primary; }
+                        VerticalLayout {
+                            spacing: 0px;
+                            for t[i] in prof-top-tracks: TrackRow {
+                                track: t; index: i;
+                                playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                                clicked => { root.play-profile-track(i); }
+                            }
+                        }
+                    }
+                }
+
                 // ===== Liste aktarma =====
                 if view == "import": VerticalLayout {
                     spacing: 20px;
@@ -769,7 +892,7 @@ export component AppWindow inherits Window {
                 }
 
                 // ===== Henüz yapılmayan ekranlar =====
-                if view != "home" && view != "search" && view != "settings" && view != "import" && view != "playlist" && view != "lyrics" && view != "collection" && view != "browse": Rectangle {
+                if view != "home" && view != "search" && view != "settings" && view != "import" && view != "playlist" && view != "lyrics" && view != "collection" && view != "browse" && view != "profile": Rectangle {
                     height: 420px;
                     VerticalLayout {
                         alignment: center; spacing: 8px;
