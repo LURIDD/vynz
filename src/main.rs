@@ -422,32 +422,36 @@ fn request_lyrics(ui: &AppWindow, t: &TrackInfo) {
 /// Çalan şarkının söz durumunu baştan kur.
 fn render_lyrics(ui: &AppWindow) {
     let key = ui.get_now().key.to_string();
-    let (state, source, plain, offset) = with_state(|st| {
+    let (state, source, plain, offset, lines) = with_state(|st| {
         st.lyr_line = None;
         st.lyr_spoken = usize::MAX;
         let offset = st.lyr_offsets.get(&key).copied().unwrap_or(0.0);
         match st.lyrics.get(&key) {
-            None => (if st.lyr_pending.contains(&key) { 1 } else { 0 }, String::new(), Vec::new(), offset),
-            Some(None) => (4, String::new(), Vec::new(), offset),
-            Some(Some(l)) if l.synced => (2, l.source.clone(), Vec::new(), offset),
-            Some(Some(l)) => (3, l.source.clone(), l.lines.iter().map(|x| x.text.clone()).collect(), offset),
+            None => (if st.lyr_pending.contains(&key) { 1 } else { 0 }, String::new(), Vec::new(), offset, Vec::new()),
+            Some(None) => (4, String::new(), Vec::new(), offset, Vec::new()),
+            Some(Some(l)) if l.synced => {
+                let lines = l.lines.iter().map(|x| LyricLine { text: x.text.as_str().into(), t: x.t, state: 1, dist: 9 }).collect();
+                (2, l.source.clone(), Vec::new(), offset, lines)
+            }
+            Some(Some(l)) => (3, l.source.clone(), l.lines.iter().map(|x| x.text.clone()).collect(), offset, Vec::new()),
         }
     });
     ui.set_lyric_state(state);
     ui.set_lyric_source(source.into());
     ui.set_lyric_offset(offset);
     ui.set_lyric_plain(ModelRc::new(VecModel::from(plain.into_iter().map(Into::into).collect::<Vec<slint::SharedString>>())));
-    ui.set_lyric_before(ModelRc::new(VecModel::from(Vec::<slint::SharedString>::new())));
+    ui.set_lyric_lines(ModelRc::new(VecModel::from(lines)));
+    ui.set_lyric_active(-1);
+    ui.set_lyric_gap(-1.0);
     ui.set_lyric_row0(ModelRc::new(VecModel::from(Vec::<LyricWord>::new())));
     ui.set_lyric_row1(ModelRc::new(VecModel::from(Vec::<LyricWord>::new())));
-    ui.set_lyric_after(ModelRc::new(VecModel::from(Vec::<slint::SharedString>::new())));
     update_lyrics(ui, ui.get_position());
 }
 
-/// Uzun satırı kelime sınırından iki dengeli satıra böl (Slint'te kendiliğinden kaydırma yok).
-fn word_rows(words: &[&str]) -> Vec<i32> {
+/// Uzun satırı kelime sınırından iki dengeli satıra böl (Slint'te kelime kaydırma için).
+fn word_rows(words: &[&str], limit: usize) -> Vec<i32> {
     let total: usize = words.iter().map(|w| w.chars().count() + 1).sum();
-    if total <= 26 || words.len() < 2 {
+    if total <= limit || words.len() < 2 {
         return vec![0; words.len()];
     }
     let mut best = (usize::MAX, 1);
@@ -462,75 +466,94 @@ fn word_rows(words: &[&str]) -> Vec<i32> {
     (0..words.len()).map(|i| if i < best.1 { 0 } else { 1 }).collect()
 }
 
-/// Konuma göre etkin satırı ve kelimeleri güncelle (yalnız değişen kısımlar).
+fn word_state(k: usize, spoken: usize, fill: f32) -> (i32, f32) {
+    if k < spoken {
+        (0, 1.0)
+    } else if k == spoken {
+        (1, fill)
+    } else {
+        (2, 0.0)
+    }
+}
+
+/// Konuma göre etkin satırı, kelime dolumunu ve müzik arasını güncelle (yalnız değişenler).
 fn update_lyrics(ui: &AppWindow, pos: f32) {
     if ui.get_lyric_state() != 2 {
         return;
     }
     let key = ui.get_now().key.to_string();
+    // Satır başına sığan harf: yazı boyutuna göre (Slint'te kendiliğinden kaydırma yok)
+    let limit = match ui.get_lyrics_size() { 0 => 34, 2 => 22, _ => 28 };
     enum Change {
         None,
-        Line { before: Vec<String>, words: Vec<LyricWord>, after: Vec<String> },
-        Words(usize),
+        Line { idx: Option<usize>, words: Vec<LyricWord> },
+        Words { spoken: usize, fill: f32 },
     }
-    let change = with_state(|st| {
+    let (change, gap) = with_state(|st| {
         let offset = st.lyr_offsets.get(&key).copied().unwrap_or(0.0);
-        let Some(Some(l)) = st.lyrics.get(&key) else { return Change::None };
-        let loc = lyrics::locate(l, pos + offset);
-        let (idx, spoken) = match loc {
-            Some((i, s, _)) => (Some(i), s),
-            None => (None, 0),
+        let Some(Some(l)) = st.lyrics.get(&key) else { return (Change::None, None) };
+        let p = pos + offset;
+        let gap = lyrics::gap(l, p);
+        let (idx, spoken, fill) = match lyrics::locate(l, p) {
+            Some((i, k, f)) => (Some(i), k, f),
+            None => (None, 0, 0.0),
         };
         if idx != st.lyr_line || st.lyr_spoken == usize::MAX {
             st.lyr_line = idx;
             st.lyr_spoken = spoken;
-            let (before, words, after) = match idx {
+            let words = match idx {
                 Some(i) => {
                     let ws: Vec<&str> = l.lines[i].text.split_whitespace().collect();
-                    let rows = word_rows(&ws);
-                    let words = ws
-                        .iter()
+                    let rows = word_rows(&ws, limit);
+                    ws.iter()
                         .enumerate()
-                        .map(|(k, w)| LyricWord {
-                            text: (*w).into(),
-                            state: if k < spoken { 0 } else if k == spoken { 1 } else { 2 },
-                            row: rows[k],
+                        .map(|(k, w)| {
+                            let (state, f) = word_state(k, spoken, fill);
+                            LyricWord { text: (*w).into(), state, row: rows[k], fill: f }
                         })
-                        .collect();
-                    let before = l.lines[i.saturating_sub(2)..i].iter().map(|x| x.text.clone()).collect();
-                    let after = l.lines.iter().skip(i + 1).take(3).map(|x| x.text.clone()).collect();
-                    (before, words, after)
+                        .collect()
                 }
-                // İlk satırdan önce: sıradakileri göster
-                None => (Vec::new(), Vec::new(), l.lines.iter().take(4).map(|x| x.text.clone()).collect()),
+                None => Vec::new(),
             };
-            return Change::Line { before, words, after };
+            return (Change::Line { idx, words }, gap);
         }
-        if spoken != st.lyr_spoken {
-            st.lyr_spoken = spoken;
-            return Change::Words(spoken);
-        }
-        Change::None
+        st.lyr_spoken = spoken;
+        (Change::Words { spoken, fill }, gap)
     });
-    let strings = |v: Vec<String>| ModelRc::new(VecModel::from(v.into_iter().map(Into::into).collect::<Vec<slint::SharedString>>()));
+    ui.set_lyric_gap(gap.unwrap_or(-1.0));
     match change {
         Change::None => {}
-        Change::Line { before, words, after } => {
+        Change::Line { idx, words } => {
             let (r0, r1): (Vec<LyricWord>, Vec<LyricWord>) = words.into_iter().partition(|w| w.row == 0);
-            ui.set_lyric_before(strings(before));
             ui.set_lyric_row0(ModelRc::new(VecModel::from(r0)));
             ui.set_lyric_row1(ModelRc::new(VecModel::from(r1)));
-            ui.set_lyric_after(strings(after));
+            // Satır durumları: geçmiş -1, etkin 0, gelecek 1; uzaklık solma için
+            let lines = ui.get_lyric_lines();
+            let a = idx.map(|i| i as i64).unwrap_or(-1);
+            for j in 0..lines.row_count() {
+                if let Some(mut ln) = lines.row_data(j) {
+                    let jj = j as i64;
+                    let state = if jj < a { -1 } else if jj == a { 0 } else { 1 };
+                    let dist = (jj - a).unsigned_abs().min(9) as i32;
+                    if ln.state != state || ln.dist != dist {
+                        ln.state = state;
+                        ln.dist = dist;
+                        lines.set_row_data(j, ln);
+                    }
+                }
+            }
+            ui.set_lyric_active(a as i32);
         }
-        Change::Words(spoken) => {
-            // Kelime sırası iki satır boyunca sürer.
+        Change::Words { spoken, fill } => {
+            // Kelime sırası iki satır boyunca sürer; yalnız değişen kelimeler güncellenir.
             let mut k = 0;
             for m in [ui.get_lyric_row0(), ui.get_lyric_row1()] {
                 for j in 0..m.row_count() {
                     if let Some(mut w) = m.row_data(j) {
-                        let s = if k < spoken { 0 } else if k == spoken { 1 } else { 2 };
-                        if w.state != s {
-                            w.state = s;
+                        let (state, f) = word_state(k, spoken, fill);
+                        if w.state != state || (w.fill - f).abs() > 0.01 {
+                            w.state = state;
+                            w.fill = f;
                             m.set_row_data(j, w);
                         }
                     }
@@ -1861,6 +1884,10 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_cookies_index(s.cookies_index());
     ui.set_download_index(s.download_index());
     ui.set_autoradio_on(s.autoradio);
+    ui.set_lyrics_style(s.lyrics_style);
+    ui.set_lyrics_size(s.lyrics_size);
+    ui.set_lyrics_align(s.lyrics_align);
+    ui.set_lyrics_motion(s.lyrics_motion);
 }
 
 fn apply_settings(ui: &AppWindow) {
@@ -1871,6 +1898,10 @@ fn apply_settings(ui: &AppWindow) {
         cookies_browser: settings::COOKIE_BROWSERS[ui.get_cookies_index().clamp(0, 1) as usize].map(str::to_string),
         download_kbps: settings::DOWNLOAD_KBPS[ui.get_download_index().clamp(0, 3) as usize],
         autoradio: ui.get_autoradio_on(),
+        lyrics_style: ui.get_lyrics_style(),
+        lyrics_size: ui.get_lyrics_size(),
+        lyrics_align: ui.get_lyrics_align(),
+        lyrics_motion: ui.get_lyrics_motion(),
     };
     with_state(|st| {
         st.player.send(Cmd::Readahead(s.readahead_secs));
@@ -2230,6 +2261,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.set_menu_open(false);
                 menu_action(&ui, a);
             }
+        }
+    });
+    ui.on_lyric_seek({
+        let weak = weak.clone();
+        move |t| {
+            let Some(ui) = weak.upgrade() else { return };
+            let off = with_state(|st| st.lyr_offsets.get(&ui.get_now().key.to_string()).copied().unwrap_or(0.0));
+            with_state(|st| st.player.send(Cmd::Seek(((t - off).max(0.0)) as f64)));
+        }
+    });
+    ui.on_lyrics_style_changed({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            apply_settings(&ui);
+            // Boyut değişince satır bölme yeniden hesaplansın
+            with_state(|st| st.lyr_spoken = usize::MAX);
+            update_lyrics(&ui, ui.get_position());
         }
     });
     ui.on_lyric_shift({

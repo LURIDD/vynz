@@ -21,11 +21,19 @@ pub struct Settings {
     pub download_kbps: u32,
     /// Kuyruk bitince çalan şarkının radyosuyla devam et.
     pub autoradio: bool,
+    /// Söz vitrini: 0 Modern, 1 Klasik (serif), 2 Sade
+    pub lyrics_style: i32,
+    /// 0 küçük, 1 orta, 2 büyük
+    pub lyrics_size: i32,
+    /// 0 sola, 1 ortalı
+    pub lyrics_align: i32,
+    /// Hareketli kapak zemini
+    pub lyrics_motion: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true }
+        Settings { cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true, lyrics_style: 0, lyrics_size: 1, lyrics_align: 0, lyrics_motion: true }
     }
 }
 
