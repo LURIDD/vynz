@@ -92,8 +92,13 @@ export component KaraokeWord inherits Rectangle {
     in property <int> weight;
     in property <length> size;
     in property <length> spacing;
+    // Şu an söylenen kelime biraz yükselir ve büyür
+    property <bool> current: word.state == 1;
     width: base.preferred-width;
     height: base.preferred-height;
+    transform-scale: current ? 1.045 : 1.0;
+    transform-origin: { x: self.width / 2, y: self.height };
+    animate transform-scale { duration: 180ms; easing: ease-out; }
     base := Text {
         x: 0; y: 0;
         text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
@@ -291,37 +296,66 @@ export component PillButton inherits Rectangle {
 }
 
 // İnce, üzerine gelince kalınlaşan kaydırıcı.
+// Sürüklenebilir kaydırıcı.
+// live: sürüklerken sürekli bildir (ses); değilse bırakınca bildir (şarkı konumu).
+// wheel: fare tekerleğiyle %5 adım.
 export component Scrubber inherits Rectangle {
     in property <float> value; // 0..1
     in property <bool> enabled: true;
+    in property <bool> live;
+    in property <bool> wheel;
+    out property <bool> dragging: ta.pressed;
+    // Sürüklerken gösterilen değer (zaman göstergesi için dışarı açık)
+    out property <float> shown: ta.pressed ? drag : Math.clamp(value, 0, 1);
+    property <float> drag;
     callback seek(float);
 
     height: 16px;
     ta := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { root.seek(Math.clamp(self.mouse-x / self.width, 0, 1)); }
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                root.drag = Math.clamp(self.mouse-x / self.width, 0, 1);
+                if (root.live) { root.seek(root.drag); }
+            }
+            if (e.button == PointerEventButton.left && e.kind == PointerEventKind.up) {
+                root.seek(root.drag);
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.drag = Math.clamp(self.mouse-x / self.width, 0, 1);
+                if (root.live) { root.seek(root.drag); }
+            }
+        }
+        scroll-event(e) => {
+            if (!root.wheel) { return reject; }
+            // Yukarı tekerlek = artır
+            root.seek(Math.clamp(root.value + (e.delta-y > 0 ? 0.05 : -0.05), 0, 1));
+            return accept;
+        }
     }
     track := Rectangle {
         y: (parent.height - self.height) / 2;
-        height: ta.has-hover ? 7px : 3px;
+        height: ta.has-hover || ta.pressed ? 7px : 3px;
         animate height { duration: Theme.micro; }
         border-radius: self.height / 2;
         background: Theme.surface-2;
         Rectangle {
             x: 0;
-            width: parent.width * Math.clamp(root.value, 0, 1);
+            width: parent.width * root.shown;
             border-radius: parent.border-radius;
             background: Theme.accent;
         }
     }
     Rectangle {
-        width: 11px; height: 11px; border-radius: 5.5px;
-        x: track.width * Math.clamp(root.value, 0, 1) - 5.5px;
+        width: ta.pressed ? 14px : 11px; height: self.width; border-radius: self.width / 2;
+        x: track.width * root.shown - self.width / 2;
         y: (parent.height - self.height) / 2;
         background: #FFFFFF;
-        opacity: ta.has-hover ? 1 : 0;
-        animate opacity { duration: Theme.micro; }
+        opacity: ta.has-hover || ta.pressed ? 1 : 0;
+        animate opacity, width { duration: Theme.micro; }
         drop-shadow-blur: 6px; drop-shadow-color: #00000080; drop-shadow-offset-y: 2px;
     }
 }

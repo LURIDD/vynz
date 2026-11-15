@@ -51,6 +51,7 @@ export component AppWindow inherits Window {
     in property <float> position;
     in property <float> duration;
     in-out property <float> volume: 0.8;
+    property <float> muted-volume: 0.8;
     in-out property <bool> liked;
 
     in-out property <string> view: "home";
@@ -97,6 +98,8 @@ export component AppWindow inherits Window {
     in property <[LyricWord]> lyric-row0;
     in property <[LyricWord]> lyric-row1;
     callback lyric-seek(float);
+    // Açıkken saniyede ~20 kez: akıcı karaoke dolumu
+    callback lyric-tick();
     // Söz görünümü ayarları (kalıcı)
     in-out property <int> lyrics-style: 0;
     in-out property <int> lyrics-size: 1;
@@ -981,6 +984,12 @@ export component AppWindow inherits Window {
         drop-shadow-blur: 60px; drop-shadow-offset-y: 20px; drop-shadow-color: #000000aa;
         border-radius: Theme.r-xl;
 
+        Timer {
+            interval: 50ms;
+            running: lyrics-open && playing && lyric-state == 2;
+            triggered => { root.lyric-tick(); }
+        }
+
         // Hareketli zemin: bulanık kapak yavaşça döner (yalnız açıkken)
         Timer {
             interval: 8s;
@@ -1042,6 +1051,14 @@ export component AppWindow inherits Window {
                     property <length> active-y: 0;
                     property <length> anchor: self.height * 0.4;
 
+                    // Etkin satırın arkasında kapak renginde yumuşak ışıma
+                    if lyric-state == 2: Rectangle {
+                        width: lview.width * 1.1; height: lview.height * 0.7;
+                        x: lyr.centered ? (lview.width - self.width) / 2 : -lview.width * 0.25;
+                        y: lview.anchor - self.height / 2;
+                        background: @radial-gradient(circle, Theme.accent.with-alpha(0.16) 0%, transparent 60%);
+                        animate background { duration: 600ms; }
+                    }
                     if lyric-state == 2: Rectangle {
                         // Etkin satır görünümün %40'ına hizalanır; liste yumuşakça kayar.
                         y: lview.anchor - lview.active-y;
@@ -1062,7 +1079,9 @@ export component AppWindow inherits Window {
                                 changed y => { if (self.active) { lview.active-y = self.y + self.height / 2; } }
                                 changed height => { if (self.active) { lview.active-y = self.y + self.height / 2; } }
                                 opacity: active ? 1 : l.dist == 1 ? 0.55 : l.dist == 2 ? 0.38 : l.dist <= 4 ? 0.26 : 0.14;
-                                animate opacity { duration: 400ms; }
+                                transform-scale: active ? 1.0 : 0.93;
+                                transform-origin: { x: lyr.centered ? self.width / 2 : 0px, y: self.height / 2 };
+                                animate opacity, transform-scale { duration: 420ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
                                 lt := TouchArea { mouse-cursor: pointer; clicked => { root.lyric-seek(l.t); } }
                                 body := VerticalLayout {
                                     spacing: lyr.fsz * 0.15;
@@ -1282,8 +1301,13 @@ export component AppWindow inherits Window {
             }
             HorizontalLayout {
                 spacing: 12px;
-                Text { text: Fmt.time(position); vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
-                Scrubber {
+                Text {
+                    // Sürüklerken gidilecek yeri göster
+                    text: Fmt.time(prog.dragging ? prog.shown * duration : position);
+                    vertical-alignment: center; font-family: Theme.mono; font-size: 11px;
+                    color: prog.dragging ? Theme.text-primary : Theme.text-muted;
+                }
+                prog := Scrubber {
                     horizontal-stretch: 1;
                     enabled: has-now && duration > 0;
                     value: duration > 0 ? position / duration : 0;
@@ -1298,9 +1322,29 @@ export component AppWindow inherits Window {
             alignment: end; spacing: 6px;
             IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.mic; tint: lyrics-open ? Theme.accent : Theme.text-secondary; clicked => { lyrics-open = !lyrics-open; } }
             IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.list-music; tint: drawer-open ? Theme.accent : Theme.text-secondary; clicked => { drawer-open = !drawer-open; } }
-            Icon { y: (Theme.player-height - self.height) / 2; commands: Icons.volume; }
+            // Hoparlör: tıkla = sessize al / geri aç; tekerlek = ses
+            Rectangle {
+                width: 30px; height: 30px; y: (Theme.player-height - self.height) / 2;
+                border-radius: 15px;
+                background: vol-ta.has-hover ? Theme.surface-2 : transparent;
+                vol-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        if (volume > 0.001) { root.muted-volume = volume; volume = 0; }
+                        else { volume = root.muted-volume > 0.001 ? root.muted-volume : 0.5; }
+                        root.set-volume(volume);
+                    }
+                    scroll-event(e) => {
+                        volume = Math.clamp(volume + (e.delta-y > 0 ? 0.05 : -0.05), 0, 1);
+                        root.set-volume(volume);
+                        return accept;
+                    }
+                }
+                Icon { commands: volume < 0.001 ? Icons.volume-x : Icons.volume; stroke: vol-ta.has-hover ? Theme.text-primary : Theme.text-secondary; }
+            }
             Scrubber {
-                width: 72px; y: (Theme.player-height - self.height) / 2;
+                width: 84px; y: (Theme.player-height - self.height) / 2;
+                live: true; wheel: true;
                 value: volume;
                 seek(f) => { volume = f; root.set-volume(f); }
             }

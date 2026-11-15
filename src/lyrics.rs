@@ -47,10 +47,26 @@ struct YmusLyrics {
 pub fn fetch(t: &TrackInfo) -> Result<Lyrics, String> {
     if t.source == Source::Ytm {
         if let Ok(l) = from_ymus(&t.id) {
-            return Ok(l);
+            if l.synced {
+                return Ok(l);
+            }
+            // YouTube'un sözü zamanlı değil: LRCLIB'de zamanlısı varsa onu tercih et.
+            return match from_lrclib(t) {
+                Ok(z) if z.synced => Ok(z),
+                _ => Ok(l),
+            };
         }
     }
     from_lrclib(t)
+}
+
+/// Kelimenin söylenme ağırlığı: hece (ünlü) sayısı; ünlüsüz kelimeler 1 sayılır.
+fn weight(w: &str) -> f32 {
+    let vowels = w
+        .chars()
+        .filter(|c| "aeıioöuüâîûAEIİOÖUÜÂÎÛyàáäãèéêëìíòóôõùúû".contains(*c))
+        .count() as f32;
+    vowels.max(1.0) + 0.35
 }
 
 fn from_ymus(id: &str) -> Result<Lyrics, String> {
@@ -161,12 +177,13 @@ pub fn locate(l: &Lyrics, pos: f32) -> Option<(usize, usize, f32)> {
     let idx = l.lines.iter().rposition(|x| x.t <= pos)?;
     let line = &l.lines[idx];
     let words: Vec<&str> = line.text.split_whitespace().collect();
-    let total_chars: usize = words.iter().map(|w| w.chars().count() + 1).sum();
+    // Heceye göre dağıt: uzun kelimeler daha uzun söylenir.
+    let total: f32 = words.iter().map(|w| weight(w)).sum();
     let span = (line.end - line.t).max(0.3);
-    let at = ((pos - line.t) / span).clamp(0.0, 1.0) * total_chars as f32;
+    let at = ((pos - line.t) / span).clamp(0.0, 1.0) * total;
     let mut acc = 0f32;
     for (k, w) in words.iter().enumerate() {
-        let len = (w.chars().count() + 1) as f32;
+        let len = weight(w);
         if at < acc + len {
             return Some((idx, k, ((at - acc) / len).clamp(0.0, 1.0)));
         }
@@ -210,8 +227,9 @@ mod tests {
         assert_eq!(locate(&ly, 9.0), None);
         assert_eq!(locate(&ly, 10.0).map(|x| x.1), Some(0));
         assert_eq!(locate(&ly, 14.0).map(|x| x.1), Some(4));
+        // Hece ağırlığı: "iki" iki heceli olduğu için satırın ortası ona düşer.
         let (_, k, f) = locate(&ly, 12.0).unwrap();
-        assert!(k == 2 && f >= 0.0 && f <= 1.0);
+        assert!(k == 1 && f >= 0.0 && f <= 1.0);
         // satırdan önce 10 sn boşluk: arada
         assert!(gap(&ly, 5.0).is_some());
         assert!(gap(&ly, 12.0).is_none());
