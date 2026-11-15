@@ -13,6 +13,7 @@ mod import;
 mod library;
 mod lyrics;
 mod model;
+mod mpris;
 mod player;
 mod recommend;
 mod resolve;
@@ -104,6 +105,9 @@ struct State {
     prof_tracks: Vec<TrackInfo>,
     /// Seçilen dosyadaki listeler (birden çoksa kullanıcı seçer)
     file_lists: Vec<import::FileList>,
+    mpris: mpris::Mpris,
+    /// Atlama sonrası ilk konumda MPRIS'e "Seeked" bildirilecek
+    seek_pending: bool,
 }
 
 /// Ana sayfanın ham parçaları; ~/.cache/vynz/home.json içinde saklanır.
@@ -346,6 +350,14 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
 
 // ---------- Oynatma ----------
 
+/// MPRIS'e ileri/geri durumunu bildir.
+fn mpris_caps() {
+    with_state(|st| {
+        let next = st.index.is_some_and(|i| i + 1 < st.queue.len()) || (st.index.is_some() && st.settings.autoradio);
+        st.mpris.send(mpris::Msg::Caps { next, prev: st.index.is_some() });
+    });
+}
+
 /// Önceki parçanın dinlemesini geçmişe yaz, yenisini başlat.
 fn start_listen(t: Option<&TrackInfo>) {
     with_state(|st| {
@@ -368,6 +380,18 @@ fn request_big(st: &mut State, t: &TrackInfo) {
 
 fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
     start_listen(Some(t));
+    with_state(|st| {
+        st.mpris.send(mpris::Msg::Track {
+            key: t.key(),
+            title: t.title.clone(),
+            artist: t.artist.clone(),
+            album: t.album.clone(),
+            art: t.thumb.clone(),
+            length: t.duration as f64,
+        });
+        st.mpris.send(mpris::Msg::Playing(true));
+    });
+    mpris_caps();
     with_state(|st| request_big(st, t));
     ui.set_liked(with_state(|st| st.history.is_liked(&t.key())));
     ui.set_has_now(true);
@@ -771,6 +795,11 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
     match ev {
         Ev::Time(t) => {
             with_state(|st| {
+                st.mpris.send(mpris::Msg::Position(t));
+                if st.seek_pending {
+                    st.seek_pending = false;
+                    st.mpris.send(mpris::Msg::Seeked(t));
+                }
                 if let Some((_, played, last)) = st.listen.as_mut() {
                     let d = t as f32 - *last;
                     if d > 0.0 && d <= 1.5 {
@@ -785,8 +814,14 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
                 queue_for_cache();
             }
         }
-        Ev::Duration(d) => ui.set_duration(d as f32),
+        Ev::Duration(d) => {
+            with_state(|st| st.mpris.send(mpris::Msg::Length(d)));
+            ui.set_duration(d as f32)
+        }
         Ev::Paused(p) => {
+            if ui.get_has_now() {
+                with_state(|st| st.mpris.send(mpris::Msg::Playing(!p)));
+            }
             ui.set_playing(!p && ui.get_has_now());
             update_viz(ui);
         }
@@ -797,7 +832,7 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
             ui.set_buffering(b)
         }
         Ev::Started(pos) => on_started(ui, pos),
-        Ev::Seeked => {}
+        Ev::Seeked => with_state(|st| st.seek_pending = true),
         Ev::Ended => {
             dbg("parça bitti");
             on_ended(ui)
@@ -991,6 +1026,7 @@ fn extend_with_radio(ui: &AppWindow, then_play: bool) {
 
 /// Kuyruk değişti: arayüzü tazele, mpv'deki sıradaki artık doğru değilse yeniden hazırla.
 fn queue_changed(ui: &AppWindow) {
+    mpris_caps();
     let (list, idx) = with_state(|st| {
         if st.appended.is_some() {
             st.player.send(Cmd::ClearNext);
@@ -1118,6 +1154,7 @@ fn toggle_shuffle(ui: &AppWindow) {
         }
     });
     ui.set_shuffle_on(on);
+    with_state(|st| st.mpris.send(mpris::Msg::Shuffle(on)));
     queue_changed(ui);
 }
 
@@ -1128,6 +1165,7 @@ fn cycle_repeat(ui: &AppWindow) {
         st.repeat
     });
     ui.set_repeat_mode(mode);
+    with_state(|st| st.mpris.send(mpris::Msg::Loop(mode)));
 }
 
 fn toggle_like_current(ui: &AppWindow) {
@@ -1939,6 +1977,45 @@ fn play_list(ui: &AppWindow, list: Vec<TrackInfo>, i: usize) {
     play_index(ui, i);
 }
 
+/// MPRIS (medya tuşları, çubuk) komutlarını uygula.
+fn on_mpris(ui: &AppWindow, a: mpris::Act) {
+    use mpris::Act;
+    match a {
+        Act::PlayPause => ui.invoke_toggle_play(),
+        Act::Play | Act::Pause => {
+            let want_play = matches!(a, Act::Play);
+            if ui.get_has_now() && want_play != ui.get_playing() {
+                ui.invoke_toggle_play();
+            }
+        }
+        Act::Next => ui.invoke_next(),
+        Act::Prev => ui.invoke_prev(),
+        Act::Seek(off) => {
+            let p = (ui.get_position() as f64 + off).max(0.0);
+            with_state(|st| st.player.send(Cmd::Seek(p)));
+        }
+        Act::SetPosition(p) => with_state(|st| st.player.send(Cmd::Seek(p.max(0.0)))),
+        Act::Volume(v) => {
+            let v = v.clamp(0.0, 1.0);
+            ui.set_volume(v as f32);
+            with_state(|st| st.player.send(Cmd::Volume(v)));
+        }
+        Act::Shuffle(on) => {
+            if on != ui.get_shuffle_on() {
+                toggle_shuffle(ui);
+            }
+        }
+        Act::Loop(mode) => {
+            for _ in 0..3 {
+                if ui.get_repeat_mode() == mode {
+                    break;
+                }
+                cycle_repeat(ui);
+            }
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = AppWindow::new()?;
     if let Ok(t) = std::env::var("VYNZ_TITLE") {
@@ -1960,6 +2037,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let on_battery = Arc::new(AtomicBool::new(false));
     start_env_monitor(metered.clone(), on_battery.clone());
     let resolver = Resolver::new(settings.cookies_browser.clone());
+    let mpris_server = {
+        let weak = weak.clone();
+        mpris::Mpris::start(move |a| {
+            let _ = weak.upgrade_in_event_loop(move |ui| on_mpris(&ui, a));
+        })
+    };
+    mpris_server.send(mpris::Msg::Volume(ui.get_volume() as f64));
     let fetcher = fetcher::Fetcher::new(settings.download_kbps as u64 * 1024, settings.cache_bytes(), metered.clone());
     {
         // Açılışta ve sonra günde bir: süresi dolan şarkılar, eski kapaklar.
@@ -2018,6 +2102,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             viz: None,
             prof_tracks: Vec::new(),
             file_lists: Vec::new(),
+            mpris: mpris_server.clone(),
+            seek_pending: false,
         })
     });
     refresh_playlists(&ui);
@@ -2077,7 +2163,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     ui.on_seek(|secs| with_state(|st| st.player.send(Cmd::Seek(secs as f64))));
-    ui.on_set_volume(|v| with_state(|st| st.player.send(Cmd::Volume(v as f64))));
+    ui.on_set_volume(|v| {
+        with_state(|st| {
+            st.player.send(Cmd::Volume(v as f64));
+            st.mpris.send(mpris::Msg::Volume(v as f64));
+        })
+    });
     ui.on_next({
         let weak = weak.clone();
         move || {
