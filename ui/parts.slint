@@ -61,6 +61,73 @@ export struct LyricWord {
     text: string,
     state: int,
     row: int,
+    // 0..1: kelimenin ne kadarı söylendi (karaoke dolumu)
+    fill: float,
+}
+
+// Söz satırı: state -1 geçti, 0 şu an, 1 sırada; dist = etkin satıra uzaklık
+export struct LyricLine {
+    text: string,
+    t: float,
+    state: int,
+    dist: int,
+}
+
+// Söz stili: 0 Modern, 1 Klasik (serif), 2 Sade
+export global LyricStyle {
+    out property <[string]> families: ["Plus Jakarta Sans", "Instrument Serif", "Manrope"];
+    out property <[int]> weights: [800, 400, 600];
+    out property <[length]> spacing: [-1.2px, 0px, -0.4px];
+    // boyut: küçük, orta, büyük (serif biraz daha büyük görünmeli)
+    pure public function size(style: int, size: int) -> length {
+        let base = size == 0 ? 30px : size == 2 ? 46px : 38px;
+        return style == 1 ? base * 1.18 : base;
+    }
+}
+
+// Karaoke kelimesi: soluk taban + soldan dolan parlak kopya
+export component KaraokeWord inherits Rectangle {
+    in property <LyricWord> word;
+    in property <string> family;
+    in property <int> weight;
+    in property <length> size;
+    in property <length> spacing;
+    width: base.preferred-width;
+    height: base.preferred-height;
+    base := Text {
+        x: 0; y: 0;
+        text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
+        letter-spacing: root.spacing; color: #ffffff4d;
+    }
+    Rectangle {
+        x: 0; y: 0; height: parent.height;
+        width: parent.width * root.word.fill;
+        animate width { duration: 220ms; easing: linear; }
+        clip: true;
+        Text {
+            x: 0; y: 0;
+            text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
+            letter-spacing: root.spacing; color: #FFFFFF;
+        }
+    }
+}
+
+// Müzik arası: büyüyen üç nokta
+export component GapDots inherits Rectangle {
+    in property <float> progress;
+    in property <length> size: 14px;
+    width: 3 * size + 2 * size * 0.8;
+    height: size;
+    for i in 3: Rectangle {
+        property <float> on: Math.clamp(root.progress * 3 - i, 0, 1);
+        x: i * root.size * 1.8;
+        width: root.size * (0.55 + 0.45 * on); height: self.width;
+        y: (root.size - self.height) / 2;
+        border-radius: self.width / 2;
+        background: #FFFFFF;
+        opacity: 0.25 + 0.75 * on;
+        animate width, opacity { duration: 300ms; }
+    }
 }
 
 export struct ArtistStat {

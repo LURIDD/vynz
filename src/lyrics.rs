@@ -152,8 +152,9 @@ fn fill_ends(lines: &mut [Line]) {
     }
 }
 
-/// Konumdaki satır ve o satırda kaç kelimenin söylendiği (harf oranına göre tahmin).
-pub fn locate(l: &Lyrics, pos: f32) -> Option<(usize, usize, usize)> {
+/// Konumdaki satır, o satırda söylenmiş kelime sayısı ve şu anki kelimenin dolumu (0..1).
+/// Kelime zamanları harf sayısına göre tahmin edilir.
+pub fn locate(l: &Lyrics, pos: f32) -> Option<(usize, usize, f32)> {
     if !l.synced {
         return None;
     }
@@ -162,16 +163,30 @@ pub fn locate(l: &Lyrics, pos: f32) -> Option<(usize, usize, usize)> {
     let words: Vec<&str> = line.text.split_whitespace().collect();
     let total_chars: usize = words.iter().map(|w| w.chars().count() + 1).sum();
     let span = (line.end - line.t).max(0.3);
-    let frac = ((pos - line.t) / span).clamp(0.0, 1.0);
-    let mut acc = 0usize;
-    let mut spoken = 0;
-    for w in &words {
-        acc += w.chars().count() + 1;
-        if (acc as f32 / total_chars as f32) <= frac + 0.02 {
-            spoken += 1;
+    let at = ((pos - line.t) / span).clamp(0.0, 1.0) * total_chars as f32;
+    let mut acc = 0f32;
+    for (k, w) in words.iter().enumerate() {
+        let len = (w.chars().count() + 1) as f32;
+        if at < acc + len {
+            return Some((idx, k, ((at - acc) / len).clamp(0.0, 1.0)));
         }
+        acc += len;
     }
-    Some((idx, spoken.min(words.len()), words.len()))
+    Some((idx, words.len(), 1.0))
+}
+
+/// Uzun müzik arası (≥ 4 sn): (arada mıyız, ilerleme 0..1). Satır bitmiş, sonraki gelmemişse.
+pub fn gap(l: &Lyrics, pos: f32) -> Option<f32> {
+    if !l.synced || l.lines.is_empty() {
+        return None;
+    }
+    let next = l.lines.iter().position(|x| x.t > pos)?;
+    let start = if next == 0 { 0.0 } else { l.lines[next - 1].end };
+    let end = l.lines[next].t;
+    if end - start < 4.0 || pos < start {
+        return None;
+    }
+    Some(((pos - start) / (end - start)).clamp(0.0, 1.0))
 }
 
 #[cfg(test)]
@@ -195,5 +210,10 @@ mod tests {
         assert_eq!(locate(&ly, 9.0), None);
         assert_eq!(locate(&ly, 10.0).map(|x| x.1), Some(0));
         assert_eq!(locate(&ly, 14.0).map(|x| x.1), Some(4));
+        let (_, k, f) = locate(&ly, 12.0).unwrap();
+        assert!(k == 2 && f >= 0.0 && f <= 1.0);
+        // satırdan önce 10 sn boşluk: arada
+        assert!(gap(&ly, 5.0).is_some());
+        assert!(gap(&ly, 12.0).is_none());
     }
 }

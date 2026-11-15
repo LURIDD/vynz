@@ -1,11 +1,13 @@
 import "fonts/Manrope.ttf";
 import "fonts/PlusJakartaSans.ttf";
 import "fonts/JetBrainsMono.ttf";
+import "fonts/InstrumentSerif-Regular.ttf";
+import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, LyricWord, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, LyricWord, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
 
-export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord, CardUi, ArtistStat }
+export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord, LyricLine, CardUi, ArtistStat }
 
 component SettingGroup inherits Rectangle {
     in property <string> title;
@@ -87,10 +89,20 @@ export component AppWindow inherits Window {
 
     // Sözler: state 0 yok, 1 yükleniyor, 2 zamanlı, 3 zamansız, 4 bulunamadı
     in property <int> lyric-state;
-    in property <[string]> lyric-before;
+    in property <[LyricLine]> lyric-lines;
+    in property <int> lyric-active: -1;
+    // Müzik arası ilerlemesi (0..1), yoksa -1
+    in property <float> lyric-gap: -1;
     in property <[LyricWord]> lyric-row0;
     in property <[LyricWord]> lyric-row1;
-    in property <[string]> lyric-after;
+    callback lyric-seek(float);
+    // Söz görünümü ayarları (kalıcı)
+    in-out property <int> lyrics-style: 0;
+    in-out property <int> lyrics-size: 1;
+    in-out property <int> lyrics-align: 0;
+    in-out property <bool> lyrics-motion: true;
+    in-out property <bool> lyrics-wide;
+    callback lyrics-style-changed();
     in property <[string]> lyric-plain;
     in property <string> lyric-source;
     in property <float> lyric-offset;
@@ -928,7 +940,7 @@ export component AppWindow inherits Window {
 
     // Çekmece açıkken arkadaki sayfa görünmesin: ana alanı tamamen örten zemin.
     Rectangle {
-        x: sidebar-w; width: root.width - sidebar-w; y: 0; height: root.height;
+        x: lyrics-wide ? 0 : sidebar-w; width: root.width - self.x; y: 0; height: root.height;
         background: Theme.canvas;
         opacity: lyrics-open ? 1 : 0;
         visible: self.opacity > 0;
@@ -936,35 +948,66 @@ export component AppWindow inherits Window {
         if lyrics-open: TouchArea { }
     }
 
-    // ---------- Söz çekmecesi: ana alanın önüne aşağıdan açılır, aynı düğmeyle kapanır ----------
-    Rectangle {
-        x: sidebar-w + 16px; width: root.width - sidebar-w - 32px;
+    // ---------- Söz çekmecesi: öne açılır, aynı düğmeyle kapanır ----------
+    lyr := Rectangle {
+        property <string> fam: LyricStyle.families[lyrics-style];
+        property <int> wgt: LyricStyle.weights[lyrics-style];
+        property <length> fsz: LyricStyle.size(lyrics-style, lyrics-size);
+        property <length> lsp: LyricStyle.spacing[lyrics-style];
+        property <bool> centered: lyrics-align == 1;
+        property <bool> menu: false;
+        property <angle> spin: 0deg;
+
+        x: lyrics-wide ? 16px : sidebar-w + 16px;
+        width: root.width - self.x - 16px;
+        animate x, width { duration: 260ms; easing: ease-out; }
         height: root.height - Theme.player-clearance - 4px;
         y: lyrics-open ? 12px : root.height + 20px;
         opacity: lyrics-open ? 1 : 0;
         animate y, opacity { duration: 260ms; easing: ease-out; }
         drop-shadow-blur: 60px; drop-shadow-offset-y: 20px; drop-shadow-color: #000000aa;
         border-radius: Theme.r-xl;
+
+        // Hareketli zemin: bulanık kapak yavaşça döner (yalnız açıkken)
+        Timer {
+            interval: 8s;
+            running: lyrics-open && lyrics-motion;
+            triggered => { lyr.spin += 24deg; }
+        }
+
         Rectangle {
             border-radius: Theme.r-xl;
             clip: true;
             background: Theme.canvas;
-            TouchArea { }
-            // Önceden bulanıklaştırılmış kapak zemini
+            TouchArea { clicked => { lyr.menu = false; } }
+
             if has-blur && has-now: Image {
-                width: parent.width; height: parent.height;
-                source: now-blur; image-fit: cover; opacity: 0.8;
+                width: parent.width * 1.5; height: self.width;
+                x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                source: now-blur; image-fit: cover; opacity: 0.85;
+                transform-rotation: lyr.spin;
+                animate transform-rotation { duration: 8s; easing: linear; }
             }
-            Rectangle { background: @linear-gradient(90deg, #090A0Dcc 0%, #090A0D66 45%, #090A0Daa 100%); }
+            if has-blur && has-now && lyrics-motion: Image {
+                width: parent.width * 0.9; height: self.width;
+                x: parent.width * 0.55 - self.width / 2; y: parent.height * 0.6 - self.height / 2;
+                source: now-blur; image-fit: cover; opacity: 0.45;
+                transform-rotation: -lyr.spin * 1.6;
+                animate transform-rotation { duration: 8s; easing: linear; }
+            }
+            // Açık kapaklarda da okunur kalsın: güçlü karartma + alt-üst gölgesi
+            Rectangle { background: @linear-gradient(90deg, #090A0Df0 0%, #090A0Db8 42%, #090A0Dc8 100%); }
+            Rectangle { background: @linear-gradient(180deg, #090A0D99 0%, transparent 30%, transparent 70%, #090A0Dbb 100%); }
 
             HorizontalLayout {
-                padding: 44px; spacing: 56px;
+                padding: 48px; padding-right: 64px; spacing: 64px;
+                // Sol: kapak ve kimlik
                 VerticalLayout {
-                    width: 280px; alignment: center; spacing: 18px;
+                    width: 300px; alignment: center; spacing: 16px;
                     Cover {
-                        width: 280px; height: 280px; radius: Theme.r-lg;
+                        width: 300px; height: 300px; radius: Theme.r-lg;
                         art: now.art; has-art: has-now && now.has-art;
-                        drop-shadow-blur: 56px; drop-shadow-offset-y: 28px; drop-shadow-color: #000000ad;
+                        drop-shadow-blur: 60px; drop-shadow-offset-y: 30px; drop-shadow-color: #000000b0;
                     }
                     Text { text: has-now ? now.title : "Çalan yok"; font-family: Theme.display; font-size: 26px; font-weight: 800; letter-spacing: -0.8px; color: Theme.text-primary; overflow: elide; }
                     Text { text: has-now ? now.artist : ""; font-size: 14px; color: Theme.text-secondary; overflow: elide; }
@@ -977,54 +1020,139 @@ export component AppWindow inherits Window {
                         }
                         PillButton { pill-height: 30px; text: "+0.5 sn"; clicked => { root.lyric-shift(0.5); } }
                     }
-                    if lyric-source != "": Text { text: "Kaynak: " + lyric-source; font-size: 11.5px; color: Theme.text-muted; }
+                    if lyric-source != "": Text { text: "Kaynak: " + lyric-source + (lyric-state == 2 ? " · satıra tıkla, oraya atla" : ""); font-size: 11.5px; color: Theme.text-muted; }
                 }
 
-                // Zamanlı sözler: önceki satırlar, kelime kelime dolan satır, sonraki satırlar
-                if lyric-state == 2: VerticalLayout {
-                    alignment: center; spacing: 22px;
-                    for l in lyric-before: Text {
-                        text: l; font-family: Theme.display; font-size: 24px; font-weight: 700;
-                        letter-spacing: -0.5px; color: Theme.text-muted; overflow: elide;
-                    }
-                    VerticalLayout {
-                        spacing: 4px;
-                        for words in [lyric-row0, lyric-row1]: HorizontalLayout {
-                            spacing: 12px; alignment: start;
-                            visible: words.length > 0;
-                            height: words.length > 0 ? self.preferred-height : 0px;
-                            for w in words: Text {
-                                text: w.text;
-                                font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.4px;
-                                color: w.state == 0 ? Theme.text-primary : w.state == 1 ? Theme.accent : Theme.text-muted;
-                                animate color { duration: 150ms; }
+                // Sağ: kayan söz akışı
+                lview := Rectangle {
+                    clip: true;
+                    property <length> active-y: 0;
+                    property <length> anchor: self.height * 0.4;
+
+                    if lyric-state == 2: Rectangle {
+                        // Etkin satır görünümün %40'ına hizalanır; liste yumuşakça kayar.
+                        y: lview.anchor - lview.active-y;
+                        animate y { duration: 560ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                        width: lview.width;
+                        height: col.preferred-height;
+                        col := VerticalLayout {
+                            width: parent.width;
+                            spacing: lyr.fsz * 0.55;
+                            if lyric-active < 0 && lyric-gap >= 0: HorizontalLayout {
+                                alignment: lyr.centered ? center : start;
+                                GapDots { progress: lyric-gap; size: lyr.fsz * 0.38; }
+                            }
+                            for l[i] in lyric-lines: Rectangle {
+                                property <bool> active: l.state == 0;
+                                height: body.preferred-height;
+                                changed active => { if (self.active) { lview.active-y = self.y + self.height / 2; } }
+                                changed y => { if (self.active) { lview.active-y = self.y + self.height / 2; } }
+                                changed height => { if (self.active) { lview.active-y = self.y + self.height / 2; } }
+                                opacity: active ? 1 : l.dist == 1 ? 0.55 : l.dist == 2 ? 0.38 : l.dist <= 4 ? 0.26 : 0.14;
+                                animate opacity { duration: 400ms; }
+                                lt := TouchArea { mouse-cursor: pointer; clicked => { root.lyric-seek(l.t); } }
+                                body := VerticalLayout {
+                                    spacing: lyr.fsz * 0.15;
+                                    if !active: Text {
+                                        text: l.text; wrap: word-wrap;
+                                        horizontal-alignment: lyr.centered ? center : left;
+                                        font-family: lyr.fam; font-weight: lyr.wgt; font-size: lyr.fsz; letter-spacing: lyr.lsp;
+                                        font-italic: lyrics-style == 1;
+                                        color: lt.has-hover ? #FFFFFF : #FFFFFFcc;
+                                    }
+                                    if active: VerticalLayout {
+                                        spacing: lyr.fsz * 0.12;
+                                        for words in [lyric-row0, lyric-row1]: HorizontalLayout {
+                                            visible: words.length > 0;
+                                            height: words.length > 0 ? self.preferred-height : 0px;
+                                            alignment: lyr.centered ? center : start;
+                                            spacing: lyr.fsz * 0.28;
+                                            for w in words: KaraokeWord {
+                                                word: w; family: lyr.fam; weight: lyr.wgt; size: lyr.fsz; spacing: lyr.lsp;
+                                            }
+                                        }
+                                    }
+                                    if active && lyric-gap >= 0: HorizontalLayout {
+                                        alignment: lyr.centered ? center : start;
+                                        padding-top: lyr.fsz * 0.4;
+                                        GapDots { progress: lyric-gap; size: lyr.fsz * 0.38; }
+                                    }
+                                }
                             }
                         }
                     }
-                    for l in lyric-after: Text {
-                        text: l; font-family: Theme.display; font-size: 24px; font-weight: 700;
-                        letter-spacing: -0.5px; color: Theme.text-muted; overflow: elide;
+                    if lyric-state == 3: Flickable {
+                        content-height: plain.preferred-height;
+                        plain := VerticalLayout {
+                            spacing: 12px; alignment: start;
+                            Text { text: "Bu şarkının sözleri zamanlı değil."; font-size: 12.5px; color: Theme.text-muted; }
+                            for l in lyric-plain: Text {
+                                text: l; wrap: word-wrap;
+                                horizontal-alignment: lyr.centered ? center : left;
+                                font-family: lyr.fam; font-weight: lyr.wgt; font-size: lyr.fsz * 0.62; color: Theme.text-secondary;
+                            }
+                        }
                     }
-                }
-                if lyric-state == 3: Flickable {
-                    content-height: plain.preferred-height;
-                    plain := VerticalLayout {
-                        spacing: 10px; alignment: start;
-                        Text { text: "Bu şarkının sözleri zamanlı değil."; font-size: 12.5px; color: Theme.text-muted; }
-                        for l in lyric-plain: Text { text: l; font-size: 20px; font-weight: 600; color: Theme.text-secondary; wrap: word-wrap; }
-                    }
-                }
-                if lyric-state <= 1 || lyric-state == 4: VerticalLayout {
-                    alignment: center;
-                    Text {
-                        text: !has-now ? "Bir şarkı çaldığında sözleri burada akar." : lyric-state == 4 ? "Bu şarkı için söz bulunamadı." : "Sözler getiriliyor…";
-                        font-family: Theme.display; font-size: 28px; font-weight: 800; color: Theme.text-secondary;
+                    if lyric-state <= 1 || lyric-state == 4: VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: !has-now ? "Bir şarkı çaldığında sözleri burada akar." : lyric-state == 4 ? "Bu şarkı için söz bulunamadı." : "Sözler getiriliyor…";
+                            horizontal-alignment: lyr.centered ? center : left;
+                            font-family: lyr.fam; font-size: 30px; font-weight: lyr.wgt; color: Theme.text-secondary;
+                        }
                     }
                 }
             }
-                            IconButton {
-                x: parent.width - self.width - 16px; y: 16px;
-                icon: Icons.x; clicked => { lyrics-open = false; }
+
+            // Sağ üst: stil, genişlet, kapat
+            HorizontalLayout {
+                x: parent.width - self.preferred-width - 16px; y: 16px; spacing: 6px;
+                IconButton { icon: Icons.type; tint: lyr.menu ? Theme.accent : Theme.text-secondary; clicked => { lyr.menu = !lyr.menu; } }
+                IconButton { icon: lyrics-wide ? Icons.shrink : Icons.expand; clicked => { lyrics-wide = !lyrics-wide; } }
+                IconButton { icon: Icons.x; clicked => { lyrics-open = false; lyr.menu = false; } }
+            }
+
+            // Stil menüsü
+            if lyr.menu: Rectangle {
+                x: parent.width - self.width - 16px; y: 60px;
+                width: 300px; height: smenu.preferred-height;
+                border-radius: Theme.r-lg; background: Theme.floating;
+                drop-shadow-blur: 30px; drop-shadow-offset-y: 12px; drop-shadow-color: #000000b0;
+                TouchArea { }
+                smenu := VerticalLayout {
+                    padding: 16px; spacing: 10px;
+                    Text { text: "Yazı stili"; font-size: 12px; font-weight: 700; color: Theme.text-muted; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        for name[i] in ["Modern", "Klasik", "Sade"]: Rectangle {
+                            height: 54px; border-radius: Theme.r-md;
+                            background: lyrics-style == i ? Theme.surface-3 : st-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
+                            st-ta := TouchArea { mouse-cursor: pointer; clicked => { lyrics-style = i; root.lyrics-style-changed(); } }
+                            VerticalLayout {
+                                alignment: center;
+                                Text { text: "Aa"; horizontal-alignment: center; font-family: LyricStyle.families[i]; font-weight: LyricStyle.weights[i]; font-size: 20px; color: Theme.text-primary; font-italic: i == 1; }
+                                Text { text: name; horizontal-alignment: center; font-size: 10.5px; color: Theme.text-secondary; }
+                            }
+                        }
+                    }
+                    Text { text: "Boyut"; font-size: 12px; font-weight: 700; color: Theme.text-muted; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        for name[i] in ["Küçük", "Orta", "Büyük"]: PillButton { pill-height: 30px; text: name; active: lyrics-size == i; clicked => { lyrics-size = i; root.lyrics-style-changed(); } }
+                    }
+                    Text { text: "Hizalama"; font-size: 12px; font-weight: 700; color: Theme.text-muted; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        PillButton { pill-height: 30px; text: "Sola"; active: lyrics-align == 0; clicked => { lyrics-align = 0; root.lyrics-style-changed(); } }
+                        PillButton { pill-height: 30px; text: "Ortaya"; active: lyrics-align == 1; clicked => { lyrics-align = 1; root.lyrics-style-changed(); } }
+                    }
+                    Text { text: "Zemin"; font-size: 12px; font-weight: 700; color: Theme.text-muted; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        PillButton { pill-height: 30px; text: "Hareketli"; active: lyrics-motion; clicked => { lyrics-motion = true; root.lyrics-style-changed(); } }
+                        PillButton { pill-height: 30px; text: "Durgun"; active: !lyrics-motion; clicked => { lyrics-motion = false; root.lyrics-style-changed(); } }
+                    }
+                }
             }
         }
     }
