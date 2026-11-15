@@ -19,6 +19,9 @@ import yt_dlp
 
 FAST_ARGS = {"youtube": {"player_client": ["web_music"], "player_skip": ["webpage", "configs"]}}
 
+# Rust tarafı çerez tarayıcısını ilk argüman olarak verir ("-" = yok).
+WARM_COOKIES = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] != "-" else None
+
 out_lock = threading.Lock()
 jobs = queue.PriorityQueue()   # ön-çözme işleri (öncelik sıralı)
 urgent = queue.Queue()         # "şimdi çal": ayrılmış iş parçacığı, ön-çözme yüzünden beklemez
@@ -235,13 +238,24 @@ def handle(req):
         send({"rid": req["rid"], "ok": False, "error": str(e)})
 
 
+def warm():
+    # İlk "şimdi çal" isteği soğuk başlamasın: örneği (çerezlerle) önceden kur.
+    try:
+        y = ydl(True, WARM_COOKIES)
+        _ = y.cookiejar  # çerezleri şimdi yükle (yt-dlp tembel yükler)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def worker():
+    warm()
     while True:
         _prio, _n, req = jobs.get()
         handle(req)
 
 
 def urgent_worker():
+    warm()
     while True:
         handle(urgent.get())
 

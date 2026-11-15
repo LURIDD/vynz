@@ -14,7 +14,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 const HELPER: &str = include_str!("resolver.py");
-const IDLE_SECS: u64 = 300;
+/// Boşta bu kadar kalınca yardımcı kapanır (ilk tıklama sıcak kalsın diye uzun).
+const IDLE_SECS: u64 = 900;
 /// Adresin bitmesine bu kadar kala yeniden çöz.
 const EXPIRY_MARGIN: u64 = 120;
 
@@ -189,9 +190,11 @@ impl Resolver {
         if std::fs::read_to_string(&script).ok().as_deref() != Some(HELPER) {
             std::fs::write(&script, HELPER).map_err(|e| e.to_string())?;
         }
+        let warm_cookies = self.cookies.lock().unwrap().clone().unwrap_or_else(|| "-".into());
         let mut child = Command::new("python3")
             .arg("-I")
             .arg(&script)
+            .arg(warm_cookies)
             .current_dir(&dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
