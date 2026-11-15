@@ -139,6 +139,7 @@ component SettingGroup inherits Rectangle {
 export component AppWindow inherits Window {
     in property <string> window-title: "vynz";
     title: window-title;
+    icon: @image-url("../design/logo/vynz-icon.svg");
     forward-focus: keys;
     preferred-width: 1400px;
     preferred-height: 860px;
@@ -417,10 +418,19 @@ export component AppWindow inherits Window {
                 padding-left: compact ? 0 : 10px;
                 alignment: compact ? center : start;
                 spacing: 10px;
+                // Vynz işareti (V + plak olukları); çalarken arkasında yumuşak ışıma
                 Rectangle {
-                    width: 10px; height: 10px; y: 9px; border-radius: 5px;
-                    background: Theme.accent;
-                    drop-shadow-blur: 12px; drop-shadow-color: Theme.accent;
+                    width: 28px; height: 28px; y: 0px;
+                    Rectangle {
+                        width: 34px; height: 34px; x: -3px; y: -3px;
+                        background: @radial-gradient(circle, Theme.accent.with-alpha(playing ? 0.35 : 0.0) 0%, transparent 70%);
+                        animate background { duration: 600ms; }
+                    }
+                    Icon {
+                        width: 28px; height: 28px;
+                        commands: Icons.logo; stroke: Theme.accent; stroke-width: 2.3px;
+                        animate stroke { duration: 500ms; }
+                    }
                 }
                 if !compact: Text {
                     text: "vynz"; vertical-alignment: center;
