@@ -66,8 +66,6 @@ impl Player {
     }
 }
 
-const MPRIS: &str = "/usr/lib/mpv-mpris/mpris.so";
-
 fn readahead_value(secs: u32) -> String {
     if secs == 0 { "86400".into() } else { secs.to_string() }
 }
@@ -92,10 +90,8 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
         i.set_property("cache-secs", readahead_value(readahead))?;
         i.set_property("demuxer-max-bytes", "64MiB")?;
         i.set_property("prefetch-playlist", "yes")?;
-        // MPRIS: Quickshell medya penceresi ve klavyedeki medya tuşları için.
-        if std::path::Path::new(MPRIS).exists() {
-            i.set_property("scripts", MPRIS)?;
-        }
+        // MPRIS'i Vynz kendisi sunar (mpris.rs); mpv'nin betik ve eklentileri yüklenmesin.
+        i.set_property("load-scripts", "no")?;
         if let Some(ao) = &ao {
             i.set_property("ao", ao.as_str())?;
         }
