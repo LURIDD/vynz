@@ -4,6 +4,7 @@
 # (YoutubeDL API'si ayar dosyası okumaz).
 #
 # İstek : {"rid": 1, "url": "...", "prio": 0, "cookies": "firefox"|null}
+#         {"rid": 2, "op": "radio", "id": "<videoId>", "prio": 1}   benzer şarkılar (ytmusicapi)
 # Yanıt : {"rid": 1, "ok": true, "stream": "...", "expire": 1700000000, "abr": 272.4, "ext": "webm"}
 #         {"rid": 1, "ok": false, "error": "..."}
 
@@ -88,7 +89,52 @@ def resolve(url, cookies):
     raise RuntimeError(str(last).splitlines()[0][:300] if last else "çözülemedi")
 
 
+def ytmusic():
+    y = getattr(local, "ytm", None)
+    if y is None:
+        from ytmusicapi import YTMusic
+        y = local.ytm = YTMusic(language="tr", location="TR")
+    return y
+
+
+def seconds(text):
+    try:
+        parts = [int(p) for p in str(text).split(":")]
+    except ValueError:
+        return 0
+    s = 0
+    for p in parts:
+        s = s * 60 + p
+    return s
+
+
+def radio(video_id):
+    w = ytmusic().get_watch_playlist(videoId=video_id, radio=True, limit=50)
+    out = []
+    for t in w.get("tracks") or []:
+        vid = t.get("videoId")
+        if not vid:
+            continue
+        thumbs = t.get("thumbnail") or t.get("thumbnails") or []
+        thumb = thumbs[-1]["url"] if thumbs else ""
+        out.append({
+            "id": vid,
+            "title": t.get("title") or "",
+            "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])),
+            "album": (t.get("album") or {}).get("name") or "",
+            "duration": seconds(t.get("length") or 0),
+            "thumb": thumb,
+        })
+    return out
+
+
 def handle(req):
+    if req.get("op") == "radio":
+        try:
+            send({"rid": req["rid"], "ok": True, "tracks": radio(req["id"])})
+        except Exception as e:  # noqa: BLE001
+            send({"rid": req["rid"], "ok": False, "error": str(e)[:300]})
+        return
     try:
         res = resolve(req["url"], req.get("cookies"))
         res.update({"rid": req["rid"], "ok": True})

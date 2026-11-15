@@ -43,8 +43,11 @@ impl TrackInfo {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Section {
     pub title: String,
     pub items: Vec<TrackInfo>,
+    /// 0 = kart rafı, 1 = hızlı seçim kutucukları
+    #[serde(default)]
+    pub style: i32,
 }

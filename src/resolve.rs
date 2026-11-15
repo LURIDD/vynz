@@ -28,6 +28,24 @@ pub struct Resolved {
 
 pub type Done = Box<dyn FnOnce(Result<Resolved, String>) + Send>;
 
+/// Radyo şarkısı (ytmusicapi'den ham).
+#[derive(Clone, Debug, Deserialize)]
+pub struct RadioTrack {
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub artist: String,
+    #[serde(default)]
+    pub album: String,
+    #[serde(default)]
+    pub duration: f32,
+    #[serde(default)]
+    pub thumb: String,
+}
+
+pub type RadioDone = Box<dyn FnOnce(Result<Vec<RadioTrack>, String>) + Send>;
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Prio {
     Now = 0,
@@ -50,6 +68,8 @@ struct Inner {
     rids: HashMap<u64, String>,
     /// parça anahtarı -> bekleyen geri çağrılar
     waiting: HashMap<String, Vec<Done>>,
+    /// radyo istekleri: rid -> geri çağrı
+    radios: HashMap<u64, RadioDone>,
     cache: HashMap<String, Resolved>,
     last_used: Option<Instant>,
     dirty: bool,
@@ -194,7 +214,7 @@ impl Resolver {
             thread::sleep(Duration::from_secs(20));
             let mut g = inner.lock().unwrap();
             let idle = g.last_used.map(|t| t.elapsed() > Duration::from_secs(IDLE_SECS)).unwrap_or(true);
-            if idle && g.waiting.is_empty() {
+            if idle && g.waiting.is_empty() && g.radios.is_empty() {
                 if let Some(mut p) = g.proc.take() {
                     let _ = p.child.kill();
                     let _ = p.child.wait();
@@ -209,6 +229,30 @@ impl Resolver {
                 }
             }
         });
+    }
+
+    /// Bir YouTube Music şarkısına benzer şarkılar (radyo).
+    pub fn radio(&self, video_id: &str, prio: Prio, done: RadioDone) {
+        let mut g = self.inner.lock().unwrap();
+        g.last_used = Some(Instant::now());
+        if let Err(e) = self.ensure_proc(&mut g) {
+            drop(g);
+            done(Err(e));
+            return;
+        }
+        g.next_rid += 1;
+        let rid = g.next_rid;
+        g.radios.insert(rid, done);
+        let line = format!("{}\n", serde_json::json!({"rid": rid, "op": "radio", "id": video_id, "prio": prio as u8}));
+        let ok = g.proc.as_mut().map(|p| p.stdin.write_all(line.as_bytes()).and_then(|_| p.stdin.flush()).is_ok());
+        if ok != Some(true) {
+            g.proc = None;
+            let d = g.radios.remove(&rid);
+            drop(g);
+            if let Some(d) = d {
+                d(Err("çözücüye yazılamadı".into()));
+            }
+        }
     }
 
     /// Program kapanırken yardımcıyı kapat ve önbelleği yaz.
@@ -229,6 +273,8 @@ struct Reply {
     rid: Option<u64>,
     #[serde(default)]
     ok: bool,
+    #[serde(default)]
+    tracks: Option<Vec<RadioTrack>>,
     stream: Option<String>,
     expire: Option<u64>,
     ext: Option<String>,
@@ -241,6 +287,15 @@ fn read_loop(inner: Arc<Mutex<Inner>>, stdout: std::process::ChildStdout, genera
         let Ok(rep) = serde_json::from_str::<Reply>(&line) else { continue };
         let Some(rid) = rep.rid else { continue }; // "ready" satırı
         let mut g = inner.lock().unwrap();
+        if let Some(done) = g.radios.remove(&rid) {
+            g.last_used = Some(Instant::now());
+            drop(g);
+            match (rep.ok, rep.tracks) {
+                (true, Some(t)) => done(Ok(t)),
+                _ => done(Err(rep.error.unwrap_or_else(|| "radyo alınamadı".into()))),
+            }
+            continue;
+        }
         let Some(key) = g.rids.remove(&rid) else { continue };
         let result = match (rep.ok, rep.stream) {
             (true, Some(stream)) => {
@@ -266,8 +321,12 @@ fn read_loop(inner: Arc<Mutex<Inner>>, stdout: std::process::ChildStdout, genera
     }
     g.proc = None;
     let waiting: Vec<_> = g.waiting.drain().collect();
+    let radios: Vec<_> = g.radios.drain().map(|(_, d)| d).collect();
     g.rids.clear();
     drop(g);
+    for d in radios {
+        d(Err("çözücü kapandı".into()));
+    }
     for (_, list) in waiting {
         for d in list {
             d(Err("çözücü kapandı".into()));

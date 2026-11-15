@@ -19,11 +19,13 @@ pub struct Settings {
     pub readahead_secs: u32,
     pub cookies_browser: Option<String>,
     pub download_kbps: u32,
+    /// Kuyruk bitince çalan şarkının radyosuyla devam et.
+    pub autoradio: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512 }
+        Settings { cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true }
     }
 }
 

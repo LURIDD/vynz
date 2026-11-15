@@ -228,7 +228,7 @@ fn fold(c: char) -> char {
 }
 
 /// Küçük harf, aksansız; parantez içleri ve "- Remastered" gibi ekler atılır.
-fn norm(s: &str) -> String {
+pub fn norm(s: &str) -> String {
     let lower: String = s.to_lowercase().chars().map(fold).collect();
     let mut out = String::new();
     let mut depth = 0;
