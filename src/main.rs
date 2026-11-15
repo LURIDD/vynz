@@ -124,6 +124,13 @@ struct State {
     load_at: Option<std::time::Instant>,
     progressed: bool,
     watchdog: Timer,
+    /// Atlama hedefi: mpv'den gelen eski konumlar kısa süre yok sayılır (görsel sıçrama olmasın)
+    seek_guard: Option<(f32, std::time::Instant)>,
+    /// Kaldığın yerden: yüklenecek parçanın başlangıç saniyesi
+    pending_start: f64,
+    /// Açılışta geri yüklenen oturum: oynat'a basınca bu konumdan başlar
+    resume_pos: Option<f64>,
+    last_session_save: std::time::Instant,
 }
 
 /// Arama "En iyi sonuç"u: çalınabilir şarkı ya da açılabilir kart.
@@ -441,7 +448,7 @@ fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
     }
     ui.set_now(nt);
     ui.set_queue_index(i as i32);
-    ui.set_position(0.0);
+    ui.set_position(with_state(|st| st.pending_start) as f32);
     ui.set_duration(t.duration);
     ui.set_playing(true);
     let accent = ARTS.with(|a| a.borrow().get(&t.key()).map(|(_, c)| *c)).unwrap_or(NEUTRAL);
@@ -455,6 +462,7 @@ fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
     }
     request_lyrics(ui, t);
     render_lyrics(ui);
+    save_session(ui);
 }
 
 // ---------- Sözler ----------
@@ -716,15 +724,16 @@ fn play_index(ui: &AppWindow, i: usize) {
         st.loaded = false;
         st.fallback_tried = false;
         st.play_seq += 1;
+        st.pending_start = st.resume_pos.take().unwrap_or(0.0);
         request_art(st, &t);
         let key = t.key();
         if let Some(path) = cache::lookup(&key) {
             dbg(&format!("çal {key}: disk önbelleği"));
-            st.player.send(Cmd::Load { url: path.to_string_lossy().into_owned(), title: media_title(&t) });
+            st.player.send(Cmd::Load { url: path.to_string_lossy().into_owned(), title: media_title(&t), start: st.pending_start });
             st.loaded = true;
         } else if let Some(r) = st.resolver.cached(&key) {
             dbg(&format!("çal {key}: önceden çözülmüş"));
-            st.player.send(Cmd::Load { url: r.stream, title: media_title(&t) });
+            st.player.send(Cmd::Load { url: r.stream, title: media_title(&t), start: st.pending_start });
             st.loaded = true;
         } else {
             dbg(&format!("çal {key}: çözülüyor"));
@@ -759,14 +768,14 @@ fn on_resolved_now(ui: &AppWindow, seq: u64, key: String, res: Result<resolve::R
         let Some(t) = st.index.and_then(|i| st.queue.get(i).cloned()) else { return };
         match res {
             Ok(r) => {
-                st.player.send(Cmd::Load { url: r.stream, title: media_title(&t) });
+                st.player.send(Cmd::Load { url: r.stream, title: media_title(&t), start: st.pending_start });
                 st.loaded = true;
             }
             Err(e) => {
                 eprintln!("çözülemedi ({key}): {e}; yedek yol");
                 st.fallback_tried = true;
                 if let Some(page) = page_url(st, &t) {
-                    st.player.send(Cmd::Load { url: page, title: media_title(&t) });
+                    st.player.send(Cmd::Load { url: page, title: media_title(&t), start: st.pending_start });
                     st.loaded = true;
                 }
             }
@@ -864,6 +873,7 @@ fn on_started(ui: &AppWindow, pos: i64) {
             return None;
         }
         dbg("ön-tampondan sıradakine geçildi");
+        st.pending_start = 0.0;
         st.index = Some(i + 1);
         st.appended = None;
         st.play_seq += 1;
@@ -912,7 +922,7 @@ fn on_error(ui: &AppWindow, e: String) {
         let Some(t) = st.index.and_then(|i| st.queue.get(i).cloned()) else { return false };
         match page_url(st, &t) {
             Some(page) => {
-                st.player.send(Cmd::Load { url: page, title: media_title(&t) });
+                st.player.send(Cmd::Load { url: page, title: media_title(&t), start: st.pending_start });
                 st.loaded = true;
                 true
             }
@@ -930,6 +940,21 @@ fn on_error(ui: &AppWindow, e: String) {
 fn on_player_event(ui: &AppWindow, ev: Ev) {
     match ev {
         Ev::Time(t) => {
+            // Atlamadan hemen sonra gelen eski konumları gösterme
+            let stale = with_state(|st| match st.seek_guard {
+                Some((target, at)) if ((t as f32) - target).abs() > 1.5 && at.elapsed() < Duration::from_secs(2) => true,
+                Some(_) => {
+                    st.seek_guard = None;
+                    false
+                }
+                None => false,
+            });
+            if stale {
+                return;
+            }
+            if ui.get_playing() && with_state(|st| st.last_session_save.elapsed() > Duration::from_secs(10)) {
+                save_session(ui);
+            }
             with_state(|st| {
                 if t > 0.4 {
                     st.progressed = true;
@@ -959,6 +984,13 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
             ui.set_duration(d as f32)
         }
         Ev::Paused(p) => {
+            // Geri yüklenmiş ama henüz yüklenmemiş parça: mpv'nin açılıştaki "pause=no" bildirimi oynatıyor sanılmasın.
+            if with_state(|st| !st.loaded && st.resume_pos.is_some()) {
+                return;
+            }
+            if p && ui.get_has_now() {
+                save_session(ui);
+            }
             if ui.get_has_now() {
                 with_state(|st| st.mpris.send(mpris::Msg::Playing(!p)));
             }
@@ -2209,6 +2241,81 @@ fn play_list(ui: &AppWindow, list: Vec<TrackInfo>, i: usize) {
     play_index(ui, i);
 }
 
+/// Konuma atla: arayüz hedefi hemen gösterir, mpv'den gelen eski konumlar kısa süre yok sayılır.
+fn seek_to(ui: &AppWindow, secs: f64) {
+    let secs = secs.max(0.0);
+    ui.set_position(secs as f32);
+    with_state(|st| {
+        st.seek_guard = Some((secs as f32, std::time::Instant::now()));
+        st.player.send(Cmd::Seek(secs));
+    });
+    update_lyrics(ui, secs as f32);
+    save_session(ui);
+}
+
+fn session_path() -> std::path::PathBuf {
+    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    std::env::var_os("XDG_DATA_HOME").map(Into::into).unwrap_or(home.join(".local/share")).join("vynz").join("session.json")
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Session {
+    queue: Vec<TrackInfo>,
+    index: usize,
+    position: f64,
+}
+
+/// Kuyruk, çalan parça ve konumu kaydet (kapanışta ve çalarken arada bir).
+fn save_session(ui: &AppWindow) {
+    let s = with_state(|st| {
+        st.last_session_save = std::time::Instant::now();
+        let i = st.index?;
+        if st.queue.is_empty() {
+            return None;
+        }
+        // Dinlenmeye başlanmadan kapatıldıysa geri yüklenen konumu koru
+        let pos = st.resume_pos.unwrap_or(ui.get_position() as f64);
+        Some(Session { queue: st.queue.clone(), index: i, position: pos })
+    });
+    let Some(s) = s else { return };
+    let p = session_path();
+    if let Some(d) = p.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let tmp = p.with_extension("json.tmp");
+    if std::fs::write(&tmp, serde_json::to_vec(&s).unwrap_or_default()).is_ok() {
+        let _ = std::fs::rename(tmp, p);
+    }
+}
+
+/// Açılışta son oturumu geri getir: parça duraklatılmış hazır bekler.
+fn restore_session(ui: &AppWindow) {
+    let Some(s) = std::fs::read(session_path()).ok().and_then(|r| serde_json::from_slice::<Session>(&r).ok()) else { return };
+    let Some(t) = s.queue.get(s.index).cloned() else { return };
+    let model = model_of(&s.queue);
+    with_state(|st| {
+        for x in s.queue.iter().take(30) {
+            request_art(st, x);
+        }
+        st.queue = s.queue.clone();
+        st.index = Some(s.index);
+        st.loaded = false;
+        st.resume_pos = Some(s.position);
+        st.pending_start = s.position;
+    });
+    ui.set_queue(model);
+    set_now_ui(ui, &t, s.index);
+    with_state(|st| {
+        st.listen = None; // geri yükleme dinleme sayılmasın
+        st.load_at = None; // bekçi tetiklenmesin
+        st.mpris.send(mpris::Msg::Playing(false));
+        st.mpris.send(mpris::Msg::Position(s.position));
+    });
+    ui.set_playing(false);
+    ui.set_position(s.position as f32);
+    dbg(&format!("oturum geri yüklendi: {} @ {:.0} sn", t.key(), s.position));
+}
+
 /// MPRIS (medya tuşları, çubuk) komutlarını uygula.
 fn on_mpris(ui: &AppWindow, a: mpris::Act) {
     use mpris::Act;
@@ -2222,11 +2329,8 @@ fn on_mpris(ui: &AppWindow, a: mpris::Act) {
         }
         Act::Next => ui.invoke_next(),
         Act::Prev => ui.invoke_prev(),
-        Act::Seek(off) => {
-            let p = (ui.get_position() as f64 + off).max(0.0);
-            with_state(|st| st.player.send(Cmd::Seek(p)));
-        }
-        Act::SetPosition(p) => with_state(|st| st.player.send(Cmd::Seek(p.max(0.0)))),
+        Act::Seek(off) => seek_to(ui, ui.get_position() as f64 + off),
+        Act::SetPosition(p) => seek_to(ui, p),
         Act::Volume(v) => {
             let v = v.clamp(0.0, 1.0);
             ui.set_volume(v as f32);
@@ -2347,6 +2451,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             load_at: None,
             progressed: false,
             watchdog: Timer::default(),
+            seek_guard: None,
+            pending_start: 0.0,
+            resume_pos: None,
+            last_session_save: std::time::Instant::now(),
         })
     });
     refresh_playlists(&ui);
@@ -2401,11 +2509,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = weak.clone();
         move || {
             let Some(ui) = weak.upgrade() else { return };
+            // Geri yüklenen oturum: parça henüz mpv'de değil, kaldığı yerden başlat
+            let resume = with_state(|st| (!st.loaded && st.resume_pos.is_some()).then_some(st.index).flatten());
+            if let Some(i) = resume {
+                play_index(&ui, i);
+                return;
+            }
             let playing = ui.get_playing();
             with_state(|st| st.player.send(Cmd::SetPause(playing)));
         }
     });
-    ui.on_seek(|secs| with_state(|st| st.player.send(Cmd::Seek(secs as f64))));
+    ui.on_seek({
+        let weak = weak.clone();
+        move |secs| {
+            if let Some(ui) = weak.upgrade() {
+                seek_to(&ui, secs as f64);
+            }
+        }
+    });
     ui.on_set_volume(|v| {
         with_state(|st| {
             st.player.send(Cmd::Volume(v as f64));
@@ -2700,7 +2821,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |t| {
             let Some(ui) = weak.upgrade() else { return };
             let off = with_state(|st| st.lyr_offsets.get(&ui.get_now().key.to_string()).copied().unwrap_or(0.0));
-            with_state(|st| st.player.send(Cmd::Seek(((t - off).max(0.0)) as f64)));
+            seek_to(&ui, (t - off).max(0.0) as f64);
         }
     });
     ui.on_lyrics_style_changed({
@@ -2824,9 +2945,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     });
 
+    restore_session(&ui);
+    // SIGTERM/SIGINT (kapanış, oturum sonu, kill): döngüden düzgün çık ki oturum kaydedilsin.
+    let _ = ctrlc::set_handler(|| {
+        let _ = slint::invoke_from_event_loop(|| {
+            let _ = slint::quit_event_loop();
+        });
+    });
     refresh_usage(&ui);
     load_home(&ui);
     ui.run()?;
+    save_session(&ui);
     with_state(|st| st.viz = None);
     start_listen(None); // son dinlemeyi kaydet
     resolver.shutdown();

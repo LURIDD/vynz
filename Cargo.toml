@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 async-channel = "2.5.0"
 async-io = "2.6.0"
+ctrlc = { version = "3.5.2", features = ["termination"] }
 futures-lite = "2.6.1"
 image = "0.25.10"
 libmpv2 = "7"

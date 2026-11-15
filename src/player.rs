@@ -15,7 +15,7 @@ use libmpv2::{events::*, mpv_end_file_reason, Format, Mpv};
 pub enum Cmd {
     /// Hemen çal (mpv listesindeki sıradakini de temizler).
     /// `title`: MPRIS'te (çubuk, medya tuşları) görünecek ad.
-    Load { url: String, title: String },
+    Load { url: String, title: String, start: f64 },
     /// Sıradaki olarak ekle (ön-tampon).
     Append { url: String, title: String },
     /// Eklenmiş sıradakini kaldır.
@@ -70,10 +70,14 @@ fn readahead_value(secs: u32) -> String {
     if secs == 0 { "86400".into() } else { secs.to_string() }
 }
 
-fn loadfile(mpv: &Mpv, url: &str, mode: &str, title: &str) -> libmpv2::Result<()> {
+fn loadfile(mpv: &Mpv, url: &str, mode: &str, title: &str, start: f64) -> libmpv2::Result<()> {
     // Dosyaya özel seçenek; virgül ve eşittir seçenek ayırıcısı olduğundan temizlenir.
     let clean: String = title.chars().map(|c| if c == ',' || c == '=' { ' ' } else { c }).collect();
-    mpv.command("loadfile", &[url, mode, "-1", &format!("force-media-title=%{}%{clean}", clean.len())])
+    let mut opts = format!("force-media-title=%{}%{clean}", clean.len());
+    if start > 0.5 {
+        opts.push_str(&format!(",start={start:.2}")); // kaldığı yerden
+    }
+    mpv.command("loadfile", &[url, mode, "-1", &opts])
 }
 
 fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<Result<(), String>>) {
@@ -122,11 +126,11 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
     loop {
         loop {
             match rx.try_recv() {
-                Ok(Cmd::Load { url, title }) => {
+                Ok(Cmd::Load { url, title, start }) => {
                     last_time = -1.0;
                     let _ = mpv.command("playlist-clear", &[]);
                     let _ = mpv.set_property("pause", false);
-                    if let Err(e) = loadfile(&mpv, &url, "replace", &title) {
+                    if let Err(e) = loadfile(&mpv, &url, "replace", &title, start) {
                         on_event(Ev::Error(e.to_string()));
                     } else {
                         on_event(Ev::Buffering(true));
@@ -134,7 +138,7 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
                 }
                 Ok(Cmd::Append { url, title }) => {
                     let _ = mpv.command("playlist-clear", &[]);
-                    if let Err(e) = loadfile(&mpv, &url, "append", &title) {
+                    if let Err(e) = loadfile(&mpv, &url, "append", &title, 0.0) {
                         eprintln!("sıradaki eklenemedi: {e}");
                     }
                 }
