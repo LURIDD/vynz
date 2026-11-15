@@ -60,7 +60,7 @@ impl Fetcher {
 
     /// Önbelleğe alınmak üzere sıraya koy (zaten varsa ya da sıradaysa yok sayılır).
     pub fn enqueue(&self, key: &str, url: &str) {
-        if self.cache_limit.load(Ordering::Relaxed) == 0 || cache::lookup(key).is_some() {
+        if self.cache_limit.load(Ordering::Relaxed) == 0 || cache::exists(key).is_some() {
             return;
         }
         let (m, cv) = &*self.q;

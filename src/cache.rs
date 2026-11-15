@@ -26,7 +26,13 @@ pub fn part_path(key: &str) -> PathBuf {
     dir().join(format!("{}.part.mka", safe(key)))
 }
 
-/// Tamamlanmış kayıt varsa yolunu döner ve "son kullanım" zamanını tazeler.
+/// Kayıt var mı (süreye dokunmaz; ön-hazırlık kontrolleri için).
+pub fn exists(key: &str) -> Option<PathBuf> {
+    let p = final_path(key);
+    (std::fs::metadata(&p).ok()?.len() >= MIN_BYTES).then_some(p)
+}
+
+/// Tamamlanmış kayıt varsa yolunu döner ve "son kullanım" zamanını tazeler (çalarken kullan).
 pub fn lookup(key: &str) -> Option<PathBuf> {
     let p = final_path(key);
     let len = std::fs::metadata(&p).ok()?.len();
@@ -99,6 +105,50 @@ pub fn enforce(limit: u64) {
     }
 }
 
+/// `days` gündür çalınmayan kayıtları sil (0 = süre sınırı yok).
+pub fn expire(days: u32) {
+    if days == 0 {
+        return;
+    }
+    let max_age = days as u64 * 86400;
+    let Ok(rd) = std::fs::read_dir(dir()) else { return };
+    for e in rd.flatten() {
+        let Ok(m) = e.metadata() else { continue };
+        let old = m.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() > max_age);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 pub fn clear() {
     let _ = std::fs::remove_dir_all(dir());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn expire_removes_only_old_and_lookup_refreshes() {
+        let tmp = std::env::temp_dir().join(format!("vynz-cache-test-{}", std::process::id()));
+        // SAFETY: tek iş parçacıklı test; başka test bu değişkene bakmıyor.
+        unsafe { std::env::set_var("XDG_CACHE_HOME", &tmp) };
+        std::fs::create_dir_all(dir()).unwrap();
+        for k in ["eski", "yeni", "eski-ama-calindi"] {
+            std::fs::write(final_path(k), vec![0u8; MIN_BYTES as usize]).unwrap();
+        }
+        let old = SystemTime::now() - Duration::from_secs(40 * 86400);
+        for k in ["eski", "eski-ama-calindi"] {
+            std::fs::File::options().append(true).open(final_path(k)).unwrap().set_modified(old).unwrap();
+        }
+        assert!(exists("eski").is_some());
+        assert!(lookup("eski-ama-calindi").is_some()); // çalındı: süre yenilenir
+        expire(30);
+        assert!(exists("eski").is_none());
+        assert!(exists("yeni").is_some());
+        assert!(exists("eski-ama-calindi").is_some());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

@@ -66,6 +66,7 @@ export component AppWindow inherits Window {
     in-out property <int> readahead-index: 1;
     in-out property <int> cookies-index: 0;
     in-out property <int> download-index: 1;
+    in-out property <int> keep-index: 1;
     in property <string> cache-usage: "…";
     callback settings-changed();
     callback clear-cache();
@@ -865,6 +866,18 @@ export component AppWindow inherits Window {
                             }
                             Rectangle { width: 12px; }
                             PillButton { pill-height: 32px; text: "Temizle"; clicked => { root.clear-cache(); } }
+                        }
+                    }
+
+                    SettingGroup {
+                        title: "Dinlenmeyen şarkıları sil";
+                        note: "Önbellekteki bir şarkı bu süre boyunca çalınmazsa silinir; çaldıkça süre yenilenir. Kapaklar 30 gün kullanılmazsa silinir (en çok 150 MB).";
+                        HorizontalLayout {
+                            spacing: 8px; alignment: start;
+                            for label[i] in ["14 gün", "30 gün", "90 gün", "Silme"]: PillButton {
+                                pill-height: 32px; text: label; active: keep-index == i;
+                                clicked => { keep-index = i; root.settings-changed(); }
+                            }
                         }
                     }
 

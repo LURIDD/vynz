@@ -33,7 +33,13 @@ pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
     let dir = cache_dir();
     let path = dir.join(format!("{key}.img"));
     let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
+        Ok(b) => {
+            // Kullanıldı: süre temizliğinde silinmesin.
+            if let Ok(f) = std::fs::File::options().append(true).open(&path) {
+                let _ = f.set_modified(std::time::SystemTime::now());
+            }
+            b
+        }
         Err(_) => {
             let mut resp = ureq::get(url).call().map_err(|e| e.to_string())?;
             let b = resp
@@ -158,4 +164,29 @@ fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (f64, f64, f64) {
         }
     };
     (f(h + 1.0 / 3.0), f(h), f(h - 1.0 / 3.0))
+}
+
+/// Kapak önbelleği temizliği: `days` gündür kullanılmayanları sil, sonra toplamı `limit` baytın altına indir.
+pub fn prune(days: u64, limit: u64) {
+    let Ok(rd) = std::fs::read_dir(cache_dir()) else { return };
+    let mut files: Vec<(PathBuf, u64, std::time::SystemTime)> = Vec::new();
+    for e in rd.flatten() {
+        let Ok(m) = e.metadata() else { continue };
+        let t = m.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        if t.elapsed().map(|d| d.as_secs() > days * 86400).unwrap_or(false) {
+            let _ = std::fs::remove_file(e.path());
+            continue;
+        }
+        files.push((e.path(), m.len(), t));
+    }
+    let mut total: u64 = files.iter().map(|f| f.1).sum();
+    files.sort_by_key(|f| f.2);
+    for (p, len, _) in files {
+        if total <= limit {
+            break;
+        }
+        if std::fs::remove_file(&p).is_ok() {
+            total -= len;
+        }
+    }
 }
