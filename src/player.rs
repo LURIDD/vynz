@@ -25,6 +25,8 @@ pub enum Cmd {
     Volume(f64),
     /// İleri okuma sınırı (saniye; 0 = sınırsız).
     Readahead(u32),
+    /// Tek şarkıyı tekrarla.
+    LoopFile(bool),
 }
 
 #[derive(Debug)]
@@ -151,6 +153,9 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
                 }
                 Ok(Cmd::Volume(v)) => {
                     let _ = mpv.set_property("volume", (v * 100.0).clamp(0.0, 100.0));
+                }
+                Ok(Cmd::LoopFile(on)) => {
+                    let _ = mpv.set_property("loop-file", if on { "inf" } else { "no" });
                 }
                 Ok(Cmd::Readahead(secs)) => {
                     let _ = mpv.set_property("cache-secs", readahead_value(secs));

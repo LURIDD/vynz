@@ -45,7 +45,7 @@ fn ymus(args: &[&str]) -> Res<String> {
 }
 
 /// ytmusicapi küçük kapak verir (w120); büyüğünü iste.
-fn big_thumb(url: &str) -> String {
+pub fn big_thumb(url: &str) -> String {
     match url.find("=w") {
         Some(i) => format!("{}=w544-h544-l90-rj", &url[..i]),
         None => url.to_string(),
@@ -87,6 +87,7 @@ impl Provider for Ytm {
             .map(|s| Section {
                 title: s.title,
                 items: s.items.into_iter().filter_map(to_track).collect(),
+                style: 0,
             })
             .filter(|s| !s.items.is_empty())
             .collect())

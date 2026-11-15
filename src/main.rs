@@ -8,11 +8,13 @@
 mod art;
 mod cache;
 mod fetcher;
+mod history;
 mod import;
 mod library;
 mod lyrics;
 mod model;
 mod player;
+mod recommend;
 mod resolve;
 mod settings;
 mod sources;
@@ -76,6 +78,18 @@ struct State {
     lyr_spoken: usize,
     /// Şarkıya özel söz kaydırma (sn).
     lyr_offsets: HashMap<String, f32>,
+    history: history::History,
+    /// Çalan parçanın dinlenme sayacı: (parça, dinlenen sn, son konum)
+    listen: Option<(TrackInfo, f32, f32)>,
+    /// Karıştırma açıkken kuyruğun özgün sırası
+    shuffle_orig: Option<Vec<TrackInfo>>,
+    /// 0 kapalı, 1 tüm liste, 2 tek şarkı
+    repeat: i32,
+    radio_busy: bool,
+    /// Sağ tık menüsünün hedefi
+    menu: Option<TrackInfo>,
+    /// Kişisel karışım (ana sayfadaki "Karışımı çal")
+    mix: Vec<TrackInfo>,
 }
 
 /// VYNZ_DEBUG=1 ile zaman damgalı olay günlüğü (stderr): hız ölçümü için.
@@ -237,7 +251,20 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
 
 // ---------- Oynatma ----------
 
+/// Önceki parçanın dinlemesini geçmişe yaz, yenisini başlat.
+fn start_listen(t: Option<&TrackInfo>) {
+    with_state(|st| {
+        if let Some((prev, played, _)) = st.listen.take() {
+            dbg(&format!("dinleme: {} {:.0} sn", prev.key(), played));
+            st.history.record(prev, played);
+        }
+        st.listen = t.map(|t| (t.clone(), 0.0, 0.0));
+    });
+}
+
 fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
+    start_listen(Some(t));
+    ui.set_liked(with_state(|st| st.history.is_liked(&t.key())));
     ui.set_has_now(true);
     ui.set_now(ui_track(t));
     ui.set_queue_index(i as i32);
@@ -474,6 +501,13 @@ fn on_resolved_now(ui: &AppWindow, seq: u64, key: String, res: Result<resolve::R
 
 /// Kuyruktaki sonraki parçaları önceden çöz; ilki hazır olunca mpv'ye sıradaki olarak ekle.
 fn schedule_prefetch(ui: &AppWindow) {
+    // Liste bitmek üzereyse radyoyla önceden uzat (geçiş yine anında olsun).
+    let near_end = with_state(|st| {
+        st.settings.autoradio && st.repeat == 0 && !st.radio_busy && st.index.is_some_and(|i| i + 2 >= st.queue.len())
+    });
+    if near_end {
+        extend_with_radio(ui, false);
+    }
     let weak = ui.as_weak();
     with_state(|st| {
         if !st.settings.prefetch {
@@ -528,11 +562,16 @@ fn maybe_append_next(_ui: &AppWindow) {
 }
 
 fn step(ui: &AppWindow, delta: i64) {
-    let (idx, len) = with_state(|st| (st.index, st.queue.len()));
+    let (idx, len, repeat, autoradio) = with_state(|st| (st.index, st.queue.len(), st.repeat, st.settings.autoradio));
     let Some(idx) = idx else { return };
     let next = idx as i64 + delta;
     if next >= 0 && (next as usize) < len {
         play_index(ui, next as usize);
+    } else if delta > 0 && repeat == 1 && len > 0 {
+        play_index(ui, 0);
+    } else if delta > 0 && autoradio {
+        // Liste bitti: çalan şarkının benzerleriyle devam et.
+        extend_with_radio(ui, true);
     } else if delta > 0 {
         ui.set_playing(false);
     }
@@ -598,6 +637,15 @@ fn on_error(ui: &AppWindow, e: String) {
 fn on_player_event(ui: &AppWindow, ev: Ev) {
     match ev {
         Ev::Time(t) => {
+            with_state(|st| {
+                if let Some((_, played, last)) = st.listen.as_mut() {
+                    let d = t as f32 - *last;
+                    if d > 0.0 && d <= 1.5 {
+                        *played += d; // ileri sarma sayılmaz
+                    }
+                    *last = t as f32;
+                }
+            });
             ui.set_position(t as f32);
             update_lyrics(ui, t as f32);
             if t >= 20.0 {
@@ -691,43 +739,420 @@ fn start_env_monitor(metered: Arc<AtomicBool>, on_battery: Arc<AtomicBool>) {
     });
 }
 
+// ---------- Radyo ----------
+
+fn radio_track(r: resolve::RadioTrack) -> TrackInfo {
+    TrackInfo {
+        source: Source::Ytm,
+        thumb: sources::ytm::big_thumb(&r.thumb),
+        id: r.id,
+        title: r.title,
+        artist: r.artist,
+        album: r.album,
+        duration: r.duration,
+        url: None,
+    }
+}
+
+/// Bir şarkının radyosu (benzerleri). SoundCloud şarkısıysa önce YouTube Music karşılığı bulunur.
+fn fetch_radio(seed: TrackInfo, done: impl FnOnce(Result<Vec<TrackInfo>, String>) + Send + 'static) {
+    let (resolver, ytm) = with_state(|st| (st.resolver.clone(), provider(st, Source::Ytm)));
+    thread::spawn(move || {
+        let id = if seed.source == Source::Ytm {
+            Some(seed.id.clone())
+        } else {
+            ytm.and_then(|p| p.search(&format!("{} {}", seed.title, seed.artist), 1).ok()).and_then(|r| r.into_iter().next()).map(|t| t.id)
+        };
+        let Some(id) = id else {
+            done(Err("YouTube Music'te karşılığı bulunamadı".into()));
+            return;
+        };
+        let (tx, rx) = mpsc::channel();
+        resolver.radio(&id, Prio::Now, Box::new(move |r| {
+            let _ = tx.send(r);
+        }));
+        match rx.recv_timeout(Duration::from_secs(20)) {
+            Ok(Ok(list)) => done(Ok(list.into_iter().map(radio_track).collect())),
+            Ok(Err(e)) => done(Err(e)),
+            Err(_) => done(Err("radyo zaman aşımı".into())),
+        }
+    });
+}
+
+/// Seçilen şarkıdan radyo başlat: şarkı + benzerleri yeni kuyruk olur.
+fn start_radio(ui: &AppWindow, seed: TrackInfo) {
+    let playing_same = ui.get_has_now() && ui.get_now().key == seed.key().as_str();
+    with_state(|st| st.radio_busy = true);
+    ui.set_radio_busy(true);
+    toast(ui, &format!("“{}” radyosu hazırlanıyor…", seed.title));
+    let weak = ui.as_weak();
+    let seed2 = seed.clone();
+    fetch_radio(seed, move |res| {
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            with_state(|st| st.radio_busy = false);
+            ui.set_radio_busy(false);
+            match res {
+                Ok(list) => {
+                    let mut q = vec![seed2.clone()];
+                    q.extend(list.into_iter().filter(|t| t.key() != seed2.key()));
+                    if playing_same {
+                        // Çalan şarkı kesilmeden kuyruğun geri kalanı radyo olur.
+                        with_state(|st| {
+                            st.queue = q;
+                            st.index = Some(0);
+                            st.shuffle_orig = None;
+                        });
+                        queue_changed(&ui);
+                    } else {
+                        play_list(&ui, q, 0);
+                    }
+                    toast(&ui, &format!("Radyo: {}", seed2.title));
+                }
+                Err(e) => toast(&ui, &format!("Radyo alınamadı: {e}")),
+            }
+        });
+    });
+}
+
+/// Kuyruk bitmek üzere/bitti: çalan şarkının radyosundan, kuyrukta olmayanları ekle.
+fn extend_with_radio(ui: &AppWindow, then_play: bool) {
+    let seed = with_state(|st| {
+        if st.radio_busy {
+            return None;
+        }
+        let t = st.index.and_then(|i| st.queue.get(i).cloned())?;
+        st.radio_busy = true;
+        Some(t)
+    });
+    let Some(seed) = seed else { return };
+    dbg(&format!("liste uzatılıyor: {}", seed.key()));
+    let weak = ui.as_weak();
+    fetch_radio(seed, move |res| {
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            let added = with_state(|st| {
+                st.radio_busy = false;
+                let Ok(list) = res else { return 0 };
+                let have: HashSet<String> = st.queue.iter().map(TrackInfo::key).collect();
+                let skipped = st.history.recently_skipped(14);
+                let new: Vec<TrackInfo> = list.into_iter().filter(|t| !have.contains(&t.key()) && !skipped.contains(&t.key())).take(25).collect();
+                let n = new.len();
+                st.queue.extend(new);
+                n
+            });
+            if added > 0 {
+                queue_changed(&ui);
+                if then_play {
+                    step(&ui, 1);
+                }
+            } else if then_play {
+                ui.set_playing(false);
+            }
+        });
+    });
+}
+
+// ---------- Kuyruk ----------
+
+/// Kuyruk değişti: arayüzü tazele, mpv'deki sıradaki artık doğru değilse yeniden hazırla.
+fn queue_changed(ui: &AppWindow) {
+    let (list, idx) = with_state(|st| {
+        if st.appended.is_some() {
+            st.player.send(Cmd::ClearNext);
+            st.appended = None;
+        }
+        for t in st.queue.clone().iter().take(40) {
+            request_art(st, t);
+        }
+        (st.queue.clone(), st.index)
+    });
+    ui.set_queue(model_of(&list));
+    ui.set_queue_index(idx.map(|i| i as i32).unwrap_or(-1));
+    schedule_prefetch(ui);
+}
+
+fn queue_remove(ui: &AppWindow, i: usize) {
+    let current = with_state(|st| st.index == Some(i));
+    if current {
+        // Çalanı çıkarmak = sonrakine geç ve onu listeden sil.
+        with_state(|st| {
+            st.queue.remove(i);
+            st.index = None;
+        });
+        if with_state(|st| i < st.queue.len()) {
+            play_index(ui, i);
+            queue_changed(ui);
+        } else {
+            queue_changed(ui);
+        }
+        return;
+    }
+    with_state(|st| {
+        if i < st.queue.len() {
+            st.queue.remove(i);
+            if let Some(cur) = st.index {
+                if i < cur {
+                    st.index = Some(cur - 1);
+                }
+            }
+        }
+    });
+    queue_changed(ui);
+}
+
+fn queue_move(ui: &AppWindow, i: usize, delta: i32) {
+    let ok = with_state(|st| {
+        let j = i as i64 + delta as i64;
+        if j < 0 || j as usize >= st.queue.len() || i >= st.queue.len() {
+            return false;
+        }
+        let j = j as usize;
+        st.queue.swap(i, j);
+        st.index = st.index.map(|c| if c == i { j } else if c == j { i } else { c });
+        true
+    });
+    if ok {
+        queue_changed(ui);
+    }
+}
+
+fn queue_clear(ui: &AppWindow) {
+    with_state(|st| {
+        if let Some(t) = st.index.and_then(|i| st.queue.get(i).cloned()) {
+            st.queue = vec![t];
+            st.index = Some(0);
+        } else {
+            st.queue.clear();
+        }
+        st.shuffle_orig = None;
+    });
+    queue_changed(ui);
+}
+
+fn play_next(ui: &AppWindow, t: TrackInfo) {
+    let empty = with_state(|st| st.index.is_none());
+    if empty {
+        play_list(ui, vec![t], 0);
+        return;
+    }
+    with_state(|st| {
+        let key = t.key();
+        let cur = st.index.unwrap_or(0);
+        // Kuyrukta (çalandan sonra) zaten varsa kopyalama, öne al.
+        if let Some(j) = st.queue.iter().enumerate().skip(cur + 1).find(|(_, x)| x.key() == key).map(|(j, _)| j) {
+            st.queue.remove(j);
+        }
+        let at = (cur + 1).min(st.queue.len());
+        st.queue.insert(at, t);
+    });
+    queue_changed(ui);
+}
+
+fn add_to_queue(ui: &AppWindow, t: TrackInfo) {
+    let empty = with_state(|st| st.index.is_none());
+    if empty {
+        play_list(ui, vec![t], 0);
+        return;
+    }
+    with_state(|st| st.queue.push(t));
+    queue_changed(ui);
+}
+
+fn toggle_shuffle(ui: &AppWindow) {
+    let on = with_state(|st| {
+        let Some(i) = st.index else { return false };
+        if let Some(orig) = st.shuffle_orig.take() {
+            // Kapat: özgün sıraya dön, çalan şarkının yerini bul.
+            let key = st.queue[i].key();
+            st.index = orig.iter().position(|t| t.key() == key).or(Some(0));
+            st.queue = orig;
+            false
+        } else {
+            st.shuffle_orig = Some(st.queue.clone());
+            // Çalandan sonrasını karıştır (basit Fisher-Yates, zamana dayalı tohum).
+            let mut seed = history::now() ^ 0x9E37_79B9_7F4A_7C15;
+            let rest = &mut st.queue[i + 1..];
+            for k in (1..rest.len()).rev() {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                let j = (seed % (k as u64 + 1)) as usize;
+                rest.swap(k, j);
+            }
+            true
+        }
+    });
+    ui.set_shuffle_on(on);
+    queue_changed(ui);
+}
+
+fn cycle_repeat(ui: &AppWindow) {
+    let mode = with_state(|st| {
+        st.repeat = (st.repeat + 1) % 3;
+        st.player.send(Cmd::LoopFile(st.repeat == 2));
+        st.repeat
+    });
+    ui.set_repeat_mode(mode);
+}
+
+fn toggle_like_current(ui: &AppWindow) {
+    let liked = with_state(|st| {
+        let t = st.index.and_then(|i| st.queue.get(i).cloned())?;
+        Some(st.history.toggle_like(&t))
+    });
+    if let Some(l) = liked {
+        ui.set_liked(l);
+        toast(ui, if l { "Beğendiklerine eklendi" } else { "Beğendiklerinden çıkarıldı" });
+    }
+}
+
+// ---------- Sağ tık menüsü ----------
+
+/// Menünün hedef şarkısı: kind 0 raf (a, b), 1 arama sonucu, 2 kayıtlı liste, 3 kuyruk.
+fn menu_target(st: &State, kind: i32, a: i32, b: i32) -> Option<TrackInfo> {
+    let (a, b) = (a as usize, b as usize);
+    match kind {
+        0 => st.shelves.get(a).and_then(|s| s.items.get(b)).cloned(),
+        1 => st.results.get(a).cloned(),
+        2 => st.current_pl.and_then(|p| st.playlists.get(p)).and_then(|p| p.tracks.get(a)).cloned(),
+        3 => st.queue.get(a).cloned(),
+        _ => None,
+    }
+}
+
+fn menu_action(ui: &AppWindow, action: i32) {
+    let Some(t) = with_state(|st| st.menu.take()) else { return };
+    match action {
+        0 => play_list(ui, vec![t], 0),
+        1 => {
+            toast(ui, &format!("Sıradaki: {}", t.title));
+            play_next(ui, t);
+        }
+        2 => {
+            toast(ui, &format!("Kuyruğa eklendi: {}", t.title));
+            add_to_queue(ui, t);
+        }
+        3 => start_radio(ui, t),
+        4 => {
+            let l = with_state(|st| st.history.toggle_like(&t));
+            if ui.get_now().key == t.key().as_str() {
+                ui.set_liked(l);
+            }
+            toast(ui, if l { "Beğendiklerine eklendi" } else { "Beğendiklerinden çıkarıldı" });
+        }
+        _ => {}
+    }
+}
+
 // ---------- Veri yükleme ----------
 
+fn home_cache() -> std::path::PathBuf {
+    cache::dir().parent().map(|p| p.join("home.json")).unwrap_or_default()
+}
+
+fn greeting() -> &'static str {
+    let h = std::process::Command::new("date").arg("+%H").output().ok()
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok()).unwrap_or(12);
+    match h {
+        5..=11 => "Günaydın",
+        12..=17 => "İyi günler",
+        18..=22 => "İyi akşamlar",
+        _ => "İyi geceler",
+    }
+}
+
+/// Ana sayfayı göster: kişisel raflar (algoritma) + kaynakların önerileri.
+fn show_home(ui: &AppWindow, personal: Vec<Section>, external: Vec<Section>) {
+    let all: Vec<Section> = with_state(|st| {
+        let quick = recommend::quick_picks(&st.history, &personal, &external);
+        let mut all = Vec::new();
+        if !quick.is_empty() {
+            all.push(Section { title: "Hızlı erişim".into(), items: quick, style: 1 });
+        }
+        st.mix = personal.iter().find(|s| s.title == "Senin için karışım").map(|s| s.items.clone()).unwrap_or_default();
+        all.extend(personal);
+        all.extend(external);
+        for s in &all {
+            for t in s.items.iter().take(if s.style == 1 { 8 } else { 7 }) {
+                request_art(st, t);
+            }
+        }
+        if let Some(first) = all.first() {
+            for t in first.items.iter().take(3) {
+                speculate(st, t);
+            }
+        }
+        // "Karışımı çal" anında başlasın.
+        for t in st.mix.clone().iter().take(2) {
+            speculate(st, t);
+        }
+        st.shelves = all.clone();
+        all
+    });
+    dbg(&format!("raflar: {}", all.iter().map(|s| format!("{} ({})", s.title, s.items.len())).collect::<Vec<_>>().join(" | ")));
+    let mix_shelf = all.iter().position(|s| s.title == "Senin için karışım").map(|i| i as i32).unwrap_or(-1);
+    let shelves: Vec<Shelf> = all.iter().map(|s| Shelf { title: s.title.as_str().into(), items: model_of(&s.items), style: s.style }).collect();
+    ui.set_mix_shelf(mix_shelf);
+    ui.set_shelves(ModelRc::new(VecModel::from(shelves)));
+    ui.set_has_mix(with_state(|st| !st.mix.is_empty()));
+    ui.set_greeting(greeting().into());
+}
+
 fn load_home(ui: &AppWindow) {
-    let providers = with_state(|st| st.providers.clone());
+    // Önce son hesaplanan kişisel raflar: açılış anında dolu bir sayfa.
+    let cached: Vec<Section> = std::fs::read(home_cache()).ok().and_then(|r| serde_json::from_slice(&r).ok()).unwrap_or_default();
+    if !cached.is_empty() {
+        show_home(ui, cached.clone(), Vec::new());
+        ui.set_home_loading(false);
+    }
+    let (providers, resolver, hist_seeds, history_snapshot) = with_state(|st| {
+        let seeds = recommend::seeds(&st.history);
+        (st.providers.clone(), st.resolver.clone(), seeds, st.history.snapshot())
+    });
     let weak = ui.as_weak();
     thread::spawn(move || {
-        let mut all = Vec::new();
+        // Tohumların radyoları paralel istenir.
+        let (tx, rx) = mpsc::channel();
+        for (seed, _) in &hist_seeds {
+            let tx = tx.clone();
+            let key = seed.key();
+            resolver.radio(&seed.id, Prio::Soon, Box::new(move |r| {
+                let _ = tx.send((key, r));
+            }));
+        }
+        drop(tx);
+        let mut external = Vec::new();
         let mut errors = Vec::new();
-        for p in providers {
+        for p in &providers {
             match p.home() {
-                Ok(mut s) => all.append(&mut s),
+                Ok(mut s) => external.append(&mut s),
                 Err(e) => errors.push(format!("{}: {e}", source_name(p.source()))),
             }
         }
+        let mut radios = HashMap::new();
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while radios.len() < hist_seeds.len() {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            match rx.recv_timeout(left) {
+                Ok((key, Ok(list))) => {
+                    radios.insert(key, list.into_iter().map(radio_track).collect::<Vec<_>>());
+                }
+                Ok((_, Err(e))) => errors.push(format!("radyo: {e}")),
+                Err(_) => break,
+            }
+        }
+        let personal = recommend::build(&history_snapshot, &hist_seeds, &radios);
+        if !personal.is_empty() {
+            let _ = std::fs::write(home_cache(), serde_json::to_vec(&personal).unwrap_or_default());
+        }
         let _ = weak.upgrade_in_event_loop(move |ui| {
-            let shelves: Vec<Shelf> = all
-                .iter()
-                .map(|s| Shelf { title: s.title.as_str().into(), items: model_of(&s.items) })
-                .collect();
-            with_state(|st| {
-                for s in &all {
-                    for t in s.items.iter().take(8) {
-                        request_art(st, t);
-                    }
-                }
-                // İlk rafın ilk birkaç parçası büyük ihtimalle tıklanır.
-                if let Some(first) = all.first() {
-                    for t in first.items.iter().take(3) {
-                        speculate(st, t);
-                    }
-                }
-                st.shelves = all;
-            });
-            ui.set_shelves(ModelRc::new(VecModel::from(shelves)));
+            dbg(&format!("ana sayfa: {} kişisel raf, {} dış raf, {} tohum", personal.len(), external.len(), radios.len()));
+            let no_external = external.is_empty();
+            show_home(&ui, personal, external);
             ui.set_home_loading(false);
             if let Some(e) = errors.first() {
-                toast(&ui, &format!("Öneriler alınamadı: {e}"));
+                if no_external {
+                    toast(&ui, &format!("Öneriler alınamadı: {e}"));
+                }
             }
         });
     });
@@ -980,6 +1405,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_readahead_index(s.readahead_index());
     ui.set_cookies_index(s.cookies_index());
     ui.set_download_index(s.download_index());
+    ui.set_autoradio_on(s.autoradio);
 }
 
 fn apply_settings(ui: &AppWindow) {
@@ -989,6 +1415,7 @@ fn apply_settings(ui: &AppWindow) {
         readahead_secs: settings::READAHEAD_SECS[ui.get_readahead_index().clamp(0, 3) as usize],
         cookies_browser: settings::COOKIE_BROWSERS[ui.get_cookies_index().clamp(0, 1) as usize].map(str::to_string),
         download_kbps: settings::DOWNLOAD_KBPS[ui.get_download_index().clamp(0, 3) as usize],
+        autoradio: ui.get_autoradio_on(),
     };
     with_state(|st| {
         st.player.send(Cmd::Readahead(s.readahead_secs));
@@ -1079,6 +1506,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             lyr_line: None,
             lyr_spoken: 0,
             lyr_offsets: HashMap::new(),
+            history: history::History::load(),
+            listen: None,
+            shuffle_orig: None,
+            repeat: 0,
+            radio_busy: false,
+            menu: None,
+            mix: Vec::new(),
         })
     });
     refresh_playlists(&ui);
@@ -1176,6 +1610,109 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    ui.on_toggle_like({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                toggle_like_current(&ui);
+            }
+        }
+    });
+    ui.on_toggle_shuffle({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                toggle_shuffle(&ui);
+            }
+        }
+    });
+    ui.on_cycle_repeat({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                cycle_repeat(&ui);
+            }
+        }
+    });
+    ui.on_play_mix({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mix = with_state(|st| st.mix.clone());
+            if !mix.is_empty() {
+                play_list(&ui, mix, 0);
+            }
+        }
+    });
+    ui.on_refresh_home({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                toast(&ui, "Öneriler yenileniyor…");
+                load_home(&ui);
+            }
+        }
+    });
+    ui.on_radio_from_current({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(t) = with_state(|st| st.index.and_then(|i| st.queue.get(i).cloned())) {
+                start_radio(&ui, t);
+            }
+        }
+    });
+    ui.on_queue_remove({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                queue_remove(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_queue_move({
+        let weak = weak.clone();
+        move |i, d| {
+            if let Some(ui) = weak.upgrade() {
+                queue_move(&ui, i as usize, d);
+            }
+        }
+    });
+    ui.on_queue_clear({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                queue_clear(&ui);
+            }
+        }
+    });
+    ui.on_menu_for({
+        let weak = weak.clone();
+        move |kind, a, b| {
+            let Some(ui) = weak.upgrade() else { return };
+            let t = with_state(|st| {
+                let t = menu_target(st, kind, a, b);
+                st.menu = t.clone();
+                t.map(|t| (t.title.clone(), st.history.is_liked(&t.key())))
+            });
+            match t {
+                Some((title, liked)) => {
+                    ui.set_menu_title(title.into());
+                    ui.set_menu_liked(liked);
+                }
+                None => ui.set_menu_open(false),
+            }
+        }
+    });
+    ui.on_menu_action({
+        let weak = weak.clone();
+        move |a| {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_menu_open(false);
+                menu_action(&ui, a);
+            }
+        }
+    });
     ui.on_lyric_shift({
         let weak = weak.clone();
         move |d| {
@@ -1247,6 +1784,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     refresh_usage(&ui);
     load_home(&ui);
     ui.run()?;
+    start_listen(None); // son dinlemeyi kaydet
     resolver.shutdown();
     Ok(())
 }
