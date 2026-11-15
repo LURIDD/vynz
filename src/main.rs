@@ -128,6 +128,8 @@ thread_local! {
     static ARTS: RefCell<HashMap<String, (Image, Color)>> = RefCell::new(HashMap::new());
     /// Söz ekranı zemini: önceden bulanıklaştırılmış küçük kapaklar.
     static BLURS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
+    /// Yalnız çalan şarkı için büyük kapaklar (kahraman, söz çekmecesi).
+    static BIGS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
 }
 
 fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> R {
@@ -237,7 +239,12 @@ fn start_art_pool(weak: Weak<AppWindow>) -> mpsc::Sender<(String, String)> {
         thread::spawn(move || loop {
             let job = rx.lock().unwrap().recv();
             let Ok((key, url)) = job else { break };
-            match art::load(&key, &url) {
+            // "B|" önekli istek: çalan şarkının büyük kapağı (aynı önbellek dosyası).
+            let (file_key, size) = match key.strip_prefix("B|") {
+                Some(k) => (k.to_string(), art::BIG),
+                None => (key.clone(), art::SMALL),
+            };
+            match art::load(&file_key, &url, size) {
                 Ok(a) => {
                     let _ = weak.upgrade_in_event_loop(move |ui| apply_art(&ui, key, a));
                 }
@@ -273,6 +280,23 @@ fn update_cards(model: &ModelRc<CardUi>, key: &str, img: &Image) {
 }
 
 fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
+    if let Some(k) = key.strip_prefix("B|") {
+        let img = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.rgba, a.width, a.height));
+        BIGS.with(|m| {
+            let mut m = m.borrow_mut();
+            if m.len() > 8 {
+                m.clear(); // yalnız son birkaç çalan şarkı tutulur
+            }
+            m.insert(k.to_string(), img.clone());
+        });
+        let mut now = ui.get_now();
+        if ui.get_has_now() && now.key == k {
+            now.art = img;
+            now.has_art = true;
+            ui.set_now(now);
+        }
+        return;
+    }
     let buf = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.rgba, a.width, a.height);
     let img = Image::from_rgba8(buf);
     let color = Color::from_rgb_u8(a.accent.0, a.accent.1, a.accent.2);
@@ -306,9 +330,12 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
 
     let mut now = ui.get_now();
     if ui.get_has_now() && now.key == key {
-        now.art = img;
-        now.has_art = true;
-        ui.set_now(now);
+        // Büyük kapak hazırsa onu koru.
+        if !BIGS.with(|b| b.borrow().contains_key(&key)) {
+            now.art = img;
+            now.has_art = true;
+            ui.set_now(now);
+        }
         ui.global::<Theme>().set_accent(color);
         ui.set_now_blur(blur);
         ui.set_has_blur(true);
@@ -328,11 +355,26 @@ fn start_listen(t: Option<&TrackInfo>) {
     });
 }
 
+/// Çalan şarkının büyük kapağını iste.
+fn request_big(st: &mut State, t: &TrackInfo) {
+    let key = format!("B|{}", t.key());
+    if t.thumb.is_empty() || BIGS.with(|b| b.borrow().contains_key(&t.key())) {
+        return;
+    }
+    let _ = st.art_tx.send((key, t.thumb.clone()));
+}
+
 fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
     start_listen(Some(t));
+    with_state(|st| request_big(st, t));
     ui.set_liked(with_state(|st| st.history.is_liked(&t.key())));
     ui.set_has_now(true);
-    ui.set_now(ui_track(t));
+    let mut nt = ui_track(t);
+    if let Some(big) = BIGS.with(|b| b.borrow().get(&t.key()).cloned()) {
+        nt.art = big;
+        nt.has_art = true;
+    }
+    ui.set_now(nt);
     ui.set_queue_index(i as i32);
     ui.set_position(0.0);
     ui.set_duration(t.duration);

@@ -21,7 +21,12 @@ fn cache_dir() -> PathBuf {
     base.join("vynz").join("covers")
 }
 
-pub fn load(key: &str, url: &str) -> Result<Art, String> {
+/// Liste ve raflardaki kapak boyutu; çalan şarkı için BIG.
+pub const SMALL: u32 = 192;
+pub const BIG: u32 = 320;
+
+/// `key` önbellek dosya adı, `size` çözülecek kare boyutu.
+pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
     if url.is_empty() {
         return Err("kapak yok".into());
     }
@@ -46,7 +51,7 @@ pub fn load(key: &str, url: &str) -> Result<Art, String> {
     // YouTube video küçük resimlerindeki siyah bantları (letterbox) kes.
     let (x, y, w, h) = content_box(&img);
     let img = image::DynamicImage::ImageRgba8(image::imageops::crop_imm(&img, x, y, w, h).to_image());
-    let img = img.resize_to_fill(256, 256, image::imageops::FilterType::Triangle).to_rgba8();
+    let img = img.resize_to_fill(size, size, image::imageops::FilterType::Triangle).to_rgba8();
     let accent = accent_of(&img);
     // Ucuz bulanıklık: küçült, bulanıklaştır; arayüz büyütünce yumuşak görünür.
     let small = image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle);
