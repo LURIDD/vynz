@@ -45,6 +45,7 @@ pub struct RadioTrack {
 }
 
 pub type RadioDone = Box<dyn FnOnce(Result<Vec<RadioTrack>, String>) + Send>;
+pub type ValueDone = Box<dyn FnOnce(Result<serde_json::Value, String>) + Send>;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Prio {
@@ -70,6 +71,8 @@ struct Inner {
     waiting: HashMap<String, Vec<Done>>,
     /// radyo istekleri: rid -> geri çağrı
     radios: HashMap<u64, RadioDone>,
+    /// genel istekler (keşfet, koleksiyon): rid -> geri çağrı
+    calls: HashMap<u64, ValueDone>,
     cache: HashMap<String, Resolved>,
     last_used: Option<Instant>,
     dirty: bool,
@@ -214,7 +217,7 @@ impl Resolver {
             thread::sleep(Duration::from_secs(20));
             let mut g = inner.lock().unwrap();
             let idle = g.last_used.map(|t| t.elapsed() > Duration::from_secs(IDLE_SECS)).unwrap_or(true);
-            if idle && g.waiting.is_empty() && g.radios.is_empty() {
+            if idle && g.waiting.is_empty() && g.radios.is_empty() && g.calls.is_empty() {
                 if let Some(mut p) = g.proc.take() {
                     let _ = p.child.kill();
                     let _ = p.child.wait();
@@ -255,6 +258,32 @@ impl Resolver {
         }
     }
 
+    /// Genel istek: `payload` içinde "op" ve parametreler; yanıtın "data" alanı döner.
+    pub fn request(&self, mut payload: serde_json::Value, prio: Prio, done: ValueDone) {
+        let mut g = self.inner.lock().unwrap();
+        g.last_used = Some(Instant::now());
+        if let Err(e) = self.ensure_proc(&mut g) {
+            drop(g);
+            done(Err(e));
+            return;
+        }
+        g.next_rid += 1;
+        let rid = g.next_rid;
+        g.calls.insert(rid, done);
+        payload["rid"] = rid.into();
+        payload["prio"] = (prio as u8).into();
+        let line = format!("{payload}\n");
+        let ok = g.proc.as_mut().map(|p| p.stdin.write_all(line.as_bytes()).and_then(|_| p.stdin.flush()).is_ok());
+        if ok != Some(true) {
+            g.proc = None;
+            let d = g.calls.remove(&rid);
+            drop(g);
+            if let Some(d) = d {
+                d(Err("çözücüye yazılamadı".into()));
+            }
+        }
+    }
+
     /// Program kapanırken yardımcıyı kapat ve önbelleği yaz.
     pub fn shutdown(&self) {
         let mut g = self.inner.lock().unwrap();
@@ -275,6 +304,8 @@ struct Reply {
     ok: bool,
     #[serde(default)]
     tracks: Option<Vec<RadioTrack>>,
+    #[serde(default)]
+    data: Option<serde_json::Value>,
     stream: Option<String>,
     expire: Option<u64>,
     ext: Option<String>,
@@ -287,6 +318,15 @@ fn read_loop(inner: Arc<Mutex<Inner>>, stdout: std::process::ChildStdout, genera
         let Ok(rep) = serde_json::from_str::<Reply>(&line) else { continue };
         let Some(rid) = rep.rid else { continue }; // "ready" satırı
         let mut g = inner.lock().unwrap();
+        if let Some(done) = g.calls.remove(&rid) {
+            g.last_used = Some(Instant::now());
+            drop(g);
+            match (rep.ok, rep.data) {
+                (true, Some(d)) => done(Ok(d)),
+                _ => done(Err(rep.error.unwrap_or_else(|| "istek başarısız".into()))),
+            }
+            continue;
+        }
         if let Some(done) = g.radios.remove(&rid) {
             g.last_used = Some(Instant::now());
             drop(g);
@@ -322,6 +362,10 @@ fn read_loop(inner: Arc<Mutex<Inner>>, stdout: std::process::ChildStdout, genera
     g.proc = None;
     let waiting: Vec<_> = g.waiting.drain().collect();
     let radios: Vec<_> = g.radios.drain().map(|(_, d)| d).collect();
+    let calls: Vec<_> = g.calls.drain().map(|(_, d)| d).collect();
+    for d in calls {
+        d(Err("çözücü kapandı".into()));
+    }
     g.rids.clear();
     drop(g);
     for d in radios {

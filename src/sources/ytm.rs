@@ -6,7 +6,7 @@ use std::process::Command;
 use serde::Deserialize;
 
 use super::{Provider, Res};
-use crate::model::{Section, Source, TrackInfo};
+use crate::model::{Card, Section, Source, TrackInfo};
 
 pub struct Ytm;
 
@@ -25,6 +25,10 @@ struct Item {
     duration: Option<f64>,
     #[serde(default)]
     kind: Option<String>,
+    #[serde(default)]
+    key: Option<String>,
+    #[serde(default)]
+    sub: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -82,15 +86,38 @@ impl Provider for Ytm {
     fn home(&self) -> Res<Vec<Section>> {
         let raw = ymus(&["home"])?;
         let secs: Vec<HomeSection> = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-        Ok(secs
-            .into_iter()
-            .map(|s| Section {
-                title: s.title,
-                items: s.items.into_iter().filter_map(to_track).collect(),
-                style: 0,
-            })
-            .filter(|s| !s.items.is_empty())
-            .collect())
+        let mut out = Vec::new();
+        for s in secs {
+            let mut tracks = Vec::new();
+            let mut cards = Vec::new();
+            for it in s.items {
+                match it.kind.as_deref() {
+                    Some("playlist") | Some("album") => {
+                        if let Some(key) = it.key.clone() {
+                            cards.push(Card {
+                                kind: it.kind.clone().unwrap_or_default(),
+                                key,
+                                title: it.title.clone(),
+                                sub: it.sub.clone().unwrap_or_default(),
+                                thumb: it.thumb.as_deref().map(big_thumb).unwrap_or_default(),
+                            });
+                        }
+                    }
+                    _ => {
+                        if let Some(t) = to_track(it) {
+                            tracks.push(t);
+                        }
+                    }
+                }
+            }
+            if !tracks.is_empty() {
+                out.push(Section { title: s.title.clone(), items: tracks, cards: Vec::new(), style: 0 });
+            }
+            if !cards.is_empty() {
+                out.push(Section { title: s.title, items: Vec::new(), cards, style: 2 });
+            }
+        }
+        Ok(out)
     }
 
     fn stream_url(&self, track: &TrackInfo) -> Res<String> {

@@ -42,7 +42,10 @@ pub fn load(key: &str, url: &str) -> Result<Art, String> {
             b
         }
     };
-    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?.to_rgba8();
+    // YouTube video küçük resimlerindeki siyah bantları (letterbox) kes.
+    let (x, y, w, h) = content_box(&img);
+    let img = image::DynamicImage::ImageRgba8(image::imageops::crop_imm(&img, x, y, w, h).to_image());
     let img = img.resize_to_fill(256, 256, image::imageops::FilterType::Triangle).to_rgba8();
     let accent = accent_of(&img);
     // Ucuz bulanıklık: küçült, bulanıklaştır; arayüz büyütünce yumuşak görünür.
@@ -50,6 +53,40 @@ pub fn load(key: &str, url: &str) -> Result<Art, String> {
     let blur = image::imageops::blur(&small, 6.0).into_raw();
     let (width, height) = img.dimensions();
     Ok(Art { rgba: img.into_raw(), width, height, accent, blur })
+}
+
+/// Kenarlardaki neredeyse siyah satır/sütunları atlayan içerik kutusu.
+fn content_box(img: &image::RgbaImage) -> (u32, u32, u32, u32) {
+    let (w, h) = img.dimensions();
+    let dark_row = |y: u32| (0..w).step_by(4).all(|x| {
+        let p = img.get_pixel(x, y);
+        (p[0] as u32 + p[1] as u32 + p[2] as u32) < 60
+    });
+    let dark_col = |x: u32, y0: u32, y1: u32| (y0..y1).step_by(4).all(|y| {
+        let p = img.get_pixel(x, y);
+        (p[0] as u32 + p[1] as u32 + p[2] as u32) < 60
+    });
+    let mut top = 0;
+    while top < h / 3 && dark_row(top) {
+        top += 1;
+    }
+    let mut bottom = h;
+    while bottom > h * 2 / 3 && dark_row(bottom - 1) {
+        bottom -= 1;
+    }
+    let mut left = 0;
+    while left < w / 3 && dark_col(left, top, bottom) {
+        left += 1;
+    }
+    let mut right = w;
+    while right > w * 2 / 3 && dark_col(right - 1, top, bottom) {
+        right -= 1;
+    }
+    // Tamamen koyu kapakları bozmamak için çok küçük sonuçta orijinali kullan.
+    if right - left < w / 3 || bottom - top < h / 3 {
+        return (0, 0, w, h);
+    }
+    (left, top, right - left, bottom - top)
 }
 
 /// Doygun piksellere ağırlık veren ortalama, sonra koyu zeminde okunur aralığa çekilir.

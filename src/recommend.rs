@@ -54,9 +54,6 @@ fn diversify(list: Vec<(f32, TrackInfo)>, per_artist: usize, n: usize) -> Vec<Tr
 /// Kişisel raflar. `radios`: tohum anahtarı -> o şarkının radyosu.
 pub fn build(h: &History, seeds: &[(TrackInfo, f32)], radios: &HashMap<String, Vec<TrackInfo>>) -> Vec<Section> {
     let mut out = Vec::new();
-    if h.is_empty() {
-        return out;
-    }
     let artist_score = h.artist_scores();
     let skipped = h.recently_skipped(14);
     let fresh = h.played_since(36);
@@ -100,22 +97,24 @@ pub fn build(h: &History, seeds: &[(TrackInfo, f32)], radios: &HashMap<String, V
     let mix = diversify(ranked.clone(), 2, 20);
     let mix_keys: HashSet<String> = mix.iter().map(TrackInfo::key).collect();
     if !mix.is_empty() {
-        out.push(Section { style: 0, title: "Senin için karışım".into(), items: mix });
+        // Geçmiş henüz yoksa tohumlar YouTube Music'in sana özel önerilerinden gelir.
+        let title = if h.is_empty() { "Bugün için karışım" } else { "Senin için karışım" };
+        out.push(Section { style: 0, cards: Vec::new(), title: title.into(), items: mix });
     }
 
     // Kaldığın yerden
     let recent = h.recent(14);
     if !recent.is_empty() {
-        out.push(Section { style: 0, title: "Kaldığın yerden".into(), items: recent });
+        out.push(Section { style: 0, cards: Vec::new(), title: "Kaldığın yerden".into(), items: recent });
     }
 
     // "<Sanatçı> ve benzerleri": en sevilen iki sanatçının radyosu
     for (seed, _) in seeds.iter().take(2) {
         let Some(list) = radios.get(&seed.key()) else { continue };
         let items = diversify(list.iter().map(|t| (0.0, t.clone())).filter(|(_, t)| !skipped.contains(&t.key())).collect(), 2, 14);
-        if items.len() >= 4 {
+        if items.len() >= 4 && !h.is_empty() {
             let name = seed.artist.split(',').next().unwrap_or("").trim().to_string();
-            out.push(Section { style: 0, title: format!("{name} ve benzerleri"), items });
+            out.push(Section { style: 0, cards: Vec::new(), title: format!("{name} ve benzerleri"), items });
         }
     }
 
@@ -130,7 +129,7 @@ pub fn build(h: &History, seeds: &[(TrackInfo, f32)], radios: &HashMap<String, V
         16,
     );
     if discover.len() >= 4 {
-        out.push(Section { style: 0, title: "Yeni keşifler".into(), items: discover });
+        out.push(Section { style: 0, cards: Vec::new(), title: "Yeni keşifler".into(), items: discover });
     }
 
     // En çok dinlediklerin
@@ -138,29 +137,29 @@ pub fn build(h: &History, seeds: &[(TrackInfo, f32)], radios: &HashMap<String, V
     top.sort_by(|a, b| b.0.total_cmp(&a.0));
     let top: Vec<TrackInfo> = top.into_iter().take(14).map(|(_, t)| t).collect();
     if top.len() >= 3 {
-        out.push(Section { style: 0, title: "En çok dinlediklerin".into(), items: top });
+        out.push(Section { style: 0, cards: Vec::new(), title: "En çok dinlediklerin".into(), items: top });
     }
 
     if !h.likes.is_empty() {
-        out.push(Section { style: 0, title: "Beğendiklerin".into(), items: h.likes.iter().take(20).cloned().collect() });
+        out.push(Section { style: 0, cards: Vec::new(), title: "Beğendiklerin".into(), items: h.likes.iter().take(20).cloned().collect() });
     }
     out
 }
 
-/// Hızlı seçim kutucukları: son dinlenenler + en sevilenler + karışımdan, 8 tane.
+/// Hızlı erişim kutucukları: son dinlenenler + en sevilenler + karışımdan, 16 tane.
 pub fn quick_picks(h: &History, personal: &[Section], fallback: &[Section]) -> Vec<TrackInfo> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     let mut push = |t: &TrackInfo, out: &mut Vec<TrackInfo>| {
-        if out.len() < 8 && seen.insert(t.key()) {
+        if out.len() < 16 && seen.insert(t.key()) {
             out.push(t.clone());
         }
     };
-    for t in h.recent(4) {
+    for t in h.recent(6) {
         push(&t, &mut out);
     }
     for s in personal.iter().chain(fallback.iter()) {
-        for t in s.items.iter().take(3) {
+        for t in s.items.iter().take(4) {
             push(t, &mut out);
         }
     }

@@ -28,7 +28,7 @@ use std::time::Duration;
 
 use slint::{Color, ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer, TimerMode, VecModel, Weak};
 
-use model::{Section, Source, TrackInfo};
+use model::{Card, Section, Source, TrackInfo};
 use player::{Cmd, Ev, Player};
 use resolve::{Prio, Resolver};
 use settings::Settings;
@@ -90,6 +90,20 @@ struct State {
     menu: Option<TrackInfo>,
     /// Kişisel karışım (ana sayfadaki "Karışımı çal")
     mix: Vec<TrackInfo>,
+    /// Açık koleksiyon (liste/albüm/sanatçı): başlık, kart, şarkılar
+    coll: Option<(Card, Vec<TrackInfo>)>,
+    /// Ruh hâli sayfasındaki listeler
+    browse: Vec<Card>,
+    /// Son ana sayfa verisi (kayıtlı listeler değişince yeniden dizmek için)
+    home: HomeData,
+}
+
+/// Ana sayfanın ham parçaları; ~/.cache/vynz/home.json içinde saklanır.
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+struct HomeData {
+    personal: Vec<Section>,
+    external: Vec<Section>,
+    explore: Vec<Section>,
 }
 
 /// VYNZ_DEBUG=1 ile zaman damgalı olay günlüğü (stderr): hız ölçümü için.
@@ -151,6 +165,37 @@ fn ui_track(t: &TrackInfo) -> Track {
     }
 }
 
+fn card_kind(kind: &str) -> i32 {
+    match kind {
+        "playlist" => 0,
+        "album" => 1,
+        "artist" => 2,
+        "mood" => 3,
+        _ => 4,
+    }
+}
+
+fn ui_card(c: &Card) -> CardUi {
+    let key = c.art_key();
+    let (art, has_art) = ARTS.with(|a| a.borrow().get(&key).map(|(i, _)| (i.clone(), true))).unwrap_or_default();
+    CardUi { key: key.into(), kind: card_kind(&c.kind), title: c.title.as_str().into(), sub: c.sub.as_str().into(), art, has_art }
+}
+
+fn cards_of(cards: &[Card]) -> ModelRc<CardUi> {
+    ModelRc::new(VecModel::from(cards.iter().map(ui_card).collect::<Vec<_>>()))
+}
+
+fn request_card_art(st: &mut State, c: &Card) {
+    if c.thumb.is_empty() {
+        return;
+    }
+    let key = c.art_key();
+    if ARTS.with(|a| a.borrow().contains_key(&key)) || !st.requested.insert(key.clone()) {
+        return;
+    }
+    let _ = st.art_tx.send((key, c.thumb.clone()));
+}
+
 fn model_of(tracks: &[TrackInfo]) -> ModelRc<Track> {
     ModelRc::new(VecModel::from(tracks.iter().map(ui_track).collect::<Vec<_>>()))
 }
@@ -209,6 +254,18 @@ fn update_rows(model: &ModelRc<Track>, key: &str, img: &Image) {
     }
 }
 
+fn update_cards(model: &ModelRc<CardUi>, key: &str, img: &Image) {
+    for i in 0..model.row_count() {
+        if let Some(mut c) = model.row_data(i) {
+            if c.key == key {
+                c.art = img.clone();
+                c.has_art = true;
+                model.set_row_data(i, c);
+            }
+        }
+    }
+}
+
 fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     let buf = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.rgba, a.width, a.height);
     let img = Image::from_rgba8(buf);
@@ -219,8 +276,11 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     for i in 0..shelves.row_count() {
         if let Some(s) = shelves.row_data(i) {
             update_rows(&s.items, &key, &img);
+            update_cards(&s.cards, &key, &img);
         }
     }
+    update_cards(&ui.get_browse_cards(), &key, &img);
+    update_rows(&ui.get_coll_tracks(), &key, &img);
     update_rows(&ui.get_results(), &key, &img);
     update_rows(&ui.get_queue(), &key, &img);
     update_rows(&ui.get_playlist_tracks(), &key, &img);
@@ -1007,7 +1067,7 @@ fn toggle_like_current(ui: &AppWindow) {
 
 // ---------- Sağ tık menüsü ----------
 
-/// Menünün hedef şarkısı: kind 0 raf (a, b), 1 arama sonucu, 2 kayıtlı liste, 3 kuyruk.
+/// Menünün hedef şarkısı: kind 0 raf (a, b), 1 arama sonucu, 2 kayıtlı liste, 3 kuyruk, 4 açık koleksiyon.
 fn menu_target(st: &State, kind: i32, a: i32, b: i32) -> Option<TrackInfo> {
     let (a, b) = (a as usize, b as usize);
     match kind {
@@ -1015,6 +1075,7 @@ fn menu_target(st: &State, kind: i32, a: i32, b: i32) -> Option<TrackInfo> {
         1 => st.results.get(a).cloned(),
         2 => st.current_pl.and_then(|p| st.playlists.get(p)).and_then(|p| p.tracks.get(a)).cloned(),
         3 => st.queue.get(a).cloned(),
+        4 => st.coll.as_ref().and_then(|c| c.1.get(a)).cloned(),
         _ => None,
     }
 }
@@ -1060,20 +1121,95 @@ fn greeting() -> &'static str {
     }
 }
 
-/// Ana sayfayı göster: kişisel raflar (algoritma) + kaynakların önerileri.
-fn show_home(ui: &AppWindow, personal: Vec<Section>, external: Vec<Section>) {
-    let all: Vec<Section> = with_state(|st| {
-        let quick = recommend::quick_picks(&st.history, &personal, &external);
-        let mut all = Vec::new();
-        if !quick.is_empty() {
-            all.push(Section { title: "Hızlı erişim".into(), items: quick, style: 1 });
+fn track_from_json(v: &serde_json::Value) -> Option<TrackInfo> {
+    Some(TrackInfo {
+        source: Source::Ytm,
+        id: v.get("id")?.as_str()?.to_string(),
+        title: v.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        artist: v.get("artist").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        album: v.get("album").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        duration: v.get("duration").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32,
+        thumb: sources::ytm::big_thumb(v.get("thumb").and_then(|x| x.as_str()).unwrap_or("")),
+        url: None,
+    })
+}
+
+fn cards_from_json(v: Option<&serde_json::Value>) -> Vec<Card> {
+    v.and_then(|x| x.as_array())
+        .map(|a| a.iter().filter_map(|c| serde_json::from_value::<Card>(c.clone()).ok()).map(|mut c| {
+            c.thumb = sources::ytm::big_thumb(&c.thumb);
+            c
+        }).collect())
+        .unwrap_or_default()
+}
+
+/// Keşfet verisinden raflar: trend şarkılar, ruh hâli, yeni çıkanlar, popüler sanatçılar.
+fn explore_sections(d: &serde_json::Value) -> Vec<Section> {
+    let mut out = Vec::new();
+    let trending: Vec<TrackInfo> = d.get("trending").and_then(|x| x.as_array()).map(|a| a.iter().filter_map(track_from_json).collect()).unwrap_or_default();
+    if !trending.is_empty() {
+        out.push(Section { title: "Trend şarkılar".into(), items: trending, cards: Vec::new(), style: 0 });
+    }
+    for (key, title, style) in [("moods", "Ruh hâli ve türler", 4), ("releases", "Yeni albümler", 2), ("artists", "Türkiye'de popüler sanatçılar", 3)] {
+        let cards = cards_from_json(d.get(key));
+        if !cards.is_empty() {
+            out.push(Section { title: title.into(), items: Vec::new(), cards, style });
         }
-        st.mix = personal.iter().find(|s| s.title == "Senin için karışım").map(|s| s.items.clone()).unwrap_or_default();
-        all.extend(personal);
-        all.extend(external);
+    }
+    out
+}
+
+/// Ana sayfayı diz: kişisel, kaynak ve keşfet raflarını iç içe geçirerek.
+fn compose(st: &State, h: &HomeData) -> Vec<Section> {
+    let take = |list: &[Section], pred: &dyn Fn(&Section) -> bool| -> Vec<Section> { list.iter().filter(|s| pred(s)).cloned().collect() };
+    let p = &h.personal;
+    let is = |t: &'static str| move |s: &Section| s.title == t;
+    let mut out = Vec::new();
+    let quick = recommend::quick_picks(&st.history, p, &h.external);
+    if !quick.is_empty() {
+        out.push(Section { title: "Hızlı erişim".into(), items: quick, cards: Vec::new(), style: 1 });
+    }
+    out.extend(take(p, &|s| s.title.ends_with("için karışım")));
+    out.extend(take(p, &is("Kaldığın yerden")));
+    if !st.playlists.is_empty() {
+        let cards = st.playlists.iter().enumerate().map(|(i, pl)| Card {
+            kind: "saved".into(),
+            key: format!("saved-{i}"),
+            title: pl.name.clone(),
+            sub: format!("{} şarkı", pl.tracks.len()),
+            thumb: pl.tracks.first().map(|t| t.thumb.clone()).unwrap_or_default(),
+        }).collect();
+        out.push(Section { title: "Listelerim".into(), items: Vec::new(), cards, style: 2 });
+    }
+    let ext_tracks = take(&h.external, &|s| s.style == 0);
+    let ext_cards = take(&h.external, &|s| s.style != 0);
+    out.extend(ext_tracks);
+    out.extend(take(&h.explore, &is("Ruh hâli ve türler")));
+    out.extend(take(p, &|s| s.title.ends_with(" ve benzerleri")));
+    out.extend(take(&h.explore, &is("Trend şarkılar")));
+    out.extend(ext_cards.iter().take(2).cloned());
+    out.extend(take(p, &is("Yeni keşifler")));
+    out.extend(take(&h.explore, &is("Yeni albümler")));
+    out.extend(ext_cards.iter().skip(2).take(2).cloned());
+    out.extend(take(&h.explore, &is("Türkiye'de popüler sanatçılar")));
+    out.extend(take(p, &is("En çok dinlediklerin")));
+    out.extend(take(p, &is("Beğendiklerin")));
+    out.extend(ext_cards.iter().skip(4).cloned());
+    out
+}
+
+/// Ana sayfayı göster.
+fn show_home(ui: &AppWindow, data: HomeData) {
+    let all: Vec<Section> = with_state(|st| {
+        let all = compose(st, &data);
+        st.home = data;
+        st.mix = all.iter().find(|s| s.title.ends_with("için karışım")).map(|s| s.items.clone()).unwrap_or_default();
         for s in &all {
-            for t in s.items.iter().take(if s.style == 1 { 8 } else { 7 }) {
+            for t in s.items.iter().take(if s.style == 1 { 16 } else { 8 }) {
                 request_art(st, t);
+            }
+            for c in s.cards.iter().take(10) {
+                request_card_art(st, c);
             }
         }
         if let Some(first) = all.first() {
@@ -1088,9 +1224,12 @@ fn show_home(ui: &AppWindow, personal: Vec<Section>, external: Vec<Section>) {
         st.shelves = all.clone();
         all
     });
-    dbg(&format!("raflar: {}", all.iter().map(|s| format!("{} ({})", s.title, s.items.len())).collect::<Vec<_>>().join(" | ")));
-    let mix_shelf = all.iter().position(|s| s.title == "Senin için karışım").map(|i| i as i32).unwrap_or(-1);
-    let shelves: Vec<Shelf> = all.iter().map(|s| Shelf { title: s.title.as_str().into(), items: model_of(&s.items), style: s.style }).collect();
+    dbg(&format!("raflar: {}", all.iter().map(|s| format!("{} ({})", s.title, s.items.len() + s.cards.len())).collect::<Vec<_>>().join(" | ")));
+    let mix_shelf = all.iter().position(|s| s.title.ends_with("için karışım")).map(|i| i as i32).unwrap_or(-1);
+    let shelves: Vec<Shelf> = all
+        .iter()
+        .map(|s| Shelf { title: s.title.as_str().into(), items: model_of(&s.items), cards: cards_of(&s.cards), style: s.style })
+        .collect();
     ui.set_mix_shelf(mix_shelf);
     ui.set_shelves(ModelRc::new(VecModel::from(shelves)));
     ui.set_has_mix(with_state(|st| !st.mix.is_empty()));
@@ -1098,28 +1237,21 @@ fn show_home(ui: &AppWindow, personal: Vec<Section>, external: Vec<Section>) {
 }
 
 fn load_home(ui: &AppWindow) {
-    // Önce son hesaplanan kişisel raflar: açılış anında dolu bir sayfa.
-    let cached: Vec<Section> = std::fs::read(home_cache()).ok().and_then(|r| serde_json::from_slice(&r).ok()).unwrap_or_default();
-    if !cached.is_empty() {
-        show_home(ui, cached.clone(), Vec::new());
+    // Önce son hesaplanan ana sayfa: açılış anında dolu bir sayfa.
+    if let Some(cached) = std::fs::read(home_cache()).ok().and_then(|r| serde_json::from_slice::<HomeData>(&r).ok()) {
+        show_home(ui, cached);
         ui.set_home_loading(false);
     }
     let (providers, resolver, hist_seeds, history_snapshot) = with_state(|st| {
-        let seeds = recommend::seeds(&st.history);
-        (st.providers.clone(), st.resolver.clone(), seeds, st.history.snapshot())
+        (st.providers.clone(), st.resolver.clone(), recommend::seeds(&st.history), st.history.snapshot())
     });
     let weak = ui.as_weak();
     thread::spawn(move || {
-        // Tohumların radyoları paralel istenir.
-        let (tx, rx) = mpsc::channel();
-        for (seed, _) in &hist_seeds {
-            let tx = tx.clone();
-            let key = seed.key();
-            resolver.radio(&seed.id, Prio::Soon, Box::new(move |r| {
-                let _ = tx.send((key, r));
-            }));
-        }
-        drop(tx);
+        // Keşfet isteği hemen yola çıksın.
+        let (etx, erx) = mpsc::channel();
+        resolver.request(serde_json::json!({"op": "explore"}), Prio::Soon, Box::new(move |r| {
+            let _ = etx.send(r);
+        }));
         let mut external = Vec::new();
         let mut errors = Vec::new();
         for p in &providers {
@@ -1128,9 +1260,24 @@ fn load_home(ui: &AppWindow) {
                 Err(e) => errors.push(format!("{}: {e}", source_name(p.source()))),
             }
         }
+        // Geçmiş yoksa tohumlar YouTube Music'in sana özel önerilerinden.
+        let seeds = if hist_seeds.is_empty() {
+            external.iter().find(|s| s.style == 0).map(|s| s.items.iter().filter(|t| t.source == Source::Ytm).take(3).map(|t| (t.clone(), 0.6)).collect()).unwrap_or_default()
+        } else {
+            hist_seeds
+        };
+        let (tx, rx) = mpsc::channel();
+        for (seed, _) in &seeds {
+            let tx = tx.clone();
+            let key = seed.key();
+            resolver.radio(&seed.id, Prio::Soon, Box::new(move |r| {
+                let _ = tx.send((key, r));
+            }));
+        }
+        drop(tx);
         let mut radios = HashMap::new();
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
-        while radios.len() < hist_seeds.len() {
+        while radios.len() < seeds.len() {
             let left = deadline.saturating_duration_since(std::time::Instant::now());
             match rx.recv_timeout(left) {
                 Ok((key, Ok(list))) => {
@@ -1140,22 +1287,111 @@ fn load_home(ui: &AppWindow) {
                 Err(_) => break,
             }
         }
-        let personal = recommend::build(&history_snapshot, &hist_seeds, &radios);
-        if !personal.is_empty() {
-            let _ = std::fs::write(home_cache(), serde_json::to_vec(&personal).unwrap_or_default());
+        let explore = match erx.recv_timeout(Duration::from_secs(10)) {
+            Ok(Ok(d)) => explore_sections(&d),
+            Ok(Err(e)) => {
+                errors.push(format!("keşfet: {e}"));
+                Vec::new()
+            }
+            Err(_) => Vec::new(),
+        };
+        let personal = recommend::build(&history_snapshot, &seeds, &radios);
+        let data = HomeData { personal, external, explore };
+        if !data.personal.is_empty() || !data.external.is_empty() {
+            let _ = std::fs::write(home_cache(), serde_json::to_vec(&data).unwrap_or_default());
         }
         let _ = weak.upgrade_in_event_loop(move |ui| {
-            dbg(&format!("ana sayfa: {} kişisel raf, {} dış raf, {} tohum", personal.len(), external.len(), radios.len()));
-            let no_external = external.is_empty();
-            show_home(&ui, personal, external);
+            let empty = data.external.is_empty() && data.explore.is_empty();
+            show_home(&ui, data);
             ui.set_home_loading(false);
             if let Some(e) = errors.first() {
-                if no_external {
+                if empty {
                     toast(&ui, &format!("Öneriler alınamadı: {e}"));
                 }
             }
         });
     });
+}
+
+// ---------- Koleksiyonlar (liste, albüm, sanatçı, ruh hâli) ----------
+
+fn open_card(ui: &AppWindow, c: Card) {
+    if c.kind == "saved" {
+        if let Some(i) = c.key.strip_prefix("saved-").and_then(|x| x.parse::<usize>().ok()) {
+            open_playlist(ui, i);
+            ui.set_view("playlist".into());
+        }
+        return;
+    }
+    let mood = c.kind == "mood";
+    ui.set_coll_loading(true);
+    if mood {
+        ui.set_browse_title(c.title.as_str().into());
+        ui.set_browse_cards(ModelRc::new(VecModel::from(Vec::<CardUi>::new())));
+        ui.set_view("browse".into());
+    } else {
+        ui.set_coll_title(c.title.as_str().into());
+        ui.set_coll_sub(c.sub.as_str().into());
+        ui.set_coll_kind(card_kind(&c.kind));
+        ui.set_coll_tracks(ModelRc::new(VecModel::from(Vec::<Track>::new())));
+        ui.set_view("collection".into());
+    }
+    let resolver = with_state(|st| st.resolver.clone());
+    let weak = ui.as_weak();
+    let req = serde_json::json!({"op": "collection", "kind": c.kind, "key": c.key});
+    resolver.request(req, Prio::Now, Box::new(move |res| {
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            ui.set_coll_loading(false);
+            let d = match res {
+                Ok(d) => d,
+                Err(e) => {
+                    toast(&ui, &format!("Açılamadı: {e}"));
+                    return;
+                }
+            };
+            if mood {
+                let cards = cards_from_json(d.get("cards"));
+                with_state(|st| {
+                    for c in cards.iter().take(40) {
+                        request_card_art(st, c);
+                    }
+                    st.browse = cards.clone();
+                });
+                ui.set_browse_cards(cards_of(&cards));
+            } else {
+                let tracks: Vec<TrackInfo> = d.get("tracks").and_then(|x| x.as_array()).map(|a| a.iter().filter_map(track_from_json).collect()).unwrap_or_default();
+                if let Some(t) = d.get("title").and_then(|x| x.as_str()).filter(|t| !t.is_empty()) {
+                    ui.set_coll_title(t.into());
+                }
+                with_state(|st| {
+                    for t in tracks.iter().take(40) {
+                        request_art(st, t);
+                    }
+                    for t in tracks.iter().take(2) {
+                        speculate(st, t);
+                    }
+                    st.coll = Some((c, tracks.clone()));
+                });
+                ui.set_coll_tracks(model_of(&tracks));
+            }
+        });
+    }));
+}
+
+fn save_collection(ui: &AppWindow) {
+    let saved = with_state(|st| {
+        let (c, tracks) = st.coll.clone()?;
+        if tracks.is_empty() {
+            return None;
+        }
+        st.playlists.push(library::Playlist { name: ui.get_coll_title().to_string(), origin: format!("ytm:{}", c.key), tracks });
+        let _ = library::save(&st.playlists);
+        Some(st.playlists.len())
+    });
+    if saved.is_some() {
+        refresh_playlists(ui);
+        toast(ui, &format!("“{}” Listelerim'e kaydedildi", ui.get_coll_title()));
+    }
 }
 
 fn search(ui: &AppWindow, query: String) {
@@ -1347,6 +1583,10 @@ fn import_save(ui: &AppWindow) {
 // ---------- Kaydedilen listeler ----------
 
 fn refresh_playlists(ui: &AppWindow) {
+    let data = with_state(|st| (!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone()));
+    if let Some(d) = data {
+        show_home(ui, d);
+    }
     let infos: Vec<PlaylistInfo> = with_state(|st| {
         st.playlists.iter().map(|p| PlaylistInfo { name: p.name.as_str().into(), count: p.tracks.len() as i32 }).collect()
     });
@@ -1513,6 +1753,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             radio_busy: false,
             menu: None,
             mix: Vec::new(),
+            coll: None,
+            browse: Vec::new(),
+            home: HomeData::default(),
         })
     });
     refresh_playlists(&ui);
@@ -1610,6 +1853,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    ui.on_open_card({
+        let weak = weak.clone();
+        move |si, i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let c = with_state(|st| st.shelves.get(si as usize).and_then(|s| s.cards.get(i as usize)).cloned());
+            if let Some(c) = c {
+                open_card(&ui, c);
+            }
+        }
+    });
+    ui.on_open_browse_card({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(c) = with_state(|st| st.browse.get(i as usize).cloned()) {
+                open_card(&ui, c);
+            }
+        }
+    });
+    ui.on_play_collection({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(list) = with_state(|st| st.coll.as_ref().map(|c| c.1.clone())) {
+                if !list.is_empty() {
+                    play_list(&ui, list, i.max(0) as usize);
+                }
+            }
+        }
+    });
+    ui.on_save_collection({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                save_collection(&ui);
+            }
+        }
+    });
     ui.on_toggle_like({
         let weak = weak.clone();
         move || {
@@ -1780,6 +2061,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+
+    // Test: VYNZ_SCROLL=piksel ile açılıştan birkaç saniye sonra sayfayı kaydır.
+    let scroll_timer = Timer::default();
+    if let Some(px) = std::env::var("VYNZ_SCROLL").ok().and_then(|v| v.parse::<f32>().ok()) {
+        let weak = weak.clone();
+        scroll_timer.start(TimerMode::SingleShot, Duration::from_secs(6), move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_scroll_request(px);
+            }
+        });
+    }
 
     refresh_usage(&ui);
     load_home(&ui);
