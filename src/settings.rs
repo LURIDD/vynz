@@ -10,6 +10,8 @@ pub const READAHEAD_SECS: [u32; 4] = [30, 60, 120, 0]; // 0 = sınırsız
 pub const COOKIE_BROWSERS: [Option<&str>; 2] = [None, Some("firefox")];
 /// Arka plan indirme hız sınırı (KB/sn; 0 = sınırsız).
 pub const DOWNLOAD_KBPS: [u32; 4] = [256, 512, 1024, 0];
+/// Dinlenmeyen şarkıların önbellekte kalma süresi (gün; 0 = süresiz).
+pub const KEEP_DAYS: [u32; 4] = [14, 30, 90, 0];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -29,11 +31,13 @@ pub struct Settings {
     pub lyrics_align: i32,
     /// Hareketli kapak zemini
     pub lyrics_motion: bool,
+    /// Önbellekteki şarkı bu kadar gün çalınmazsa silinir (0 = süresiz)
+    pub keep_days: u32,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true, lyrics_style: 0, lyrics_size: 1, lyrics_align: 0, lyrics_motion: true }
+        Settings { cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true, lyrics_style: 0, lyrics_size: 1, lyrics_align: 0, lyrics_motion: true, keep_days: 30 }
     }
 }
 
@@ -80,6 +84,10 @@ impl Settings {
 
     pub fn readahead_index(&self) -> i32 {
         READAHEAD_SECS.iter().position(|s| *s == self.readahead_secs).unwrap_or(1) as i32
+    }
+
+    pub fn keep_index(&self) -> i32 {
+        KEEP_DAYS.iter().position(|d| *d == self.keep_days).unwrap_or(1) as i32
     }
 
     pub fn download_index(&self) -> i32 {

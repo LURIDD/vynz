@@ -651,7 +651,7 @@ fn schedule_prefetch(ui: &AppWindow) {
             let t = st.queue[j].clone();
             let key = t.key();
             request_art(st, &t);
-            if cache::lookup(&key).is_some() || st.resolver.cached(&key).is_some() {
+            if cache::exists(&key).is_some() || st.resolver.cached(&key).is_some() {
                 continue;
             }
             let Some(page) = page_url(st, &t) else { continue };
@@ -834,7 +834,7 @@ fn speculate(st: &mut State, t: &TrackInfo) {
         return;
     }
     let key = t.key();
-    if cache::lookup(&key).is_some() || st.resolver.cached(&key).is_some() || st.resolver.is_pending(&key) {
+    if cache::exists(&key).is_some() || st.resolver.cached(&key).is_some() || st.resolver.is_pending(&key) {
         return;
     }
     if let Some(page) = page_url(st, t) {
@@ -1888,6 +1888,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_lyrics_size(s.lyrics_size);
     ui.set_lyrics_align(s.lyrics_align);
     ui.set_lyrics_motion(s.lyrics_motion);
+    ui.set_keep_index(s.keep_index());
 }
 
 fn apply_settings(ui: &AppWindow) {
@@ -1902,6 +1903,7 @@ fn apply_settings(ui: &AppWindow) {
         lyrics_size: ui.get_lyrics_size(),
         lyrics_align: ui.get_lyrics_align(),
         lyrics_motion: ui.get_lyrics_motion(),
+        keep_days: settings::KEEP_DAYS[ui.get_keep_index().clamp(0, 3) as usize],
     };
     with_state(|st| {
         st.player.send(Cmd::Readahead(s.readahead_secs));
@@ -1911,8 +1913,12 @@ fn apply_settings(ui: &AppWindow) {
             st.appended = None;
         }
         let limit = s.cache_bytes();
+        let keep = s.keep_days;
         st.fetcher.set_limits(s.download_kbps as u64 * 1024, limit);
-        thread::spawn(move || cache::enforce(limit));
+        thread::spawn(move || {
+            cache::expire(keep);
+            cache::enforce(limit);
+        });
         if let Err(e) = s.save() {
             eprintln!("ayarlar kaydedilemedi: {e}");
         }
@@ -1956,8 +1962,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let resolver = Resolver::new(settings.cookies_browser.clone());
     let fetcher = fetcher::Fetcher::new(settings.download_kbps as u64 * 1024, settings.cache_bytes(), metered.clone());
     {
+        // Açılışta ve sonra günde bir: süresi dolan şarkılar, eski kapaklar.
         let limit = settings.cache_bytes();
-        thread::spawn(move || cache::enforce(limit));
+        let keep = settings.keep_days;
+        thread::spawn(move || loop {
+            cache::expire(keep);
+            cache::enforce(limit);
+            art::prune(30, 150 * 1024 * 1024);
+            thread::sleep(Duration::from_secs(24 * 3600));
+        });
     }
 
     STATE.with(|s| {
