@@ -37,6 +37,14 @@ cargo build --release
 
 ## Söz kaynakları
 
+- [Unison](https://unison.betterlyrics.org): Better Lyrics topluluğunun söz
+  veritabanı. Önce sorulur; hece zamanlı (TTML) sözlerde karaoke dolumu gerçek
+  zamanlarla yapılır. Sözler, şarkı sayfasına bağlı **Lyrics from Unison**
+  yazısı ve sözü gönderen kişinin adıyla gösterilir. Unison verisi
+  [Unison Community License 1.0](https://github.com/better-lyrics/unison/blob/master/LICENSE-DATA.md)
+  ile kullanılır: ücretsizdir ve yalnız kişisel, kâr amacı gütmeyen ya da açık
+  kaynak kullanım içindir. İndirilen sözler ETag ile yerelde önbelleğe alınır,
+  Unison'dan kaldırılan sözler önbellekten de silinir.
 - YouTube Music
 - [LRCLIB](https://lrclib.net)
 

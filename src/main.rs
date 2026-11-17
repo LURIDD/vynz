@@ -602,6 +602,9 @@ fn request_translation(ui: &AppWindow) {
 fn render_lyrics(ui: &AppWindow) {
     let key = ui.get_now().key.to_string();
     let mode = ui.get_lyrics_translate();
+    let credit = with_state(|st| st.lyrics.get(&key).and_then(|l| l.as_ref()).and_then(|l| l.credit.clone()));
+    ui.set_lyric_credit_user(credit.as_ref().map(|c| c.user.as_str()).unwrap_or("").into());
+    ui.set_has_lyric_credit(credit.is_some());
     let (state, source, lines, offset, note) = with_state(|st| {
         st.lyr_line = None;
         st.lyr_spoken = usize::MAX;
@@ -2811,6 +2814,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let list = with_state(|st| st.prof_tracks.clone());
             if !list.is_empty() {
                 play_list(&ui, list, i as usize);
+            }
+        }
+    });
+    ui.on_open_lyric_link({
+        let weak = weak.clone();
+        move |which| {
+            let Some(ui) = weak.upgrade() else { return };
+            let key = ui.get_now().key.to_string();
+            let url = with_state(|st| {
+                let c = st.lyrics.get(&key)?.as_ref()?.credit.clone()?;
+                Some(if which == 0 { c.song_url } else { c.user_url })
+            });
+            if let Some(u) = url.filter(|u| !u.is_empty()) {
+                let _ = std::process::Command::new("xdg-open").arg(u).spawn();
             }
         }
     });
