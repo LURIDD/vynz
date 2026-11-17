@@ -11,6 +11,25 @@ export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord, LyricLine, Car
 
 // Başlıklı, sayfalı yatay raf: üzerine gelince oklar belirir, şerit kayar.
 // style: 0 şarkı kartı, 1 hızlı erişim kutucuğu, 2 liste/albüm, 3 sanatçı, 4 ruh hâli
+// Tıklanabilir küçük bağlantı yazısı
+component LinkText inherits Text {
+    callback clicked;
+    font-size: 11.5px;
+    color: lt-ta.has-hover ? Theme.text-primary : Theme.text-secondary;
+    lt-ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// Unison atıfı: "Lyrics from Unison · gönderen <ad>"
+component UnisonCredit inherits HorizontalLayout {
+    in property <string> user;
+    callback open(int);
+    spacing: 5px;
+    alignment: start;
+    LinkText { text: "Lyrics from Unison"; font-weight: 600; clicked => { root.open(0); } }
+    if root.user != "": Text { text: "·"; font-size: 11.5px; color: Theme.text-muted; }
+    if root.user != "": LinkText { text: "gönderen " + root.user; clicked => { root.open(1); } }
+}
+
 component ShelfRow inherits VerticalLayout {
     in property <Shelf> shelf;
     in property <string> now-key;
@@ -236,6 +255,10 @@ export component AppWindow inherits Window {
     in property <string> lyric-tr-note;
     callback lyrics-web-search();
     in property <string> lyric-source;
+    // Unison sözlerinde zorunlu atıf: "Lyrics from Unison" ve gönderen kişi (ikisi de bağlantı)
+    in property <bool> has-lyric-credit;
+    in property <string> lyric-credit-user;
+    callback open-lyric-link(int);
     in property <float> lyric-offset;
     in property <image> now-blur;
     in property <bool> has-blur;
@@ -1398,7 +1421,8 @@ export component AppWindow inherits Window {
                         }
                         PillButton { pill-height: 30px; text: "+0.5 sn"; clicked => { root.lyric-shift(0.5); } }
                     }
-                    if lyric-source != "": Text { text: "Kaynak: " + lyric-source + (lyric-state == 2 ? " · satıra tıkla, oraya atla" : ""); font-size: 11.5px; color: Theme.text-muted; }
+                    if lyric-source != "" && !has-lyric-credit: Text { text: "Kaynak: " + lyric-source + (lyric-state == 2 ? " · satıra tıkla, oraya atla" : ""); font-size: 11.5px; color: Theme.text-muted; }
+                    if has-lyric-credit && (lyric-state == 2 || lyric-state == 3): UnisonCredit { user: lyric-credit-user; open(w) => { root.open-lyric-link(w); } }
                     if lyrics-translate > 0 && lyric-tr-note != "": Text { text: lyric-tr-note; font-size: 11.5px; color: Theme.accent; }
                 }
 
@@ -1640,6 +1664,10 @@ export component AppWindow inherits Window {
                                 color: cl-ta.has-hover ? Theme.text-primary : Theme.text-secondary;
                             }
                         }
+                    }
+                    if has-lyric-credit && (lyric-state == 2 || lyric-state == 3): HorizontalLayout {
+                        alignment: center; padding-top: 6px;
+                        UnisonCredit { user: lyric-credit-user; open(w) => { root.open-lyric-link(w); } }
                     }
                 }
             }
