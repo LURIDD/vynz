@@ -2,6 +2,9 @@
 name = "vynz"
 version = "0.1.0"
 edition = "2024"
+description = "Multi-source desktop music player (YouTube Music, SoundCloud, Spotify import) in Rust + Slint"
+license = "MIT"
+repository = "https://github.com/LURIDD/vynz"
 
 [dependencies]
 async-channel = "2.5.0"
