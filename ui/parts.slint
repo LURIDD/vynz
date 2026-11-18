@@ -59,10 +59,18 @@ export struct ImportRow {
 // Söz satırındaki kelime: state 0 söylendi, 1 şu an, 2 sırada; row 0/1 (uzun satır ikiye bölünür)
 export struct LyricWord {
     text: string,
+    // 0 söylendi, 1 şu an, 2 sırada
     state: int,
-    row: int,
-    // 0..1: kelimenin ne kadarı söylendi (karaoke dolumu)
+    // 0..1: varılacak dolum; Slint oraya `dur` ms'de doğrusal gider (hece hece akıcı dolum)
     fill: float,
+    dur: int,
+    // uzun tutulan kelime: söylenirken hafifçe büyür
+    long: bool,
+}
+
+// Etkin satırın bir görsel satırı (gerçek genişliğe göre bölünmüş)
+export struct LyricRow {
+    words: [LyricWord],
 }
 
 // Söz satırı: state -1 geçti, 0 şu an, 1 sırada; dist = etkin satıra uzaklık
@@ -87,36 +95,56 @@ export global LyricStyle {
     }
 }
 
-// Karaoke kelimesi: soluk taban + soldan dolan parlak kopya
+// Karaoke kelimesi (Better Lyrics/braccato'dan esinlenerek):
+// - yumuşak kenarlı dolum: metin rengi, dolum noktasında yumuşak geçişli bir degrade
+// - dolum Slint'te hece sonuna kadar doğrusal akar (Rust yalnız hece sınırlarında yazar)
+// - söylenen kelime hafifçe yükselir, arkasında ışıma belirir ve ~1.2 sn'de söner
+// - uzun tutulan kelime söylenirken biraz büyür
 export component KaraokeWord inherits Rectangle {
     in property <LyricWord> word;
     in property <string> family;
     in property <int> weight;
     in property <length> size;
     in property <length> spacing;
-    // Şu an söylenen kelime biraz yükselir ve büyür
+    in property <bool> italic;
     property <bool> current: word.state == 1;
-    width: base.preferred-width;
-    height: base.preferred-height;
-    transform-scale: current ? 1.045 : 1.0;
-    transform-origin: { x: self.width / 2, y: self.height };
-    animate transform-scale { duration: 180ms; easing: ease-out; }
-    base := Text {
-        x: 0; y: 0;
+    property <bool> sung: word.state == 0;
+    property <float> f: word.fill;
+    animate f { duration: root.word.dur * 1ms; easing: linear; }
+    // yumuşak kenar genişliği: ~0.45 harf boyu, kısa kelimede en çok yarısı
+    property <float> feather: Math.min(0.5, root.size * 0.45 / Math.max(1px, root.width));
+    property <float> solid: Math.clamp(root.f * (1 + root.feather) - root.feather, 0, 1);
+    property <float> clear: Math.clamp(root.f * (1 + root.feather), 0, 1);
+    width: t.preferred-width;
+    height: t.preferred-height;
+    transform-scale: root.current && root.word.long ? 1.06 : 1.0;
+    transform-origin: { x: self.width / 2, y: self.height * 0.8 };
+    animate transform-scale { duration: 350ms; easing: ease-out; }
+
+    // Işıma: kelimeyi ortalayan kare içinde dairesel, kenarlara varmadan sönen ışık (kutu gibi görünmesin)
+    glow := Rectangle {
+        width: Math.max(root.width, root.height) + root.size * 0.9;
+        height: self.width;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        background: @radial-gradient(circle, #ffffff26 0%, #ffffff10 35%, #ffffff00 62%);
+        opacity: 0;
+    }
+    t := Text {
+        x: 0;
+        y: (root.current ? -0.05 : root.sung ? -0.02 : 0) * root.size;
+        animate y { duration: 450ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
         text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
-        letter-spacing: root.spacing; color: #ffffff4d;
+        letter-spacing: root.spacing; font-italic: root.italic;
+        color: @linear-gradient(90deg, #ffffff 0%, #ffffff root.solid * 100%, #ffffff4d root.clear * 100%, #ffffff4d 100%);
     }
-    Rectangle {
-        x: 0; y: 0; height: parent.height;
-        width: parent.width * root.word.fill;
-        animate width { duration: 220ms; easing: linear; }
-        clip: true;
-        Text {
-            x: 0; y: 0;
-            text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
-            letter-spacing: root.spacing; color: #FFFFFF;
+    states [
+        lit when root.current: {
+            glow.opacity: 1;
+            in { animate glow.opacity { duration: 220ms; easing: ease-out; } }
+            out { animate glow.opacity { duration: 1200ms; easing: ease-in-out; } }
         }
-    }
+    ]
 }
 
 // Müzik arası: büyüyen üç nokta

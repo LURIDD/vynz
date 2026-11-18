@@ -12,6 +12,7 @@ mod history;
 mod import;
 mod library;
 mod lyrics;
+mod measure;
 mod model;
 mod mpris;
 mod player;
@@ -81,6 +82,10 @@ struct State {
     lyr_pending: HashSet<String>,
     lyr_line: Option<usize>,
     lyr_spoken: usize,
+    /// Son yazılan dolum bölümü: (kelime, hedef‰, duraklatılmış mı)
+    lyr_seg: Option<(usize, i32, bool)>,
+    /// Etkin satır yeniden kurulsun (yeni söz, genişlik değişti)
+    lyr_force: bool,
     /// Şarkıya özel söz kaydırma (sn).
     lyr_offsets: HashMap<String, f32>,
     history: history::History,
@@ -608,6 +613,8 @@ fn render_lyrics(ui: &AppWindow) {
     let (state, source, lines, offset, note) = with_state(|st| {
         st.lyr_line = None;
         st.lyr_spoken = usize::MAX;
+        st.lyr_seg = None;
+        st.lyr_force = true;
         let offset = st.lyr_offsets.get(&key).copied().unwrap_or(0.0);
         // Çeviri satırları ve not
         let (trs, note): (Vec<String>, String) = if mode <= 0 {
@@ -648,93 +655,81 @@ fn render_lyrics(ui: &AppWindow) {
     }
     ui.set_lyric_active(-1);
     ui.set_lyric_gap(-1.0);
-    ui.set_lyric_row0(ModelRc::new(VecModel::from(Vec::<LyricWord>::new())));
-    ui.set_lyric_row1(ModelRc::new(VecModel::from(Vec::<LyricWord>::new())));
+    ui.set_lyric_rows(ModelRc::new(VecModel::from(Vec::<LyricRow>::new())));
     update_lyrics(ui, ui.get_position());
     if state >= 2 && state <= 3 {
         request_translation(ui);
     }
 }
 
-/// Uzun satırı kelime sınırından iki dengeli satıra böl (Slint'te kelime kaydırma için).
-fn word_rows(words: &[&str], limit: usize) -> Vec<i32> {
-    let total: usize = words.iter().map(|w| w.chars().count() + 1).sum();
-    if total <= limit || words.len() < 2 {
-        return vec![0; words.len()];
-    }
-    let mut best = (usize::MAX, 1);
-    let mut acc = 0;
-    for (k, w) in words.iter().enumerate().take(words.len() - 1) {
-        acc += w.chars().count() + 1;
-        let d = (acc as i64 - (total / 2) as i64).unsigned_abs() as usize;
-        if d < best.0 {
-            best = (d, k + 1);
-        }
-    }
-    (0..words.len()).map(|i| if i < best.1 { 0 } else { 1 }).collect()
-}
-
-fn word_state(k: usize, spoken: usize, fill: f32) -> (i32, f32) {
-    if k < spoken {
-        (0, 1.0)
-    } else if k == spoken {
-        (1, fill)
-    } else {
-        (2, 0.0)
-    }
-}
+/// Kelime dolumu ve satır geçişi biraz önden gelsin (Better Lyrics ile aynı: 150 / 115 ms).
+const WORD_LEAD: f32 = 0.15;
+const LINE_LEAD: f32 = 0.115;
 
 /// Konuma göre etkin satırı, kelime dolumunu ve müzik arasını güncelle (yalnız değişenler).
+/// Dolum Slint'te akar: burada yalnız hece/kelime sınırlarında "şu dolum noktasına şu sürede var" yazılır.
+/// Duraklatılmışken (`hold`) dolum bulunduğu yerde durur.
 fn update_lyrics(ui: &AppWindow, pos: f32) {
     if ui.get_lyric_state() != 2 {
         return;
     }
+    let hold = !ui.get_playing() || ui.get_buffering();
     let key = ui.get_now().key.to_string();
-    // Satır başına sığan harf: yazı boyutuna göre (Slint'te kendiliğinden kaydırma yok)
-    let limit = match ui.get_lyrics_size() { 0 => 34, 2 => 22, _ => 28 };
+    let style = ui.get_lyrics_style();
+    let px = measure::font_size(style, ui.get_lyrics_size());
+    // Satır genişliği: Slint'in pasif satırları kaydırdığı genişlikle aynı (1 px pay);
+    // kelime arası yazı tipinin gerçek boşluk genişliği, böylece satır etkin olunca zıplamaz.
+    let max = (ui.get_lyric_area() - 1.0).max(160.0);
+    let word_gap = measure::width(style, " ", px);
+    ui.set_lyric_word_gap(word_gap);
     enum Change {
         None,
-        Line { idx: Option<usize>, words: Vec<LyricWord> },
-        Words { spoken: usize, fill: f32 },
+        Line { idx: Option<usize>, rows: Vec<Vec<LyricWord>> },
+        Words(lyrics::Progress),
     }
     let (change, gap) = with_state(|st| {
         let offset = st.lyr_offsets.get(&key).copied().unwrap_or(0.0);
         let Some(Some(l)) = st.lyrics.get(&key) else { return (Change::None, None) };
         let p = pos + offset;
         let gap = lyrics::gap(l, p);
-        let (idx, spoken, fill) = match lyrics::locate(l, p) {
-            Some((i, k, f)) => (Some(i), k, f),
-            None => (None, 0, 0.0),
-        };
-        if idx != st.lyr_line || st.lyr_spoken == usize::MAX {
+        let pr = lyrics::progress(l, p + LINE_LEAD, p + WORD_LEAD);
+        let idx = pr.map(|x| x.idx);
+        let seg = pr.map(|x| (x.spoken, (x.target * 1000.0) as i32, hold));
+        if idx != st.lyr_line || st.lyr_force {
+            st.lyr_force = false;
             st.lyr_line = idx;
-            st.lyr_spoken = spoken;
-            let words = match idx {
-                Some(i) => {
-                    let ws: Vec<&str> = l.lines[i].text.split_whitespace().collect();
-                    let rows = word_rows(&ws, limit);
-                    ws.iter()
-                        .enumerate()
-                        .map(|(k, w)| {
-                            let (state, f) = word_state(k, spoken, fill);
-                            LyricWord { text: (*w).into(), state, row: rows[k], fill: f }
-                        })
-                        .collect()
+            st.lyr_seg = seg;
+            let rows = match (idx, pr) {
+                (Some(i), Some(pr)) => {
+                    let line = &l.lines[i];
+                    let ws: Vec<&str> = line.text.split_whitespace().collect();
+                    let spans = lyrics::word_spans(line);
+                    let row_of = measure::wrap(style, &ws, px, word_gap, max);
+                    let mut rows: Vec<Vec<LyricWord>> = vec![Vec::new(); row_of.last().map(|r| r + 1).unwrap_or(0)];
+                    for (k, w) in ws.iter().enumerate() {
+                        let long = spans.get(k).is_some_and(|(a, b)| b - a >= 1.0);
+                        rows[row_of[k]].push(word_at(k, w, long, &pr, hold));
+                    }
+                    rows
                 }
-                None => Vec::new(),
+                _ => Vec::new(),
             };
-            return (Change::Line { idx, words }, gap);
+            return (Change::Line { idx, rows }, gap);
         }
-        st.lyr_spoken = spoken;
-        (Change::Words { spoken, fill }, gap)
+        if seg != st.lyr_seg {
+            st.lyr_seg = seg;
+            if let Some(pr) = pr {
+                return (Change::Words(pr), gap);
+            }
+        }
+        (Change::None, gap)
     });
     ui.set_lyric_gap(gap.unwrap_or(-1.0));
     match change {
         Change::None => {}
-        Change::Line { idx, words } => {
-            let (r0, r1): (Vec<LyricWord>, Vec<LyricWord>) = words.into_iter().partition(|w| w.row == 0);
-            ui.set_lyric_row0(ModelRc::new(VecModel::from(r0)));
-            ui.set_lyric_row1(ModelRc::new(VecModel::from(r1)));
+        Change::Line { idx, rows } => {
+            let rows: Vec<LyricRow> = rows.into_iter().map(|r| LyricRow { words: ModelRc::new(VecModel::from(r)) }).collect();
+            ui.set_lyric_rows(ModelRc::new(VecModel::from(rows)));
             // Satır durumları: geçmiş -1, etkin 0, gelecek 1; uzaklık solma için
             let lines = ui.get_lyric_lines();
             let a = idx.map(|i| i as i64).unwrap_or(-1);
@@ -752,17 +747,18 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
             }
             ui.set_lyric_active(a as i32);
         }
-        Change::Words { spoken, fill } => {
-            // Kelime sırası iki satır boyunca sürer; yalnız değişen kelimeler güncellenir.
+        Change::Words(pr) => {
+            // Kelime sırası satırlar boyunca sürer; yalnız değişen kelimeler yazılır.
             let mut k = 0;
-            for m in [ui.get_lyric_row0(), ui.get_lyric_row1()] {
+            let rows = ui.get_lyric_rows();
+            for r in 0..rows.row_count() {
+                let Some(row) = rows.row_data(r) else { continue };
+                let m = row.words;
                 for j in 0..m.row_count() {
-                    if let Some(mut w) = m.row_data(j) {
-                        let (state, f) = word_state(k, spoken, fill);
-                        if w.state != state || (w.fill - f).abs() > 0.01 {
-                            w.state = state;
-                            w.fill = f;
-                            m.set_row_data(j, w);
+                    if let Some(w) = m.row_data(j) {
+                        let nw = word_at(k, &w.text, w.long, &pr, hold);
+                        if w.state != nw.state || (w.fill - nw.fill).abs() > 0.001 || w.dur != nw.dur {
+                            m.set_row_data(j, nw);
                         }
                     }
                     k += 1;
@@ -770,6 +766,18 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
             }
         }
     }
+}
+
+/// k. kelimenin karaoke durumu: söylendi / şu an (hedef dolum + süre) / sırada.
+fn word_at(k: usize, text: &str, long: bool, pr: &lyrics::Progress, hold: bool) -> LyricWord {
+    let (state, fill, dur) = if k < pr.spoken {
+        (0, 1.0, 0)
+    } else if k == pr.spoken {
+        if hold || pr.remain <= 0.0 { (1, pr.fill, 0) } else { (1, pr.target, (pr.remain * 1000.0) as i32) }
+    } else {
+        (2, 0.0, 0)
+    };
+    LyricWord { text: text.into(), state, fill, dur, long }
 }
 
 fn play_index(ui: &AppWindow, i: usize) {
@@ -1052,6 +1060,8 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
                 with_state(|st| st.mpris.send(mpris::Msg::Playing(!p)));
             }
             ui.set_playing(!p && ui.get_has_now());
+            // Dolum duraklatınca bulunduğu yerde dursun, devam edince akmaya devam etsin.
+            update_lyrics(ui, with_state(|st| st.last_pos.0));
             update_viz(ui);
         }
         Ev::Buffering(b) => {
@@ -2635,6 +2645,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             lyr_pending: HashSet::new(),
             lyr_line: None,
             lyr_spoken: 0,
+            lyr_seg: None,
+            lyr_force: false,
             lyr_offsets: load_offsets(),
             history: history::History::load(),
             listen: None,
@@ -2815,6 +2827,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !list.is_empty() {
                 play_list(&ui, list, i as usize);
             }
+        }
+    });
+    ui.on_lyric_relayout({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            with_state(|st| st.lyr_force = true);
+            let pos = ui.get_position();
+            update_lyrics(&ui, pos);
         }
     });
     ui.on_open_lyric_link({

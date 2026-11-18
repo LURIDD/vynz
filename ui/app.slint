@@ -5,9 +5,9 @@ import "fonts/InstrumentSerif-Regular.ttf";
 import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, LyricWord, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
 
-export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord, LyricLine, CardUi, ArtistStat }
+export { Theme, Track, Shelf, ImportRow, PlaylistInfo, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
 
 // Başlıklı, sayfalı yatay raf: üzerine gelince oklar belirir, şerit kayar.
 // style: 0 şarkı kartı, 1 hızlı erişim kutucuğu, 2 liste/albüm, 3 sanatçı, 4 ruh hâli
@@ -230,8 +230,14 @@ export component AppWindow inherits Window {
     in property <int> lyric-active: -1;
     // Müzik arası ilerlemesi (0..1), yoksa -1
     in property <float> lyric-gap: -1;
-    in property <[LyricWord]> lyric-row0;
-    in property <[LyricWord]> lyric-row1;
+    // Etkin satır, gerçek genişliğe göre görsel satırlara bölünmüş
+    in property <[LyricRow]> lyric-rows;
+    // Söz alanının genişliği değişince etkin satır yeniden bölünür
+    out property <length> lyric-area: lview.width;
+    changed lyric-area => { root.lyric-relayout(); }
+    callback lyric-relayout();
+    // Etkin satırda kelime arası (Rust yazı tipinden ölçer)
+    in property <length> lyric-word-gap: 10px;
     callback lyric-seek(float);
     // Açıkken saniyede ~20 kez: akıcı karaoke dolumu
     callback lyric-tick();
@@ -1475,13 +1481,11 @@ export component AppWindow inherits Window {
                                     }
                                     if active: VerticalLayout {
                                         spacing: lyr.fsz * 0.12;
-                                        for words in [lyric-row0, lyric-row1]: HorizontalLayout {
-                                            visible: words.length > 0;
-                                            height: words.length > 0 ? self.preferred-height : 0px;
+                                        for r in lyric-rows: HorizontalLayout {
                                             alignment: lyr.centered ? center : start;
-                                            spacing: lyr.fsz * 0.28;
-                                            for w in words: KaraokeWord {
-                                                word: w; family: lyr.fam; weight: lyr.wgt; size: lyr.fsz; spacing: lyr.lsp;
+                                            spacing: lyric-word-gap;
+                                            for w in r.words: KaraokeWord {
+                                                word: w; family: lyr.fam; weight: lyr.wgt; size: lyr.fsz; spacing: lyr.lsp; italic: lyrics-style == 1;
                                             }
                                         }
                                     }
