@@ -407,54 +407,84 @@ fn fill_ends(lines: &mut [Line]) {
     }
 }
 
-/// Konumdaki satır, o satırda söylenmiş kelime sayısı ve şu anki kelimenin dolumu (0..1).
-/// Kelime zamanları harf sayısına göre tahmin edilir.
-pub fn locate(l: &Lyrics, pos: f32) -> Option<(usize, usize, f32)> {
+/// Etkin satırdaki ilerleme.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Progress {
+    /// Etkin satır
+    pub idx: usize,
+    /// Tamamen söylenmiş kelime sayısı (= şu anki kelimenin sırası)
+    pub spoken: usize,
+    /// Şu anki kelimenin dolumu (0..1)
+    pub fill: f32,
+    /// Bu bölümün (hece ya da kelime) sonunda varılacak dolum
+    pub target: f32,
+    /// Bölümün bitmesine kalan süre (sn); 0 = bekle
+    pub remain: f32,
+}
+
+/// Satırdaki kelimelerin (başlangıç, bitiş) zamanları: gerçekse onlar, değilse heceye göre tahmin.
+pub fn word_spans(line: &Line) -> Vec<(f32, f32)> {
+    if !line.words.is_empty() {
+        return line.words.iter().map(|w| (w.t, w.end)).collect();
+    }
+    let words: Vec<&str> = line.text.split_whitespace().collect();
+    let total: f32 = words.iter().map(|w| weight(w)).sum::<f32>().max(0.001);
+    let span = (line.end - line.t).max(0.3);
+    let mut at = line.t;
+    words
+        .iter()
+        .map(|w| {
+            let d = span * weight(w) / total;
+            let r = (at, at + d);
+            at += d;
+            r
+        })
+        .collect()
+}
+
+/// Satır `p_line` ile, kelime dolumu `p_word` ile bulunur (ikisine ayrı öne alma uygulanabilsin).
+pub fn progress(l: &Lyrics, p_line: f32, p_word: f32) -> Option<Progress> {
     if !l.synced {
         return None;
     }
-    let idx = l.lines.iter().rposition(|x| x.t <= pos)?;
+    let idx = l.lines.iter().rposition(|x| x.t <= p_line)?;
     let line = &l.lines[idx];
     if !line.words.is_empty() {
-        return Some((idx, timed_word(&line.words, pos).0, timed_word(&line.words, pos).1));
-    }
-    let words: Vec<&str> = line.text.split_whitespace().collect();
-    // Heceye göre dağıt: uzun kelimeler daha uzun söylenir.
-    let total: f32 = words.iter().map(|w| weight(w)).sum();
-    let span = (line.end - line.t).max(0.3);
-    let at = ((pos - line.t) / span).clamp(0.0, 1.0) * total;
-    let mut acc = 0f32;
-    for (k, w) in words.iter().enumerate() {
-        let len = weight(w);
-        if at < acc + len {
-            return Some((idx, k, ((at - acc) / len).clamp(0.0, 1.0)));
+        let w = &line.words;
+        for (k, word) in w.iter().enumerate() {
+            if p_word < word.t {
+                return Some(Progress { idx, spoken: k, fill: 0.0, target: 0.0, remain: 0.0 });
+            }
+            if p_word < word.end {
+                let total: usize = word.syl.iter().map(|s| s.2).sum::<usize>().max(1);
+                let mut done = 0usize;
+                for &(a, b, n) in &word.syl {
+                    if p_word < b {
+                        let f = if b > a { ((p_word - a) / (b - a)).clamp(0.0, 1.0) } else { 1.0 };
+                        let (fill, target) = ((done as f32 + f * n as f32) / total as f32, (done + n) as f32 / total as f32);
+                        return Some(Progress { idx, spoken: k, fill, target, remain: (b - p_word).max(0.0) });
+                    }
+                    done += n;
+                }
+                return Some(Progress { idx, spoken: k, fill: 1.0, target: 1.0, remain: 0.0 });
+            }
         }
-        acc += len;
+        return Some(Progress { idx, spoken: w.len(), fill: 1.0, target: 1.0, remain: 0.0 });
     }
-    Some((idx, words.len(), 1.0))
+    let spans = word_spans(line);
+    for (k, &(a, b)) in spans.iter().enumerate() {
+        if p_word < b {
+            let fill = if p_word <= a { 0.0 } else { ((p_word - a) / (b - a)).clamp(0.0, 1.0) };
+            return Some(Progress { idx, spoken: k, fill, target: 1.0, remain: (b - p_word.max(a)).max(0.0) });
+        }
+    }
+    Some(Progress { idx, spoken: spans.len(), fill: 1.0, target: 1.0, remain: 0.0 })
 }
 
-/// Gerçek zamanlı kelimelerde: (söylenmiş kelime sayısı, şu anki kelimenin dolumu).
-/// Dolum heceye göre: hece içinde doğrusal, hece harf sayısıyla ağırlıklı.
-fn timed_word(words: &[Word], pos: f32) -> (usize, f32) {
-    for (k, w) in words.iter().enumerate() {
-        if pos < w.t {
-            return (k, 0.0); // kelimeler arası boşluk: sıradaki henüz başlamadı
-        }
-        if pos < w.end {
-            let total: usize = w.syl.iter().map(|s| s.2).sum::<usize>().max(1);
-            let mut done = 0usize;
-            for &(a, b, n) in &w.syl {
-                if pos < b {
-                    let f = if b > a { ((pos - a) / (b - a)).clamp(0.0, 1.0) } else { 1.0 };
-                    return (k, (done as f32 + f * n as f32) / total as f32);
-                }
-                done += n;
-            }
-            return (k, 1.0);
-        }
-    }
-    (words.len(), 1.0)
+/// Konumdaki satır, söylenmiş kelime sayısı ve şu anki kelimenin dolumu (testler için).
+#[cfg(test)]
+pub fn locate(l: &Lyrics, pos: f32) -> Option<(usize, usize, f32)> {
+    progress(l, pos, pos).map(|p| (p.idx, p.spoken, p.fill))
 }
 
 /// Uzun müzik arası (≥ 4 sn): (arada mıyız, ilerleme 0..1). Satır bitmiş, sonraki gelmemişse.
