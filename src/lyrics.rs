@@ -428,13 +428,17 @@ pub fn word_spans(line: &Line) -> Vec<(f32, f32)> {
         return line.words.iter().map(|w| (w.t, w.end)).collect();
     }
     let words: Vec<&str> = line.text.split_whitespace().collect();
-    let total: f32 = words.iter().map(|w| weight(w)).sum::<f32>().max(0.001);
+    // Satır sonu kelimesi genelde uzatılır ("yenideeen"): payını büyüt.
+    let n = words.len();
+    let wt = |k: usize, w: &str| if k + 1 == n && n > 1 { weight(w) * 1.8 } else { weight(w) };
+    let total: f32 = words.iter().enumerate().map(|(k, w)| wt(k, w)).sum::<f32>().max(0.001);
     let span = (line.end - line.t).max(0.3);
     let mut at = line.t;
     words
         .iter()
-        .map(|w| {
-            let d = span * weight(w) / total;
+        .enumerate()
+        .map(|(k, w)| {
+            let d = span * wt(k, w) / total;
             let r = (at, at + d);
             at += d;
             r
@@ -577,8 +581,8 @@ mod tests {
         assert_eq!(locate(&ly, 9.0), None);
         assert_eq!(locate(&ly, 10.0).map(|x| x.1), Some(0));
         assert_eq!(locate(&ly, 14.0).map(|x| x.1), Some(4));
-        // Hece ağırlığı: "iki" iki heceli olduğu için satırın ortası ona düşer.
-        let (_, k, f) = locate(&ly, 12.0).unwrap();
+        // Hece ağırlığı: "iki" iki heceli; son kelime ("dört") uzatılır sayılır, bu yüzden 11.5 sn "iki"ye düşer.
+        let (_, k, f) = locate(&ly, 11.5).unwrap();
         assert!(k == 1 && f >= 0.0 && f <= 1.0);
         // satırdan önce 10 sn boşluk: arada
         assert!(gap(&ly, 5.0).is_some());

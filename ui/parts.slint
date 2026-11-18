@@ -130,13 +130,40 @@ export component KaraokeWord inherits Rectangle {
         background: @radial-gradient(circle, #ffffff26 0%, #ffffff10 35%, #ffffff00 62%);
         opacity: 0;
     }
+    // Not: Slint'in metin degradesi her harfe ayrı uygulanıyor (yarım dolu harfler bölünüyor);
+    // bu yüzden dolum kırpma ile, yumuşak kenar da azalan parlaklıkta dar dilimlerle yapılır.
+    property <length> lift: (root.current ? -0.05 : root.sung ? -0.02 : 0) * root.size;
+    animate lift { duration: 450ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+    property <length> solid-x: root.solid * root.width;
+    property <length> step: (root.clear - root.solid) * root.width / 4;
     t := Text {
-        x: 0;
-        y: (root.current ? -0.05 : root.sung ? -0.02 : 0) * root.size;
-        animate y { duration: 450ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+        x: 0; y: root.lift;
         text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
         letter-spacing: root.spacing; font-italic: root.italic;
-        color: @linear-gradient(90deg, #ffffff 0%, #ffffff root.solid * 100%, #ffffff4d root.clear * 100%, #ffffff4d 100%);
+        color: #ffffff4d;
+    }
+    // Dolan kısım
+    Rectangle {
+        x: 0; y: 0; width: root.solid-x; height: root.height;
+        clip: true;
+        Text {
+            x: 0; y: root.lift;
+            text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
+            letter-spacing: root.spacing; font-italic: root.italic;
+            color: #ffffff;
+        }
+    }
+    // Yumuşak kenar: dört dilim, parlaklık azalarak (yalnız şu an söylenen kelimede)
+    for i in (root.current && root.step > 0.2px ? 4 : 0): Rectangle {
+        x: root.solid-x + i * root.step; y: 0; width: root.step + 0.5px; height: root.height;
+        clip: true;
+        Text {
+            x: -parent.x; y: root.lift;
+            text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
+            letter-spacing: root.spacing; font-italic: root.italic;
+            color: #ffffff;
+            opacity: 0.78 - i * 0.2;
+        }
     }
     states [
         lit when root.current: {
