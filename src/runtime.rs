@@ -153,6 +153,52 @@ fn fallback_runtime() -> Runtime {
     }
 }
 
+pub fn is_ready() -> bool {
+    managed_runtime_if_ready().is_some()
+}
+
+pub fn status_text() -> String {
+    if managed_runtime_if_ready().is_some() {
+        "Hazır (izole uv + deno + yt-dlp)".into()
+    } else if system_python_has_deps() {
+        "Sistem Python (izole ortam arka planda hazırlanıyor)".into()
+    } else {
+        "İlk kurulum bekleniyor…".into()
+    }
+}
+
+/// Ayarlar'dan tek tıkla yt-dlp güncelleme.
+pub fn update_now(on_done: impl FnOnce(Result<String, String>) + Send + 'static) {
+    std::thread::Builder::new()
+        .name("vynz-ytdlp-update-now".into())
+        .spawn(move || {
+            let _g = lock();
+            let res = if managed_runtime_if_ready().is_none() {
+                bootstrap().map(|_| "Çözücü ortamı kuruldu ve güncel".into())
+            } else {
+                let mut cmd = Command::new(uv_path());
+                hide_window(&mut cmd);
+                match cmd
+                    .args(["pip", "install", "--python"])
+                    .arg(venv_python())
+                    .args(["--upgrade", "yt-dlp", "ytmusicapi"])
+                    .env("UV_PYTHON_INSTALL_DIR", python_install_dir())
+                    .stdin(Stdio::null())
+                    .output()
+                {
+                    Ok(out) if out.status.success() => {
+                        let _ = std::fs::write(stamp_path(), now_secs().to_string());
+                        Ok("yt-dlp ve ytmusicapi güncellendi".into())
+                    }
+                    Ok(out) => Err(String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("güncellenemedi").into()),
+                    Err(e) => Err(e.to_string()),
+                }
+            };
+            on_done(res);
+        })
+        .ok();
+}
+
 /// Uygulama açıldıktan sonra arka planda çağrılır: yt-dlp 3 günden eskiyse sessizce günceller.
 pub fn maybe_update_background() {
     std::thread::Builder::new()

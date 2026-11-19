@@ -14,8 +14,37 @@ use crate::model::{Section, Source, TrackInfo};
 
 pub const MAX_SEEDS: usize = 5;
 
+/// Zevkler ekranındaki müzik türleri: (kimlik, görünen ad, örnek şarkı arama sorgusu).
+pub const GENRES: &[(&str, &str, &str)] = &[
+    ("tr-rock", "Türkçe Rock", "Türkçe rock en iyi şarkılar"),
+    ("tr-pop", "Türkçe Pop", "Türkçe pop hit şarkılar"),
+    ("tr-rap", "Türkçe Rap", "Türkçe rap hip hop"),
+    ("indie", "Indie & Alternatif", "indie alternative songs"),
+    ("lofi", "Lo-Fi & Chill", "lofi chill beats"),
+    ("synthwave", "Elektronik & Synthwave", "synthwave electronic retrowave"),
+    ("metal", "Metal & Hard Rock", "metal hard rock songs"),
+    ("hiphop", "Hip-Hop & R&B", "hip hop r&b songs"),
+    ("jazz", "Caz & Blues", "jazz blues songs"),
+    ("classical", "Klasik & Piyano", "classical piano music"),
+    ("arabesk", "Arabesk & Fantazi", "arabesk klasik şarkılar"),
+    ("phonk", "Phonk & Drift", "phonk drift music"),
+    ("anime", "Anime & Oyun", "anime ost game soundtrack"),
+    ("retro", "80'ler & 90'lar", "80s 90s retro hits"),
+];
+
+pub fn genre_query(id: &str) -> Option<&'static str> {
+    GENRES.iter().find(|(gid, _, _)| *gid == id).map(|(_, _, q)| *q)
+}
+
 /// Radyosu alınacak tohum şarkılar ve ağırlıkları (yalnız YouTube Music: radyo oradan).
+#[cfg(test)]
 pub fn seeds(h: &History) -> Vec<(TrackInfo, f32)> {
+    seeds_with_tastes(h, &[])
+}
+
+/// Geçmiş ve kullanıcının Zevkler ekranında seçtiği örnek şarkıları harmanlar.
+/// Not: Yalnızca Ana Sayfa önerileri içindir; kullanıcının başlattığı Radyo özelliğini etkilemez.
+pub fn seeds_with_tastes(h: &History, taste_tracks: &[TrackInfo]) -> Vec<(TrackInfo, f32)> {
     let mut scored: Vec<(f32, TrackInfo)> = h.track_scores().into_values().filter(|(s, t)| *s > 0.0 && t.source == Source::Ytm).collect();
     scored.sort_by(|a, b| b.0.total_cmp(&a.0));
     // En son dinlenen şarkı da güncel ruh halini yansıtır.
@@ -26,12 +55,38 @@ pub fn seeds(h: &History) -> Vec<(TrackInfo, f32)> {
     }
     let mut artists = HashSet::new();
     let max = scored.first().map(|s| s.0).unwrap_or(1.0).max(0.01);
-    scored
+    let hist_seeds: Vec<(TrackInfo, f32)> = scored
         .into_iter()
         .filter(|(_, t)| artists.insert(artist_id(t)))
         .take(MAX_SEEDS)
         .map(|(s, t)| (t, (s / max).clamp(0.2, 1.0)))
-        .collect()
+        .collect();
+
+    if taste_tracks.is_empty() {
+        return hist_seeds;
+    }
+
+    // Dinleme geçmişi azken Zevkler ağırlıklı, geçmiş büyüdükçe geçmiş ağırlıklı (~%70 geçmiş + %30 zevkler).
+    let listen_count = h.listens.len() + h.likes.len() * 2;
+    let max_from_hist = if listen_count < 6 { 1 } else if listen_count < 20 { 3 } else { 4 };
+    let taste_weight = if listen_count < 6 { 0.9 } else if listen_count < 20 { 0.65 } else { 0.45 };
+
+    let mut out = Vec::new();
+    let mut used_artists = HashSet::new();
+    for (t, w) in hist_seeds.into_iter().take(max_from_hist) {
+        if used_artists.insert(artist_id(&t)) {
+            out.push((t, w));
+        }
+    }
+    for t in taste_tracks.iter().filter(|t| t.source == Source::Ytm) {
+        if out.len() >= MAX_SEEDS {
+            break;
+        }
+        if used_artists.insert(artist_id(t)) {
+            out.push((t.clone(), taste_weight));
+        }
+    }
+    out
 }
 
 fn diversify(list: Vec<(f32, TrackInfo)>, per_artist: usize, n: usize) -> Vec<TrackInfo> {
@@ -52,7 +107,18 @@ fn diversify(list: Vec<(f32, TrackInfo)>, per_artist: usize, n: usize) -> Vec<Tr
 }
 
 /// Kişisel raflar. `radios`: tohum anahtarı -> o şarkının radyosu.
+#[cfg(test)]
 pub fn build(h: &History, seeds: &[(TrackInfo, f32)], radios: &HashMap<String, Vec<TrackInfo>>) -> Vec<Section> {
+    build_with_blocked(h, seeds, radios, &HashSet::new())
+}
+
+/// Kişisel raflar + isteğe bağlı "Önerme" sanatçı filtresi (yalnızca Ana Sayfa).
+pub fn build_with_blocked(
+    h: &History,
+    seeds: &[(TrackInfo, f32)],
+    radios: &HashMap<String, Vec<TrackInfo>>,
+    blocked_artists: &HashSet<String>,
+) -> Vec<Section> {
     let mut out = Vec::new();
     let artist_score = h.artist_scores();
     let skipped = h.recently_skipped(14);
@@ -68,6 +134,9 @@ pub fn build(h: &History, seeds: &[(TrackInfo, f32)], radios: &HashMap<String, V
         for (rank, t) in list.iter().enumerate() {
             let key = t.key();
             if seed_keys.contains(&key) || skipped.contains(&key) {
+                continue;
+            }
+            if !blocked_artists.is_empty() && blocked_artists.contains(&artist_id(t)) && !known_artists.contains(&artist_id(t)) {
                 continue;
             }
             let e = pool.entry(key).or_insert((0.0, 0, t.clone()));
@@ -208,5 +277,24 @@ mod tests {
         assert!(!mix.iter().any(|t| t.id == "bad" || t.id == "seed"));
         assert!(mix.iter().filter(|t| t.artist == "R").count() <= 2);
         assert_eq!(mix.first().map(|t| t.id.as_str()), Some("r1"));
+    }
+
+    #[test]
+    fn tastes_blend_with_history_and_block_filters_artists() {
+        let h = History::default();
+        let tastes = vec![tr("t1", "RockBand"), tr("t2", "SynthDuo")];
+        let s = seeds_with_tastes(&h, &tastes);
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0].0.id, "t1");
+
+        let radio = vec![tr("good", "IndieAct"), tr("blocked_song", "UnwantedArtist")];
+        let mut radios = HashMap::new();
+        radios.insert(tr("t1", "RockBand").key(), radio);
+        let mut blocked = HashSet::new();
+        blocked.insert(artist_id(&tr("x", "UnwantedArtist")));
+        let secs = build_with_blocked(&h, &s, &radios, &blocked);
+        let mix = &secs.iter().find(|s| s.title == "Bugün için karışım").unwrap().items;
+        assert!(mix.iter().any(|t| t.id == "good"));
+        assert!(!mix.iter().any(|t| t.id == "blocked_song"));
     }
 }
