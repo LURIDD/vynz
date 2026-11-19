@@ -1131,26 +1131,31 @@ fn on_hover(t: Option<TrackInfo>) {
     });
 }
 
-fn start_env_monitor(metered: Arc<AtomicBool>, on_battery: Arc<AtomicBool>) {
-    thread::spawn(move || loop {
-        let m = std::process::Command::new("nmcli")
+fn is_metered_connection() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("nmcli")
             .args(["-t", "-f", "GENERAL.METERED", "dev", "show"])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.contains(":yes")))
-            .unwrap_or(false);
-        metered.store(m, Ordering::Relaxed);
-        let mut mains_seen = false;
-        let mut mains_online = false;
-        if let Ok(rd) = std::fs::read_dir("/sys/class/power_supply") {
-            for e in rd.flatten() {
-                let p = e.path();
-                if std::fs::read_to_string(p.join("type")).is_ok_and(|t| t.trim() == "Mains") {
-                    mains_seen = true;
-                    mains_online |= std::fs::read_to_string(p.join("online")).is_ok_and(|v| v.trim() == "1");
-                }
-            }
-        }
-        on_battery.store(mains_seen && !mains_online, Ordering::Relaxed);
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+fn is_on_battery() -> bool {
+    let Ok(mgr) = starship_battery::Manager::new() else { return false };
+    let Ok(bats) = mgr.batteries() else { return false };
+    bats.flatten().any(|b| b.state() == starship_battery::State::Discharging)
+}
+
+fn start_env_monitor(metered: Arc<AtomicBool>, on_battery: Arc<AtomicBool>) {
+    thread::spawn(move || loop {
+        metered.store(is_metered_connection(), Ordering::Relaxed);
+        on_battery.store(is_on_battery(), Ordering::Relaxed);
         thread::sleep(Duration::from_secs(60));
     });
 }
@@ -2091,36 +2096,24 @@ fn refresh_import(ui: &AppWindow) {
 
 fn looks_like_file(s: &str) -> bool {
     let s = s.trim();
-    s.starts_with('/') || s.starts_with("~/") || s.starts_with("file://")
+    let b = s.as_bytes();
+    let win_drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+    s.starts_with('/') || s.starts_with("~/") || s.starts_with("~\\") || s.starts_with("\\\\") || s.starts_with("file://") || win_drive
 }
 
-/// Sistem dosya seçicisini aç (zenity, yoksa kdialog); seçilen yolla aktar.
+/// Sistem dosya seçicisini aç (`rfd`); seçilen yolla aktar.
 fn pick_file(ui: &AppWindow) {
     let weak = ui.as_weak();
     thread::spawn(move || {
-        let tries: [(&str, &[&str]); 2] = [
-            ("zenity", &["--file-selection", "--title=Liste dosyası seç", "--file-filter=Listeler | *.json *.csv", "--file-filter=Tümü | *"]),
-            ("kdialog", &["--getopenfilename", ".", "*.json *.csv"]),
-        ];
-        let mut path = None;
-        let mut found = false;
-        for (cmd, args) in tries {
-            match std::process::Command::new(cmd).args(args).output() {
-                Ok(o) => {
-                    found = true;
-                    let p = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                    if o.status.success() && !p.is_empty() {
-                        path = Some(p);
-                    }
-                    break;
-                }
-                Err(_) => continue,
+        let path = rfd::FileDialog::new()
+            .set_title("Liste dosyası seç")
+            .add_filter("Listeler", &["json", "csv"])
+            .pick_file()
+            .map(|p| p.to_string_lossy().into_owned());
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            if let Some(p) = path {
+                start_file_import(&ui, p);
             }
-        }
-        let _ = weak.upgrade_in_event_loop(move |ui| match path {
-            Some(p) => start_file_import(&ui, p),
-            None if !found => toast(&ui, "Dosya seçici yok; dosya yolunu kutuya yazıp Enter'a bas."),
-            None => {}
         });
     });
 }
