@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 // vynz: çok kaynaklı müzik çalar.
 // Oynatma yolu (hızlıdan yavaşa):
 //   1. Disk önbelleği (daha önce sonuna kadar dinlenmiş parça)   ~0.3 sn
@@ -1141,7 +1143,20 @@ fn is_metered_connection() -> bool {
             .map(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.contains(":yes")))
             .unwrap_or(false)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Networking::Connectivity::{NetworkCostType, NetworkInformation};
+        NetworkInformation::GetInternetConnectionProfile()
+            .and_then(|p| p.GetConnectionCost())
+            .map(|c| {
+                let t = c.NetworkCostType().unwrap_or(NetworkCostType::Unknown);
+                matches!(t, NetworkCostType::Fixed | NetworkCostType::Variable)
+                    || c.Roaming().unwrap_or(false)
+                    || c.OverDataLimit().unwrap_or(false)
+            })
+            .unwrap_or(false)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         false
     }
