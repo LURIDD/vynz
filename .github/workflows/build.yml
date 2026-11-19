@@ -52,12 +52,24 @@ jobs:
           Write-Host "Downloading $($asset.name)"
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile mpv-dev.7z
           7z x mpv-dev.7z -ompv-dev -y | Out-Null
-          $dll = Get-ChildItem -Path mpv-dev -Recurse -Filter "libmpv-2.dll" | Select-Object -First 1
-          $def = Get-ChildItem -Path mpv-dev -Recurse -Filter "mpv.def" | Select-Object -First 1
-          if (-not $dll -or -not $def) { throw "libmpv-2.dll veya mpv.def bulunamadi" }
+          $dll = Get-ChildItem -Path mpv-dev -Recurse -Filter "*mpv*.dll" | Select-Object -First 1
+          if (-not $dll) {
+            Get-ChildItem -Path mpv-dev -Recurse | Select-Object FullName
+            throw "libmpv DLL bulunamadi"
+          }
           New-Item -ItemType Directory -Force -Path mpv-lib | Out-Null
-          Copy-Item $dll.FullName mpv-lib/libmpv-2.dll
-          lib.exe /def:"$($def.FullName)" /name:libmpv-2.dll /out:mpv-lib/mpv.lib /machine:x64
+          Copy-Item $dll.FullName "mpv-lib/$($dll.Name)"
+          $def = Get-ChildItem -Path mpv-dev -Recurse -Filter "*.def" | Select-Object -First 1
+          if ($def) {
+            $defPath = $def.FullName
+          } else {
+            $defPath = "mpv-lib/mpv.def"
+            $exports = dumpbin /exports $dll.FullName | ForEach-Object {
+              if ($_ -match "^\s+\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\S+)") { $Matches[1] }
+            }
+            @("LIBRARY $($dll.Name)", "EXPORTS") + $exports | Set-Content -Path $defPath -Encoding ASCII
+          }
+          lib.exe /def:"$defPath" /name:"$($dll.Name)" /out:mpv-lib/mpv.lib /machine:x64
           $libDir = (Resolve-Path mpv-lib).Path
           "RUSTFLAGS=-L native=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Append
           "$libDir" | Out-File -FilePath $env:GITHUB_PATH -Append
@@ -70,7 +82,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist/vynz-windows-x86_64 | Out-Null
           Copy-Item target/release/vynz.exe dist/vynz-windows-x86_64/
-          Copy-Item mpv-lib/libmpv-2.dll dist/vynz-windows-x86_64/
+          Copy-Item mpv-lib/*.dll dist/vynz-windows-x86_64/
           Copy-Item LICENSE, README.md dist/vynz-windows-x86_64/
           Compress-Archive -Path dist/vynz-windows-x86_64/* -DestinationPath vynz-windows-x86_64.zip -Force
       - uses: actions/upload-artifact@v4
