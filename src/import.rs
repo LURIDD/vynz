@@ -6,7 +6,6 @@
 // - YouTube / YouTube Music liste ve albüm: yt-dlp ile tamamı
 // - SoundCloud set/liste: yt-dlp ile tamamı
 
-use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -14,6 +13,7 @@ use std::thread;
 use serde_json::Value;
 
 use crate::model::{Source, TrackInfo};
+use crate::resolve::{Prio, Resolver};
 use crate::sources::Provider;
 
 /// Kaynak listedeki bir şarkı (henüz çalınabilir değil).
@@ -138,18 +138,9 @@ fn find_key<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
     }
 }
 
-/// YouTube/SoundCloud listesi: yt-dlp ile düz liste.
-fn flat_list(url: &str, source: Source) -> Result<(String, Vec<TrackInfo>), String> {
-    let out = Command::new("yt-dlp")
-        .args(["--ignore-config", "--flat-playlist", "-J", "--no-warnings"])
-        .arg(url)
-        .output()
-        .map_err(|e| format!("yt-dlp çalıştırılamadı: {e}"))?;
-    if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr);
-        return Err(err.lines().last().unwrap_or("liste okunamadı").to_string());
-    }
-    let d: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+/// YouTube/SoundCloud listesi: sıcak çözücü yardımcısıyla (yt-dlp) düz liste.
+fn flat_list(url: &str, source: Source, resolver: &Resolver) -> Result<(String, Vec<TrackInfo>), String> {
+    let d = resolver.request_sync(serde_json::json!({"op": "flat", "url": url}), Prio::Soon)?;
     let name = d.get("title").and_then(Value::as_str).unwrap_or("Aktarılan liste").to_string();
     let entries = d.get("entries").and_then(Value::as_array).cloned().unwrap_or_default();
     let tracks = entries
@@ -323,6 +314,7 @@ pub fn run(
     url: &str,
     ytm: Arc<dyn Provider>,
     sc: Arc<dyn Provider>,
+    resolver: &Resolver,
     progress: impl Fn(usize, usize) + Send + Sync,
 ) -> Result<Fetched, String> {
     match detect(url).ok_or("Bu bağlantı tanınmadı. Spotify, YouTube Music ya da SoundCloud liste bağlantısı yapıştır.")? {
@@ -334,11 +326,11 @@ pub fn run(
             } else {
                 u
             };
-            let (name, tracks) = flat_list(&u, Source::Ytm)?;
+            let (name, tracks) = flat_list(&u, Source::Ytm, resolver)?;
             Ok(direct(name, "YouTube Music", tracks))
         }
         Link::SoundCloud(u) => {
-            let (name, tracks) = flat_list(&u, Source::SoundCloud)?;
+            let (name, tracks) = flat_list(&u, Source::SoundCloud, resolver)?;
             Ok(direct(name, "SoundCloud", tracks))
         }
         Link::Spotify { kind, id } => {
@@ -603,7 +595,8 @@ mod live {
     fn live_spotify() {
         let url = std::env::var("VYNZ_TEST_URL").unwrap_or("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M".into());
         let t0 = std::time::Instant::now();
-        let f = run(&url, Arc::new(Ytm::new(Resolver::new(None))), Arc::new(SoundCloud), |_, _| {}).unwrap();
+        let resolver = Resolver::new(None);
+        let f = run(&url, Arc::new(Ytm::new(resolver.clone())), Arc::new(SoundCloud::new(resolver.clone())), &resolver, |_, _| {}).unwrap();
         let count = |s: Status| f.rows.iter().filter(|r| r.status == s).count();
         println!("{} | {} şarkı | {:.1} sn | eşleşti {} · emin değil {} · yok {}", f.name, f.rows.len(), t0.elapsed().as_secs_f64(),
             count(Status::Matched), count(Status::Uncertain), count(Status::Missing));

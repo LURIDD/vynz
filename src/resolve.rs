@@ -198,16 +198,31 @@ impl Resolver {
             std::fs::write(&script, HELPER).map_err(|e| e.to_string())?;
         }
         let warm_cookies = self.cookies.lock().unwrap().clone().unwrap_or_else(|| "-".into());
-        let mut child = Command::new("python3")
-            .arg("-I")
+        let rt = crate::runtime::ensure_ready();
+        let mut cmd = Command::new(&rt.python);
+        crate::runtime::hide_window(&mut cmd);
+        cmd.arg("-I")
             .arg(&script)
             .arg(warm_cookies)
             .current_dir(&dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        if let Some(deno) = &rt.deno {
+            cmd.env("VYNZ_DENO", deno);
+        }
+        if let Some(bin) = &rt.bin_dir {
+            let mut paths = vec![bin.clone()];
+            if let Some(cur) = std::env::var_os("PATH") {
+                paths.extend(std::env::split_paths(&cur));
+            }
+            if let Ok(joined) = std::env::join_paths(paths) {
+                cmd.env("PATH", joined);
+            }
+        }
+        let mut child = cmd
             .spawn()
-            .map_err(|e| format!("python3 başlatılamadı: {e}"))?;
+            .map_err(|e| format!("çözücü python başlatılamadı ({}): {e}", rt.python.display()))?;
         let stdin = child.stdin.take().ok_or("stdin yok")?;
         let stdout = child.stdout.take().ok_or("stdout yok")?;
         g.generation += 1;
