@@ -2,38 +2,59 @@
 
 Rust ve Slint ile yazılmış, hafif ve çok kaynaklı bir masaüstü müzik çalar.
 YouTube Music ve SoundCloud'dan çalar, Spotify listelerini içe aktarır, zamanlı
-sözleri karaoke gibi gösterir.
+sözleri karaoke gibi gösterir. Linux ve Windows destekler.
 
-*A lightweight multi-source desktop music player written in Rust + Slint:
-plays from YouTube Music and SoundCloud, imports Spotify playlists, and shows
-time-synced karaoke lyrics. The UI is in Turkish.*
+*A lightweight multi-source desktop music player written in Rust + Slint for
+Linux and Windows: plays from YouTube Music and SoundCloud, imports Spotify
+playlists, and shows time-synced karaoke lyrics. The UI is in Turkish.*
 
 ## Özellikler
 
-- **Çalma:** libmpv ile; sıradaki şarkıyı önceden hazırlar (boşluksuz geçiş),
+- **Çalma:** `libmpv` ile; sıradaki şarkıyı önceden hazırlar (boşluksuz geçiş),
   dinlenen şarkıları hız sınırlı olarak disk önbelleğine alır.
-- **Ana sayfa:** dinleme geçmişine göre yerel öneri algoritması, radyo, ruh hâli
+- **Kendi kendine yeten çözücü:** İlk açılışta Vynz veri klasörüne izole `uv` +
+  Python + [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) +
+  [`ytmusicapi`](https://github.com/sigma67/ytmusicapi) + `deno` ortamını kurar;
+  sistem Python'una dokunmaz ve `yt-dlp`'yi birkaç günde bir sessizce günceller.
+- **Ana sayfa:** Dinleme geçmişine göre yerel öneri algoritması, radyo, ruh hâli
   ve türler, sanatçı ve albüm sayfaları.
-- **Sözler:** zamanlı satırlar, kelime kelime dolum, isteğe bağlı çeviri,
+- **Sözler:** Zamanlı satırlar, kelime kelime dolum, isteğe bağlı çeviri,
   büyük kapaklı "Şimdi Çalıyor" sahnesi.
 - **Liste aktarma:** Spotify (bağlantı, veri dışa aktarımı JSON'u), YouTube Music,
-  SoundCloud, CSV.
-- **Masaüstü uyumu:** MPRIS (medya tuşları, playerctl), kaldığı yerden devam.
+  SoundCloud, CSV (yerleşik sistem dosya seçicisi ile).
+- **Masaüstü uyumu:** Linux'ta MPRIS (medya tuşları, `playerctl`), Windows'ta
+  SMTC (medya tuşları ve sistem medya paneli), kaldığı yerden devam, kotalı
+  bağlantı ve pil farkındalığı.
 
-## Gereksinimler (Linux)
+## Kurulum
 
-- Rust (2024 sürümü), `libmpv`
-- `python3` ile [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) ve
-  [`ytmusicapi`](https://github.com/sigma67/ytmusicapi)
-- İsteğe bağlı: `cava` (profil ekranındaki spektrum), `zenity` ya da `kdialog`
-  (dosyadan liste aktarma), `nmcli` (kotalı bağlantıda önbelleği durdurma)
+Hazır derlemeler [Releases](https://github.com/LURIDD/vynz/releases) sayfasında
+paylaşılır:
+
+- **Windows (x86_64):** `vynz-windows-x86_64.zip` arşivini bir klasöre açıp
+  `vynz.exe`'yi çalıştırın (`libmpv-2.dll` pakete dahildir). İlk açılışta
+  çözücü ortamı `%LOCALAPPDATA%\vynz\runtime` klasörüne kendiliğinden kurulur.
+- **Linux (x86_64):** `vynz-linux-x86_64.tar.gz` arşivini açıp `vynz` ikilisini
+  çalıştırın. Sistemde `libmpv` kurulu olmalıdır (Arch: `mpv`, Debian/Ubuntu:
+  `libmpv2`).
+
+## Kaynaktan derleme
+
+### Linux
+
+- Rust (2024 sürümü) ve `libmpv` geliştirme başlıkları (`mpv` / `libmpv-dev`)
+- İsteğe bağlı: `cava` (profil ekranındaki canlı spektrum), `nmcli` (kotalı
+  bağlantıda arka plan önbelleğini durdurma)
 
 ```sh
 cargo build --release
 ./target/release/vynz
 ```
 
-Şu an yalnız Linux'ta geliştirilip denenmektedir.
+### Windows
+
+- Rust (MSVC) ve `libmpv-2.dll` + `mpv.lib` (bkz.
+  [`.github/workflows/build.yml`](.github/workflows/build.yml))
 
 ## Söz kaynakları
 
