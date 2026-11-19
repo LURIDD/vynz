@@ -19,6 +19,7 @@ mod paths;
 mod player;
 mod recommend;
 mod resolve;
+mod runtime;
 mod settings;
 mod sources;
 mod stats;
@@ -2181,11 +2182,11 @@ fn start_import(ui: &AppWindow, url: String) {
     }
     let providers = with_state(|st| {
         st.import_origin = url.clone();
-        let ytm = st.providers.iter().find(|p| p.source() == Source::Ytm).cloned();
-        let sc = st.providers.iter().find(|p| p.source() == Source::SoundCloud).cloned();
-        ytm.zip(sc)
+        let ytm = st.providers.iter().find(|p| p.source() == Source::Ytm).cloned()?;
+        let sc = st.providers.iter().find(|p| p.source() == Source::SoundCloud).cloned()?;
+        Some((ytm, sc, st.resolver.clone()))
     });
-    let Some((ytm, sc)) = providers else { return };
+    let Some((ytm, sc, resolver)) = providers else { return };
     ui.set_import_busy(true);
     ui.set_import_done(0);
     ui.set_import_total(0);
@@ -2193,7 +2194,7 @@ fn start_import(ui: &AppWindow, url: String) {
     let weak = ui.as_weak();
     thread::spawn(move || {
         let w = Mutex::new(weak.clone());
-        let res = import::run(&url, ytm, sc, |done, total| {
+        let res = import::run(&url, ytm, sc, &resolver, |done, total| {
             let w = w.lock().unwrap().clone();
             let _ = w.upgrade_in_event_loop(move |ui| {
                 ui.set_import_done(done as i32);
@@ -2590,6 +2591,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let on_battery = Arc::new(AtomicBool::new(false));
     start_env_monitor(metered.clone(), on_battery.clone());
     let resolver = Resolver::new(settings.cookies_browser.clone());
+    runtime::maybe_update_background();
     let mpris_server = {
         let weak = weak.clone();
         mpris::Mpris::start(move |a| {
@@ -2613,7 +2615,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = start_art_pool(weak.clone());
     STATE.with(|s| {
         *s.borrow_mut() = Some(State {
-            providers: vec![Arc::new(Ytm::new(resolver.clone())), Arc::new(SoundCloud)],
+            providers: vec![Arc::new(Ytm::new(resolver.clone())), Arc::new(SoundCloud::new(resolver.clone()))],
             player,
             resolver: resolver.clone(),
             settings,

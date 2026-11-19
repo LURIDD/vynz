@@ -9,6 +9,7 @@
 #         {"rid": 1, "ok": false, "error": "..."}
 
 import json
+import os
 import re
 import queue
 import sys
@@ -19,6 +20,7 @@ import urllib.parse
 import yt_dlp
 
 FAST_ARGS = {"youtube": {"player_client": ["web_music"], "player_skip": ["webpage", "configs"]}}
+DENO_PATH = os.environ.get("VYNZ_DENO") or None
 
 # Rust tarafı çerez tarayıcısını ilk argüman olarak verir ("-" = yok).
 WARM_COOKIES = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] != "-" else None
@@ -55,6 +57,8 @@ def ydl(fast, cookies):
             opts["cookiesfrombrowser"] = (cookies,)
         if fast:
             opts["extractor_args"] = FAST_ARGS
+        if DENO_PATH:
+            opts["js_runtimes"] = {"deno": {"path": DENO_PATH}}
         cache[key] = yt_dlp.YoutubeDL(opts)
     return cache[key]
 
@@ -365,8 +369,34 @@ def lyrics(video_id):
     return {"source": "youtube", "synced": False, "lines": lines}
 
 
+def flat_extract(url):
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+        "extract_flat": "in_playlist",
+        "skip_download": True,
+    }
+    if DENO_PATH:
+        opts["js_runtimes"] = {"deno": {"path": DENO_PATH}}
+    with yt_dlp.YoutubeDL(opts) as y:
+        info = y.extract_info(url, download=False)
+    if not isinstance(info, dict):
+        raise RuntimeError("liste okunamadı")
+    entries = info.get("entries")
+    if entries is not None and not isinstance(entries, list):
+        entries = list(entries)
+    return {"title": info.get("title"), "entries": entries or []}
+
+
 def handle(req):
     op = req.get("op")
+    if op == "flat":
+        try:
+            send({"rid": req["rid"], "ok": True, "data": flat_extract(req.get("url") or "")})
+        except Exception as e:  # noqa: BLE001
+            send({"rid": req["rid"], "ok": False, "error": str(e).splitlines()[0][:300] if str(e) else "hata"})
+        return
     if op == "search":
         try:
             limit = int(req.get("limit") or 20)

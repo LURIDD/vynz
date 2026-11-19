@@ -1,13 +1,20 @@
-// SoundCloud: arama ve akış yt-dlp ile (girişsiz). Ana sayfa akışı yok.
-
-use std::process::Command;
+// SoundCloud: arama ve akış sıcak çözücü yardımcısından (yt-dlp, girişsiz). Ana sayfa akışı yok.
 
 use serde::Deserialize;
 
 use super::{Provider, Res};
 use crate::model::{Section, Source, TrackInfo};
+use crate::resolve::{Prio, Resolver};
 
-pub struct SoundCloud;
+pub struct SoundCloud {
+    resolver: Resolver,
+}
+
+impl SoundCloud {
+    pub fn new(resolver: Resolver) -> Self {
+        Self { resolver }
+    }
+}
 
 #[derive(Deserialize)]
 struct Search {
@@ -31,6 +38,8 @@ struct Entry {
     duration: Option<f64>,
     #[serde(default)]
     webpage_url: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
     #[serde(default)]
     thumbnails: Vec<Thumb>,
 }
@@ -63,19 +72,15 @@ impl Provider for SoundCloud {
     }
 
     fn search(&self, query: &str, limit: usize) -> Res<Vec<TrackInfo>> {
-        let out = Command::new("yt-dlp")
-            .args(["--flat-playlist", "-J", "--no-warnings"])
-            .arg(format!("scsearch{limit}:{query}"))
-            .output()
-            .map_err(|e| format!("yt-dlp çalıştırılamadı: {e}"))?;
-        if !out.status.success() {
-            return Err(String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("SoundCloud hatası").to_string());
-        }
-        let s: Search = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+        let data = self.resolver.request_sync(
+            serde_json::json!({"op": "flat", "url": format!("scsearch{limit}:{query}")}),
+            Prio::Soon,
+        )?;
+        let s: Search = serde_json::from_value(data).map_err(|e| e.to_string())?;
         Ok(s.entries
             .into_iter()
             .filter_map(|e| {
-                let url = e.webpage_url?;
+                let url = e.webpage_url.or(e.url)?;
                 let (title, artist) = split_title(&e.title, e.uploader.as_deref().unwrap_or(""));
                 Some(TrackInfo {
                     source: Source::SoundCloud,
