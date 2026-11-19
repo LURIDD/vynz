@@ -10,8 +10,7 @@ use std::time::SystemTime;
 const MIN_BYTES: u64 = 64 * 1024;
 
 pub fn dir() -> PathBuf {
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).unwrap_or(home.join(".cache")).join("vynz").join("audio")
+    crate::paths::cache_dir().join("audio")
 }
 
 fn safe(key: &str) -> String {

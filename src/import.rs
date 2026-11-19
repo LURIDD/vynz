@@ -393,15 +393,12 @@ pub struct FileList {
 /// Spotify veri dışa aktarımı (Playlist*.json, YourLibrary.json) ya da CSV.
 pub fn read_file(path: &str) -> Result<Vec<FileList>, String> {
     let path = path.trim().trim_start_matches("file://");
-    let path = if let Some(rest) = path.strip_prefix("~/") {
-        format!("{}/{rest}", std::env::var("HOME").unwrap_or_default())
-    } else {
-        path.to_string()
-    };
+    let path = crate::paths::expand_tilde(path);
     let raw = std::fs::read(&path).map_err(|e| format!("Dosya okunamadı: {e}"))?;
     let text = String::from_utf8_lossy(&raw);
-    let stem = std::path::Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or("Liste").to_string();
-    let lists = if path.to_lowercase().ends_with(".json") { from_json(&text)? } else { from_csv(&text, &stem)? };
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Liste").to_string();
+    let is_json = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("json"));
+    let lists = if is_json { from_json(&text)? } else { from_csv(&text, &stem)? };
     let lists: Vec<FileList> = lists.into_iter().filter(|l| !l.tracks.is_empty()).collect();
     if lists.is_empty() {
         return Err("Dosyada şarkı bulunamadı. Spotify dışa aktarımındaki Playlist/YourLibrary JSON dosyalarını ya da bir CSV seç.".into());
@@ -597,6 +594,7 @@ mod tests {
 #[cfg(test)]
 mod live {
     use super::*;
+    use crate::resolve::Resolver;
     use crate::sources::{soundcloud::SoundCloud, ytm::Ytm};
 
     /// Ağa çıkar: `cargo test live_spotify -- --ignored --nocapture`
@@ -605,7 +603,7 @@ mod live {
     fn live_spotify() {
         let url = std::env::var("VYNZ_TEST_URL").unwrap_or("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M".into());
         let t0 = std::time::Instant::now();
-        let f = run(&url, Arc::new(Ytm), Arc::new(SoundCloud), |_, _| {}).unwrap();
+        let f = run(&url, Arc::new(Ytm::new(Resolver::new(None))), Arc::new(SoundCloud), |_, _| {}).unwrap();
         let count = |s: Status| f.rows.iter().filter(|r| r.status == s).count();
         println!("{} | {} şarkı | {:.1} sn | eşleşti {} · emin değil {} · yok {}", f.name, f.rows.len(), t0.elapsed().as_secs_f64(),
             count(Status::Matched), count(Status::Uncertain), count(Status::Missing));

@@ -46,12 +46,7 @@ impl Default for Settings {
 }
 
 fn path() -> PathBuf {
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or(home.join(".config"))
-        .join("vynz")
-        .join("settings.json")
+    crate::paths::config_dir().join("settings.json")
 }
 
 impl Settings {
@@ -107,8 +102,12 @@ impl Settings {
 }
 
 fn firefox_profile_exists() -> bool {
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    [home.join(".mozilla/firefox"), home.join(".config/mozilla/firefox")]
+    let home = crate::paths::home_dir();
+    let mut dirs_to_check = vec![home.join(".mozilla/firefox"), home.join(".config/mozilla/firefox")];
+    if let Some(cfg) = dirs::config_dir() {
+        dirs_to_check.push(cfg.join("Mozilla/Firefox/Profiles"));
+    }
+    dirs_to_check
         .iter()
         .any(|d| std::fs::read_dir(d).map(|mut r| r.any(|e| e.is_ok_and(|e| e.path().join("cookies.sqlite").exists()))).unwrap_or(false))
 }

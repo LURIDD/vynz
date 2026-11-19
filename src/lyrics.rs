@@ -2,17 +2,17 @@
 // - Unison (topluluk sözleri, https://unison.betterlyrics.org): önce sorulur; hece zamanlı
 //   TTML gelirse karaoke dolumu tahmin yerine gerçek zamanlarla yapılır. Lisans gereği
 //   "Lyrics from Unison" ve gönderen kişi bağlantılı gösterilir (bkz. Credit).
-// - YouTube Music: ymus (önce YouTube Music'in kendi sözleri, yoksa LRCLIB)
+// - YouTube Music: çözücü yardımcısı (ytmusicapi; önce YouTube Music'in kendi sözleri, yoksa LRCLIB)
 // - Diğer kaynaklar: LRCLIB araması (süresi en yakın, zamanlı olan seçilir)
 
 use std::path::PathBuf;
-use std::process::Command;
 use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::model::{Source, TrackInfo};
+use crate::resolve::{Prio, Resolver};
 
 /// Uygulamanın kimliği (Unison ve LRCLIB istekleri için).
 pub const USER_AGENT: &str = concat!("Vynz/", env!("CARGO_PKG_VERSION"), " (https://github.com/LURIDD/vynz)");
@@ -55,42 +55,42 @@ pub struct Lyrics {
 }
 
 #[derive(Deserialize)]
-struct YmusLine {
+struct YtmLine {
     t: Option<f32>,
     end: Option<f32>,
     text: String,
 }
 
 #[derive(Deserialize)]
-struct YmusLyrics {
+struct YtmLyrics {
     #[serde(default)]
     source: String,
     #[serde(default)]
     synced: bool,
     #[serde(default)]
-    lines: Vec<YmusLine>,
+    lines: Vec<YtmLine>,
     #[serde(default)]
     text: Option<String>,
     #[serde(default)]
     error: Option<String>,
 }
 
-pub fn fetch(t: &TrackInfo) -> Result<Lyrics, String> {
+pub fn fetch(t: &TrackInfo, resolver: &Resolver) -> Result<Lyrics, String> {
     // Unison: zamanlıysa doğrudan; yalnız düz metinse diğer kaynaklarda zamanlısı aranır.
     let uni = match from_unison(t) {
         Ok(l) if l.synced => return Ok(l),
         Ok(l) => Some(l),
         Err(_) => None,
     };
-    match fetch_others(t) {
+    match fetch_others(t, resolver) {
         Ok(l) if l.synced => Ok(l),
         other => uni.map(Ok).unwrap_or(other),
     }
 }
 
-fn fetch_others(t: &TrackInfo) -> Result<Lyrics, String> {
+fn fetch_others(t: &TrackInfo, resolver: &Resolver) -> Result<Lyrics, String> {
     if t.source == Source::Ytm {
-        if let Ok(l) = from_ymus(&t.id) {
+        if let Ok(l) = from_youtube(&t.id, resolver) {
             if l.synced {
                 return Ok(l);
             }
@@ -113,9 +113,13 @@ fn weight(w: &str) -> f32 {
     vowels.max(1.0) + 0.35
 }
 
-fn from_ymus(id: &str) -> Result<Lyrics, String> {
-    let out = Command::new("ymus").args(["lyrics", id]).output().map_err(|e| e.to_string())?;
-    let y: YmusLyrics = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+fn from_youtube(id: &str, resolver: &Resolver) -> Result<Lyrics, String> {
+    let data = resolver.request_sync(serde_json::json!({"op": "lyrics", "id": id}), Prio::Soon)?;
+    parse_ytm_lyrics(data)
+}
+
+fn parse_ytm_lyrics(data: Value) -> Result<Lyrics, String> {
+    let y: YtmLyrics = serde_json::from_value(data).map_err(|e| e.to_string())?;
     if let Some(e) = y.error {
         return Err(e);
     }
@@ -134,7 +138,7 @@ fn from_ymus(id: &str) -> Result<Lyrics, String> {
         return Err("söz yok".into());
     }
     fill_ends(&mut lines);
-    Ok(Lyrics { synced: y.synced, source: if y.source.is_empty() { "ymus".into() } else { y.source }, lines, credit: None })
+    Ok(Lyrics { synced: y.synced, source: if y.source.is_empty() { "youtube".into() } else { y.source }, lines, credit: None })
 }
 
 fn from_lrclib(t: &TrackInfo) -> Result<Lyrics, String> {
@@ -174,8 +178,7 @@ fn from_lrclib(t: &TrackInfo) -> Result<Lyrics, String> {
 }
 
 fn unison_cache_dir() -> PathBuf {
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).unwrap_or(home.join(".cache")).join("vynz").join("unison")
+    crate::paths::cache_dir().join("unison")
 }
 
 /// Unison'dan sözü getir. YouTube kimliği varsa onunla, yoksa şarkı+sanatçı+süre ile.
@@ -587,5 +590,32 @@ mod tests {
         // satırdan önce 10 sn boşluk: arada
         assert!(gap(&ly, 5.0).is_some());
         assert!(gap(&ly, 12.0).is_none());
+    }
+
+    #[test]
+    fn parse_ytm_lyrics_synced_and_plain() {
+        let synced = serde_json::json!({
+            "source": "youtube",
+            "synced": true,
+            "lines": [
+                {"t": 1.2, "end": 4.0, "text": "İlk satır"},
+                {"t": 4.5, "end": 0.0, "text": "İkinci satır"}
+            ]
+        });
+        let ly = parse_ytm_lyrics(synced).unwrap();
+        assert!(ly.synced);
+        assert_eq!(ly.source, "youtube");
+        assert_eq!(ly.lines.len(), 2);
+        assert!((ly.lines[0].t - 1.2).abs() < 0.001);
+        assert!(ly.lines[1].end > ly.lines[1].t);
+
+        let plain = serde_json::json!({
+            "source": "youtube",
+            "synced": false,
+            "lines": [{"t": null, "end": null, "text": "Düz satır"}]
+        });
+        let ly2 = parse_ytm_lyrics(plain).unwrap();
+        assert!(!ly2.synced);
+        assert_eq!(ly2.lines.len(), 1);
     }
 }

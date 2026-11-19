@@ -16,12 +16,7 @@ pub struct Playlist {
 }
 
 fn path() -> PathBuf {
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or(home.join(".local/share"))
-        .join("vynz")
-        .join("library.json")
+    crate::paths::data_dir().join("library.json")
 }
 
 pub fn load() -> Vec<Playlist> {
