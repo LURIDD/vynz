@@ -37,11 +37,40 @@ pub struct Settings {
     pub keep_days: u32,
     /// Söz çevirisi: 0 kapalı, 1 Türkçe, 2 İngilizce
     pub lyrics_translate: i32,
+    /// Ses seviyesi dengeleme (mpv dynaudnorm)
+    pub normalize: bool,
+    /// İlk açılış Zevkler seçimi tamamlandı mı (veya geçildi mi)
+    pub tastes_done: bool,
+    /// Seçilen müzik türleri (ana sayfa önerileri için)
+    pub taste_genres: Vec<String>,
+    /// Önerilmesi istenmeyen türler (negatif filtre)
+    pub blocked_genres: Vec<String>,
+    /// Zevkler ekranında beğenilen örnek şarkılar (ana sayfa tohumları)
+    pub taste_tracks: Vec<crate::model::TrackInfo>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { volume: 0.8, cache_gb: 2.0, prefetch: true, readahead_secs: 60, cookies_browser: None, download_kbps: 512, autoradio: true, lyrics_style: 0, lyrics_size: 1, lyrics_align: 0, lyrics_motion: true, keep_days: 30, lyrics_translate: 0 }
+        Settings {
+            volume: 0.8,
+            cache_gb: 2.0,
+            prefetch: true,
+            readahead_secs: 60,
+            cookies_browser: None,
+            download_kbps: 512,
+            autoradio: true,
+            lyrics_style: 0,
+            lyrics_size: 1,
+            lyrics_align: 0,
+            lyrics_motion: true,
+            keep_days: 30,
+            lyrics_translate: 0,
+            normalize: false,
+            tastes_done: false,
+            taste_genres: Vec::new(),
+            blocked_genres: Vec::new(),
+            taste_tracks: Vec::new(),
+        }
     }
 }
 

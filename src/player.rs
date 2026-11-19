@@ -27,6 +27,8 @@ pub enum Cmd {
     Readahead(u32),
     /// Tek şarkıyı tekrarla.
     LoopFile(bool),
+    /// Ses seviyesi dengeleme (dynaudnorm).
+    Normalize(bool),
 }
 
 #[derive(Debug)]
@@ -159,6 +161,9 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
                 }
                 Ok(Cmd::Readahead(secs)) => {
                     let _ = mpv.set_property("cache-secs", readahead_value(secs));
+                }
+                Ok(Cmd::Normalize(on)) => {
+                    let _ = mpv.set_property("af", if on { "lavfi=[dynaudnorm=f=150:g=15]" } else { "" });
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => return,

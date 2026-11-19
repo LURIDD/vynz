@@ -28,7 +28,7 @@ mod stats;
 mod viz;
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -150,6 +150,12 @@ struct State {
     /// Açılışta geri yüklenen oturum: oynat'a basınca bu konumdan başlar
     resume_pos: Option<f64>,
     last_session_save: std::time::Instant,
+    /// Zevkler ekranı taslak durumu ve tür -> örnek şarkılar önbelleği
+    taste_cache: HashMap<String, Vec<TrackInfo>>,
+    taste_samples: Vec<TrackInfo>,
+    taste_draft_genres: Vec<String>,
+    taste_draft_blocked: Vec<String>,
+    taste_draft_tracks: Vec<TrackInfo>,
 }
 
 /// Arama "En iyi sonuç"u: çalınabilir şarkı ya da açılabilir kart.
@@ -181,10 +187,89 @@ fn dbg(msg: &str) {
 thread_local! {
     static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
     static ARTS: RefCell<HashMap<String, (Image, Color)>> = RefCell::new(HashMap::new());
+    static ART_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
+    static BANNER_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
     /// Söz ekranı zemini: önceden bulanıklaştırılmış küçük kapaklar.
     static BLURS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
+    static BLUR_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
     /// Yalnız çalan şarkı için büyük kapaklar (kahraman, söz çekmecesi).
     static BIGS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
+    static BIG_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
+}
+
+const MAX_ARTS_RAM: usize = 96;
+const MAX_BANNERS_RAM: usize = 4;
+const MAX_BLURS_RAM: usize = 24;
+const MAX_BIGS_RAM: usize = 12;
+
+fn cache_art_lru(key: String, img: Image, color: Color) {
+    let is_banner = key.starts_with("W|");
+    let evicted = ARTS.with(|m| {
+        let mut map = m.borrow_mut();
+        let existed = map.insert(key.clone(), (img, color)).is_some();
+        let order_cell = if is_banner { &BANNER_ORDER } else { &ART_ORDER };
+        let cap = if is_banner { MAX_BANNERS_RAM } else { MAX_ARTS_RAM };
+        order_cell.with(|o| {
+            let mut q = o.borrow_mut();
+            if existed {
+                q.retain(|k| k != &key);
+            }
+            q.push_back(key);
+            let mut out = Vec::new();
+            while q.len() > cap {
+                if let Some(old) = q.pop_front() {
+                    map.remove(&old);
+                    out.push(old);
+                }
+            }
+            out
+        })
+    });
+    if !evicted.is_empty() {
+        with_state(|st| {
+            for k in evicted {
+                st.requested.remove(&k);
+            }
+        });
+    }
+}
+
+fn cache_blur_lru(key: String, img: Image) {
+    BLURS.with(|m| {
+        let mut map = m.borrow_mut();
+        let existed = map.insert(key.clone(), img).is_some();
+        BLUR_ORDER.with(|o| {
+            let mut q = o.borrow_mut();
+            if existed {
+                q.retain(|k| k != &key);
+            }
+            q.push_back(key);
+            while q.len() > MAX_BLURS_RAM {
+                if let Some(old) = q.pop_front() {
+                    map.remove(&old);
+                }
+            }
+        });
+    });
+}
+
+fn cache_big_lru(key: String, img: Image) {
+    BIGS.with(|m| {
+        let mut map = m.borrow_mut();
+        let existed = map.insert(key.clone(), img).is_some();
+        BIG_ORDER.with(|o| {
+            let mut q = o.borrow_mut();
+            if existed {
+                q.retain(|k| k != &key);
+            }
+            q.push_back(key);
+            while q.len() > MAX_BIGS_RAM {
+                if let Some(old) = q.pop_front() {
+                    map.remove(&old);
+                }
+            }
+        });
+    });
 }
 
 fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> R {
@@ -374,13 +459,7 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     }
     if let Some(k) = key.strip_prefix("B|") {
         let img = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.rgba, a.width, a.height));
-        BIGS.with(|m| {
-            let mut m = m.borrow_mut();
-            if m.len() > 8 {
-                m.clear(); // yalnız son birkaç çalan şarkı tutulur
-            }
-            m.insert(k.to_string(), img.clone());
-        });
+        cache_big_lru(k.to_string(), img.clone());
         let mut now = ui.get_now();
         if ui.get_has_now() && now.key == k {
             now.art = img;
@@ -392,7 +471,7 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     let buf = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.rgba, a.width, a.height);
     let img = Image::from_rgba8(buf);
     let color = Color::from_rgb_u8(a.accent.0, a.accent.1, a.accent.2);
-    ARTS.with(|m| m.borrow_mut().insert(key.clone(), (img.clone(), color)));
+    cache_art_lru(key.clone(), img.clone(), color);
 
     let shelves = ui.get_shelves();
     for i in 0..shelves.row_count() {
@@ -425,6 +504,8 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     update_rows(&ui.get_results(), &key, &img);
     update_rows(&ui.get_queue(), &key, &img);
     update_rows(&ui.get_playlist_tracks(), &key, &img);
+    update_rows(&ui.get_liked_tracks(), &key, &img);
+    update_rows(&ui.get_taste_samples(), &key, &img);
     let rows = ui.get_import_rows();
     for i in 0..rows.row_count() {
         if let Some(mut r) = rows.row_data(i) {
@@ -437,7 +518,7 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     }
 
     let blur = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.blur, art::BLUR, art::BLUR));
-    BLURS.with(|m| m.borrow_mut().insert(key.clone(), blur.clone()));
+    cache_blur_lru(key.clone(), blur.clone());
 
     let mut now = ui.get_now();
     if ui.get_has_now() && now.key == key {
@@ -1434,6 +1515,18 @@ fn cycle_repeat(ui: &AppWindow) {
     with_state(|st| st.mpris.send(mpris::Msg::Loop(mode)));
 }
 
+fn refresh_liked(ui: &AppWindow) {
+    let likes = with_state(|st| {
+        let list = st.history.likes.clone();
+        for t in list.iter().take(40) {
+            request_art(st, t);
+        }
+        list
+    });
+    ui.set_liked_count(likes.len() as i32);
+    ui.set_liked_tracks(model_of(&likes));
+}
+
 fn toggle_like_current(ui: &AppWindow) {
     let liked = with_state(|st| {
         let t = st.index.and_then(|i| st.queue.get(i).cloned())?;
@@ -1441,13 +1534,14 @@ fn toggle_like_current(ui: &AppWindow) {
     });
     if let Some(l) = liked {
         ui.set_liked(l);
+        refresh_liked(ui);
         toast(ui, if l { "Beğendiklerine eklendi" } else { "Beğendiklerinden çıkarıldı" });
     }
 }
 
 // ---------- Sağ tık menüsü ----------
 
-/// Menünün hedef şarkısı: kind 0 raf (a, b), 1 arama sonucu, 2 kayıtlı liste, 3 kuyruk, 4 açık koleksiyon.
+/// Menünün hedef şarkısı: kind 0 raf (a, b), 1 arama sonucu, 2 kayıtlı liste, 3 kuyruk, 4 açık koleksiyon, 5 sanatçı, 6 beğendiklerim.
 fn menu_target(st: &State, kind: i32, a: i32, b: i32) -> Option<TrackInfo> {
     let (a, b) = (a as usize, b as usize);
     match kind {
@@ -1457,6 +1551,7 @@ fn menu_target(st: &State, kind: i32, a: i32, b: i32) -> Option<TrackInfo> {
         3 => st.queue.get(a).cloned(),
         4 => st.coll.as_ref().and_then(|c| c.1.get(a)).cloned(),
         5 => st.artist.as_ref().and_then(|c| c.1.get(a)).cloned(),
+        6 => st.history.likes.get(a).cloned(),
         _ => None,
     }
 }
@@ -1479,9 +1574,38 @@ fn menu_action(ui: &AppWindow, action: i32) {
             if ui.get_now().key == t.key().as_str() {
                 ui.set_liked(l);
             }
+            refresh_liked(ui);
             toast(ui, if l { "Beğendiklerine eklendi" } else { "Beğendiklerinden çıkarıldı" });
         }
+        5 => {
+            let artist = t.artist.split(',').next().unwrap_or("").trim().to_string();
+            if !artist.is_empty() {
+                ui.invoke_go("search".into());
+                search(ui, artist);
+            }
+        }
         _ => {}
+    }
+}
+
+fn add_menu_track_to_playlist(ui: &AppWindow, pl_idx: usize) {
+    let res = with_state(|st| {
+        let t = st.menu.take()?;
+        let pl = st.playlists.get_mut(pl_idx)?;
+        let name = pl.name.clone();
+        if pl.tracks.iter().any(|x| x.key() == t.key()) {
+            return Some((name, false));
+        }
+        pl.tracks.push(t);
+        let _ = library::save(&st.playlists);
+        Some((name, true))
+    });
+    if let Some((name, added)) = res {
+        refresh_playlists(ui);
+        if with_state(|st| st.current_pl) == Some(pl_idx) {
+            open_playlist(ui, pl_idx);
+        }
+        toast(ui, &if added { format!("'{name}' listesine eklendi") } else { format!("Zaten '{name}' listesinde") });
     }
 }
 
@@ -1623,8 +1747,16 @@ fn load_home(ui: &AppWindow) {
         show_home(ui, cached);
         ui.set_home_loading(false);
     }
-    let (providers, resolver, hist_seeds, history_snapshot) = with_state(|st| {
-        (st.providers.clone(), st.resolver.clone(), recommend::seeds(&st.history), st.history.snapshot())
+    let (providers, resolver, history_snapshot, taste_tracks, taste_genres, blocked_genres, taste_cache) = with_state(|st| {
+        (
+            st.providers.clone(),
+            st.resolver.clone(),
+            st.history.snapshot(),
+            st.settings.taste_tracks.clone(),
+            st.settings.taste_genres.clone(),
+            st.settings.blocked_genres.clone(),
+            st.taste_cache.clone(),
+        )
     });
     let weak = ui.as_weak();
     thread::spawn(move || {
@@ -1641,7 +1773,37 @@ fn load_home(ui: &AppWindow) {
                 Err(e) => errors.push(format!("{}: {e}", source_name(p.source()))),
             }
         }
-        // Geçmiş yoksa tohumlar YouTube Music'in sana özel önerilerinden.
+        // Kullanıcı tür seçti ama tek tek şarkı işaretlemediyse, seçili türlerden 1'er tohum şarkı al.
+        let mut effective_taste_tracks = taste_tracks;
+        if effective_taste_tracks.is_empty() && !taste_genres.is_empty() {
+            if let Some(ytm) = providers.iter().find(|p| p.source() == Source::Ytm) {
+                for gid in taste_genres.iter().take(4) {
+                    if let Some(list) = taste_cache.get(gid) {
+                        if let Some(t) = list.first() {
+                            effective_taste_tracks.push(t.clone());
+                            continue;
+                        }
+                    }
+                    if let Some(q) = recommend::genre_query(gid) {
+                        if let Ok(found) = ytm.search(q, 3) {
+                            if let Some(t) = found.into_iter().next() {
+                                effective_taste_tracks.push(t);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut blocked_artists = HashSet::new();
+        for gid in &blocked_genres {
+            if let Some(list) = taste_cache.get(gid) {
+                for t in list {
+                    blocked_artists.insert(history::artist_id(t));
+                }
+            }
+        }
+        let hist_seeds = recommend::seeds_with_tastes(&history_snapshot, &effective_taste_tracks);
+        // Geçmiş ve Zevkler boşsa tohumlar YouTube Music'in genel önerilerinden.
         let seeds = if hist_seeds.is_empty() {
             external.iter().find(|s| s.style == 0).map(|s| s.items.iter().filter(|t| t.source == Source::Ytm).take(3).map(|t| (t.clone(), 0.6)).collect()).unwrap_or_default()
         } else {
@@ -1676,7 +1838,7 @@ fn load_home(ui: &AppWindow) {
             }
             Err(_) => Vec::new(),
         };
-        let personal = recommend::build(&history_snapshot, &seeds, &radios);
+        let personal = recommend::build_with_blocked(&history_snapshot, &seeds, &radios, &blocked_artists);
         let data = HomeData { personal, external, explore };
         if !data.personal.is_empty() || !data.external.is_empty() {
             let _ = std::fs::write(home_cache(), serde_json::to_vec(&data).unwrap_or_default());
@@ -2292,9 +2454,231 @@ fn refresh_playlists(ui: &AppWindow) {
         show_home(ui, d);
     }
     let infos: Vec<PlaylistInfo> = with_state(|st| {
-        st.playlists.iter().map(|p| PlaylistInfo { name: p.name.as_str().into(), count: p.tracks.len() as i32 }).collect()
+        let mut out = Vec::with_capacity(st.playlists.len());
+        let first_tracks: Vec<Option<TrackInfo>> = st.playlists.iter().map(|p| p.tracks.first().cloned()).collect();
+        for ft in first_tracks.iter().flatten() {
+            request_art(st, ft);
+        }
+        for p in &st.playlists {
+            let (art, has_art) = p
+                .tracks
+                .first()
+                .and_then(|t| ARTS.with(|a| a.borrow().get(&t.key()).map(|(i, _)| (i.clone(), true))))
+                .unwrap_or_default();
+            out.push(PlaylistInfo {
+                name: p.name.as_str().into(),
+                count: p.tracks.len() as i32,
+                art,
+                has_art,
+            });
+        }
+        out
     });
     ui.set_playlists(ModelRc::new(VecModel::from(infos)));
+}
+
+fn create_new_playlist(ui: &AppWindow, name: String) {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return;
+    }
+    with_state(|st| {
+        st.playlists.insert(0, library::Playlist { name: name.clone(), origin: String::new(), tracks: Vec::new() });
+        let _ = library::save(&st.playlists);
+    });
+    refresh_playlists(ui);
+    open_playlist(ui, 0);
+    ui.invoke_go("playlist".into());
+    toast(ui, &format!("'{name}' oluşturuldu"));
+}
+
+// ---------- Zevkler (ilk açılış & Ayarlar) ----------
+
+fn refresh_taste_summary(ui: &AppWindow) {
+    let summary = with_state(|st| {
+        let names: Vec<&str> = recommend::GENRES
+            .iter()
+            .filter(|(id, _, _)| st.settings.taste_genres.iter().any(|g| g == id))
+            .map(|(_, label, _)| *label)
+            .collect();
+        let mut parts = Vec::new();
+        if !names.is_empty() {
+            parts.push(names.join(", "));
+        }
+        if !st.settings.taste_tracks.is_empty() {
+            parts.push(format!("{} örnek şarkı", st.settings.taste_tracks.len()));
+        }
+        if !st.settings.blocked_genres.is_empty() {
+            parts.push(format!("{} engelli tür", st.settings.blocked_genres.len()));
+        }
+        if parts.is_empty() { "Henüz seçilmedi".into() } else { parts.join(" · ") }
+    });
+    ui.set_taste_summary(summary.into());
+}
+
+fn sync_taste_genres_ui(ui: &AppWindow) {
+    let rows: Vec<TasteGenre> = with_state(|st| {
+        recommend::GENRES
+            .iter()
+            .map(|(id, label, _)| TasteGenre {
+                id: (*id).into(),
+                label: (*label).into(),
+                selected: st.taste_draft_genres.iter().any(|g| g == id),
+                blocked: st.taste_draft_blocked.iter().any(|g| g == id),
+            })
+            .collect()
+    });
+    ui.set_taste_genres(ModelRc::new(VecModel::from(rows)));
+}
+
+fn sync_taste_samples_ui(ui: &AppWindow) {
+    let (samples, picked) = with_state(|st| {
+        let samples = st.taste_samples.clone();
+        for t in &samples {
+            request_art(st, t);
+        }
+        let picked: Vec<bool> = samples
+            .iter()
+            .map(|t| st.taste_draft_tracks.iter().any(|x| x.key() == t.key()))
+            .collect();
+        (samples, picked)
+    });
+    ui.set_taste_samples(model_of(&samples));
+    ui.set_taste_picked(ModelRc::new(VecModel::from(picked)));
+}
+
+fn load_genre_samples(ui: &AppWindow, gid: String, show_in_ui: bool) {
+    let label = recommend::GENRES.iter().find(|(id, _, _)| *id == gid).map(|(_, l, _)| *l).unwrap_or("");
+    let cached = with_state(|st| st.taste_cache.get(&gid).cloned());
+    if let Some(list) = cached {
+        if show_in_ui {
+            with_state(|st| st.taste_samples = list);
+            ui.set_taste_active_genre(label.into());
+            ui.set_taste_samples_loading(false);
+            sync_taste_samples_ui(ui);
+        }
+        return;
+    }
+    let Some(q) = recommend::genre_query(&gid) else { return };
+    let ytm = with_state(|st| provider(st, Source::Ytm));
+    let Some(ytm) = ytm else { return };
+    if show_in_ui {
+        ui.set_taste_active_genre(label.into());
+        ui.set_taste_samples_loading(true);
+    }
+    let weak = ui.as_weak();
+    let label_s = label.to_string();
+    thread::spawn(move || {
+        let list = ytm.search(q, 8).unwrap_or_default();
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            with_state(|st| {
+                st.taste_cache.insert(gid.clone(), list.clone());
+                if show_in_ui && ui.get_taste_active_genre() == label_s.as_str() {
+                    st.taste_samples = list;
+                }
+            });
+            if show_in_ui && ui.get_taste_active_genre() == label_s.as_str() {
+                ui.set_taste_samples_loading(false);
+                sync_taste_samples_ui(&ui);
+            }
+        });
+    });
+}
+
+fn open_tastes(ui: &AppWindow) {
+    let first_selected = with_state(|st| {
+        st.taste_draft_genres = st.settings.taste_genres.clone();
+        st.taste_draft_blocked = st.settings.blocked_genres.clone();
+        st.taste_draft_tracks = st.settings.taste_tracks.clone();
+        st.taste_samples.clear();
+        st.taste_draft_genres.first().cloned()
+    });
+    sync_taste_genres_ui(ui);
+    ui.set_taste_active_genre("".into());
+    ui.set_taste_samples(ModelRc::new(VecModel::from(Vec::<Track>::new())));
+    ui.set_taste_picked(ModelRc::new(VecModel::from(Vec::<bool>::new())));
+    ui.set_taste_samples_loading(false);
+    ui.set_tastes_open(true);
+    if let Some(gid) = first_selected {
+        load_genre_samples(ui, gid, true);
+    }
+}
+
+fn taste_toggle_genre(ui: &AppWindow, gid: String) {
+    let selected_now = with_state(|st| {
+        if let Some(pos) = st.taste_draft_genres.iter().position(|g| g == &gid) {
+            st.taste_draft_genres.remove(pos);
+            false
+        } else {
+            st.taste_draft_blocked.retain(|g| g != &gid);
+            st.taste_draft_genres.push(gid.clone());
+            true
+        }
+    });
+    sync_taste_genres_ui(ui);
+    if selected_now {
+        load_genre_samples(ui, gid, true);
+    }
+}
+
+fn taste_block_genre(ui: &AppWindow, gid: String) {
+    let blocked_now = with_state(|st| {
+        if let Some(pos) = st.taste_draft_blocked.iter().position(|g| g == &gid) {
+            st.taste_draft_blocked.remove(pos);
+            false
+        } else {
+            st.taste_draft_genres.retain(|g| g != &gid);
+            st.taste_draft_blocked.push(gid.clone());
+            true
+        }
+    });
+    sync_taste_genres_ui(ui);
+    if blocked_now {
+        // Engellenen türün örnek sanatçılarını arka planda önbellekle (ana sayfa filtresi için)
+        load_genre_samples(ui, gid, false);
+    }
+}
+
+fn taste_toggle_sample(ui: &AppWindow, idx: usize) {
+    with_state(|st| {
+        let Some(t) = st.taste_samples.get(idx).cloned() else { return };
+        if let Some(pos) = st.taste_draft_tracks.iter().position(|x| x.key() == t.key()) {
+            st.taste_draft_tracks.remove(pos);
+        } else {
+            st.taste_draft_tracks.push(t);
+        }
+    });
+    sync_taste_samples_ui(ui);
+}
+
+fn taste_preview_sample(ui: &AppWindow, idx: usize) {
+    if let Some(t) = with_state(|st| st.taste_samples.get(idx).cloned()) {
+        play_list(ui, vec![t], 0);
+    }
+}
+
+fn taste_save(ui: &AppWindow) {
+    with_state(|st| {
+        st.settings.taste_genres = st.taste_draft_genres.clone();
+        st.settings.blocked_genres = st.taste_draft_blocked.clone();
+        st.settings.taste_tracks = st.taste_draft_tracks.clone();
+        st.settings.tastes_done = true;
+        let _ = st.settings.save();
+    });
+    ui.set_tastes_open(false);
+    refresh_taste_summary(ui);
+    toast(ui, "Zevkler kaydedildi; ana sayfa yenileniyor…");
+    load_home(ui);
+}
+
+fn taste_skip(ui: &AppWindow) {
+    with_state(|st| {
+        if !st.settings.tastes_done {
+            st.settings.tastes_done = true;
+            let _ = st.settings.save();
+        }
+    });
+    ui.set_tastes_open(false);
 }
 
 fn open_playlist(ui: &AppWindow, i: usize) {
@@ -2412,6 +2796,7 @@ fn refresh_usage(ui: &AppWindow) {
 fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_cache_index(s.cache_index());
     ui.set_prefetch_on(s.prefetch);
+    ui.set_normalize_on(s.normalize);
     ui.set_readahead_index(s.readahead_index());
     ui.set_cookies_index(s.cookies_index());
     ui.set_download_index(s.download_index());
@@ -2425,9 +2810,18 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
 }
 
 fn apply_settings(ui: &AppWindow) {
+    let (tastes_done, taste_genres, blocked_genres, taste_tracks) = with_state(|st| {
+        (
+            st.settings.tastes_done,
+            st.settings.taste_genres.clone(),
+            st.settings.blocked_genres.clone(),
+            st.settings.taste_tracks.clone(),
+        )
+    });
     let s = Settings {
         cache_gb: settings::CACHE_GB[ui.get_cache_index().clamp(0, 4) as usize],
         prefetch: ui.get_prefetch_on(),
+        normalize: ui.get_normalize_on(),
         readahead_secs: settings::READAHEAD_SECS[ui.get_readahead_index().clamp(0, 3) as usize],
         cookies_browser: settings::COOKIE_BROWSERS[ui.get_cookies_index().clamp(0, 1) as usize].map(str::to_string),
         download_kbps: settings::DOWNLOAD_KBPS[ui.get_download_index().clamp(0, 3) as usize],
@@ -2439,9 +2833,14 @@ fn apply_settings(ui: &AppWindow) {
         lyrics_translate: ui.get_lyrics_translate(),
         keep_days: settings::KEEP_DAYS[ui.get_keep_index().clamp(0, 3) as usize],
         volume: ui.get_volume(),
+        tastes_done,
+        taste_genres,
+        blocked_genres,
+        taste_tracks,
     };
     with_state(|st| {
         st.player.send(Cmd::Readahead(s.readahead_secs));
+        st.player.send(Cmd::Normalize(s.normalize));
         st.resolver.set_cookies(s.cookies_browser.clone());
         if !s.prefetch && st.appended.is_some() {
             st.player.send(Cmd::ClearNext);
@@ -2697,9 +3096,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pending_start: 0.0,
             resume_pos: None,
             last_session_save: std::time::Instant::now(),
+            taste_cache: HashMap::new(),
+            taste_samples: Vec::new(),
+            taste_draft_genres: Vec::new(),
+            taste_draft_blocked: Vec::new(),
+            taste_draft_tracks: Vec::new(),
         })
     });
+    with_state(|st| st.player.send(Cmd::Normalize(st.settings.normalize)));
     refresh_playlists(&ui);
+    refresh_liked(&ui);
+    refresh_taste_summary(&ui);
+    ui.set_runtime_status(runtime::status_text().into());
+    if !runtime::is_ready() {
+        ui.set_setup_banner("Çözücü ortamı arka planda hazırlanıyor…".into());
+        let weak = weak.clone();
+        thread::spawn(move || {
+            let _ = runtime::ensure_ready();
+            let status = runtime::status_text();
+            let _ = weak.upgrade_in_event_loop(move |ui| {
+                ui.set_setup_banner("".into());
+                ui.set_runtime_status(status.into());
+            });
+        });
+    }
 
     ui.on_play_shelf({
         let weak = weak.clone();
@@ -3236,6 +3656,125 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    ui.on_create_playlist({
+        let weak = weak.clone();
+        move |name| {
+            if let Some(ui) = weak.upgrade() {
+                create_new_playlist(&ui, name.to_string());
+            }
+        }
+    });
+    ui.on_add_to_playlist({
+        let weak = weak.clone();
+        move |pl_idx| {
+            if let Some(ui) = weak.upgrade() {
+                add_menu_track_to_playlist(&ui, pl_idx as usize);
+            }
+        }
+    });
+    ui.on_play_liked({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let list = with_state(|st| st.history.likes.clone());
+            if !list.is_empty() {
+                play_list(&ui, list, i as usize);
+            }
+        }
+    });
+    ui.on_shuffle_liked({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut list = with_state(|st| st.history.likes.clone());
+            if list.is_empty() {
+                return;
+            }
+            let n = list.len();
+            let mut seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1);
+            for i in (1..n).rev() {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let j = (seed as usize) % (i + 1);
+                list.swap(i, j);
+            }
+            play_list(&ui, list, 0);
+        }
+    });
+    ui.on_update_runtime({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_runtime_updating(true);
+            let w = weak.clone();
+            runtime::update_now(move |res| {
+                let status = runtime::status_text();
+                let _ = w.upgrade_in_event_loop(move |ui| {
+                    ui.set_runtime_updating(false);
+                    ui.set_runtime_status(status.into());
+                    match res {
+                        Ok(msg) => toast(&ui, &msg),
+                        Err(e) => toast(&ui, &format!("Güncelleme hatası: {e}")),
+                    }
+                });
+            });
+        }
+    });
+    ui.on_open_tastes({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                open_tastes(&ui);
+            }
+        }
+    });
+    ui.on_taste_toggle_genre({
+        let weak = weak.clone();
+        move |gid| {
+            if let Some(ui) = weak.upgrade() {
+                taste_toggle_genre(&ui, gid.to_string());
+            }
+        }
+    });
+    ui.on_taste_block_genre({
+        let weak = weak.clone();
+        move |gid| {
+            if let Some(ui) = weak.upgrade() {
+                taste_block_genre(&ui, gid.to_string());
+            }
+        }
+    });
+    ui.on_taste_toggle_sample({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                taste_toggle_sample(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_taste_preview_sample({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                taste_preview_sample(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_taste_save({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                taste_save(&ui);
+            }
+        }
+    });
+    ui.on_taste_skip({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                taste_skip(&ui);
+            }
+        }
+    });
 
     // Test: VYNZ_SCROLL=piksel ile açılıştan birkaç saniye sonra sayfayı kaydır.
     let scroll_timer = Timer::default();
@@ -3266,6 +3805,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     refresh_usage(&ui);
     load_home(&ui);
+    if with_state(|st| !st.settings.tastes_done && st.history.is_empty()) {
+        open_tastes(&ui);
+    }
     ui.run()?;
     save_session(&ui);
     // Ses düzeyi bir dahaki açılışta aynı gelsin.

@@ -198,9 +198,18 @@ export struct ArtistStat {
     frac: float,
 }
 
+export struct TasteGenre {
+    id: string,
+    label: string,
+    selected: bool,
+    blocked: bool,
+}
+
 export struct PlaylistInfo {
     name: string,
     count: int,
+    art: image,
+    has-art: bool,
 }
 
 // Kaynak rozetleri: 0 YouTube Music, 1 SoundCloud, 2 Spotify
@@ -266,6 +275,7 @@ export component EqBars inherits Rectangle {
 export component NavButton inherits Rectangle {
     in property <string> icon;
     in property <string> label;
+    in property <string> badge: "";
     in property <bool> active;
     in property <bool> dot;
     in property <bool> compact;
@@ -291,9 +301,18 @@ export component NavButton inherits Rectangle {
         if !compact: Text {
             text: root.label;
             vertical-alignment: center;
+            horizontal-stretch: 1;
             font-size: 13.5px;
             font-weight: root.active ? 700 : 600;
             color: root.active || ta.has-hover ? Theme.text-primary : Theme.text-secondary;
+            overflow: elide;
+        }
+        if !compact && root.badge != "": Text {
+            text: root.badge;
+            vertical-alignment: center;
+            font-family: Theme.mono;
+            font-size: 11px;
+            color: Theme.text-muted;
         }
     }
     if dot && !compact: Rectangle {
