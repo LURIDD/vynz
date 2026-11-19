@@ -162,8 +162,9 @@ impl Fetcher {
     }
 }
 
-/// /proc/net/dev üzerinden toplam gelen trafiği ölçer; bizimkini çıkarır.
+/// Ağ arayüzleri üzerinden toplam gelen trafiği ölçer; bizimkini çıkarır.
 struct RxMeter {
+    networks: sysinfo::Networks,
     last_total: u64,
     last_ours: u64,
     last_at: Instant,
@@ -172,7 +173,9 @@ struct RxMeter {
 
 impl RxMeter {
     fn new() -> RxMeter {
-        RxMeter { last_total: rx_total(), last_ours: 0, last_at: Instant::now(), ours: 0 }
+        let networks = sysinfo::Networks::new_with_refreshed_list();
+        let last_total = rx_total(&networks);
+        RxMeter { networks, last_total, last_ours: 0, last_at: Instant::now(), ours: 0 }
     }
 
     fn others_busy(&mut self) -> bool {
@@ -180,7 +183,8 @@ impl RxMeter {
         if dt < 1.0 {
             return false;
         }
-        let total = rx_total();
+        self.networks.refresh(false);
+        let total = rx_total(&self.networks);
         let others = total.saturating_sub(self.last_total).saturating_sub(self.ours - self.last_ours);
         self.last_total = total;
         self.last_ours = self.ours;
@@ -189,19 +193,13 @@ impl RxMeter {
     }
 }
 
-fn rx_total() -> u64 {
-    std::fs::read_to_string("/proc/net/dev")
-        .map(|s| {
-            s.lines()
-                .skip(2)
-                .filter_map(|l| {
-                    let (name, rest) = l.split_once(':')?;
-                    if name.trim() == "lo" {
-                        return None;
-                    }
-                    rest.split_whitespace().next()?.parse::<u64>().ok()
-                })
-                .sum()
+fn rx_total(networks: &sysinfo::Networks) -> u64 {
+    networks
+        .iter()
+        .filter(|(name, _)| {
+            let n = name.to_ascii_lowercase();
+            n != "lo" && !n.starts_with("loopback")
         })
-        .unwrap_or(0)
+        .map(|(_, data)| data.total_received())
+        .sum()
 }
