@@ -15,6 +15,7 @@ mod lyrics;
 mod measure;
 mod model;
 mod mpris;
+mod paths;
 mod player;
 mod recommend;
 mod resolve;
@@ -528,14 +529,20 @@ fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
 
 fn request_lyrics(ui: &AppWindow, t: &TrackInfo) {
     let key = t.key();
-    let need = with_state(|st| !st.lyrics.contains_key(&key) && st.lyr_pending.insert(key.clone()));
-    if !need {
+    let resolver = with_state(|st| {
+        if !st.lyrics.contains_key(&key) && st.lyr_pending.insert(key.clone()) {
+            Some(st.resolver.clone())
+        } else {
+            None
+        }
+    });
+    let Some(resolver) = resolver else {
         return;
-    }
+    };
     let t = t.clone();
     let weak = ui.as_weak();
     thread::spawn(move || {
-        let res = lyrics::fetch(&t).ok();
+        let res = lyrics::fetch(&t, &resolver).ok();
         let _ = weak.upgrade_in_event_loop(move |ui| {
             dbg(&format!("sözler {key}: {}", if res.is_some() { "bulundu" } else { "yok" }));
             with_state(|st| {
@@ -550,8 +557,7 @@ fn request_lyrics(ui: &AppWindow, t: &TrackInfo) {
 }
 
 fn offsets_path() -> std::path::PathBuf {
-    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_DATA_HOME").map(Into::into).unwrap_or(home.join(".local/share")).join("vynz").join("lyric-offsets.json")
+    paths::data_dir().join("lyric-offsets.json")
 }
 
 fn load_offsets() -> HashMap<String, f32> {
@@ -2472,8 +2478,7 @@ fn seek_to(ui: &AppWindow, secs: f64) {
 }
 
 fn session_path() -> std::path::PathBuf {
-    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_DATA_HOME").map(Into::into).unwrap_or(home.join(".local/share")).join("vynz").join("session.json")
+    paths::data_dir().join("session.json")
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -2615,7 +2620,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = start_art_pool(weak.clone());
     STATE.with(|s| {
         *s.borrow_mut() = Some(State {
-            providers: vec![Arc::new(Ytm), Arc::new(SoundCloud)],
+            providers: vec![Arc::new(Ytm::new(resolver.clone())), Arc::new(SoundCloud)],
             player,
             resolver: resolver.clone(),
             settings,
@@ -2848,7 +2853,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(if which == 0 { c.song_url } else { c.user_url })
             });
             if let Some(u) = url.filter(|u| !u.is_empty()) {
-                let _ = std::process::Command::new("xdg-open").arg(u).spawn();
+                let _ = open::that_detached(u);
             }
         }
     });
@@ -3102,7 +3107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .bytes()
                 .map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else if b == b' ' { "+".into() } else { format!("%{b:02X}") })
                 .collect();
-            let _ = std::process::Command::new("xdg-open").arg(format!("https://www.google.com/search?q={enc}")).spawn();
+            let _ = open::that_detached(format!("https://www.google.com/search?q={enc}"));
         }
     });
     ui.on_lyric_tick({

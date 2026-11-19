@@ -258,9 +258,9 @@ def artist_page(y, key):
     }
 
 
-def search(q):
+def search(q, limit=20):
     y = ytmusic()
-    res = y.search(q, limit=20)
+    res = y.search(q, limit=limit)
     out = {"top": None, "songs": [], "albums": [], "artists": [], "playlists": []}
     for r in res:
         rt = r.get("resultType")
@@ -302,11 +302,82 @@ def search(q):
     return out
 
 
+def home():
+    y = ytmusic()
+    secs = []
+    for sec in y.get_home(limit=8):
+        sec_items = []
+        for it in sec.get("contents") or []:
+            if not it:
+                continue
+            th = thumb_of(it)
+            if it.get("videoId"):
+                t = track_of(it)
+                if t:
+                    t["kind"] = "track"
+                    sec_items.append(t)
+            elif it.get("playlistId"):
+                sec_items.append({
+                    "kind": "playlist",
+                    "key": it["playlistId"],
+                    "title": it.get("title") or "",
+                    "sub": it.get("description") or "",
+                    "thumb": th,
+                })
+            elif (it.get("browseId") or "").startswith("MPRE"):
+                who = names(it)
+                sec_items.append({
+                    "kind": "album",
+                    "key": it["browseId"],
+                    "title": it.get("title") or "",
+                    "sub": " · ".join(x for x in (who, str(it.get("year") or "")) if x),
+                    "thumb": th,
+                })
+        if sec_items:
+            secs.append({"title": sec.get("title") or "", "items": sec_items})
+    return secs
+
+
+def lyrics(video_id):
+    y = ytmusic()
+    wp = y.get_watch_playlist(videoId=video_id, limit=1)
+    bid = (wp or {}).get("lyrics")
+    if not bid:
+        return {"source": "youtube", "synced": False, "lines": []}
+    data = y.get_lyrics(bid, timestamps=True)
+    if not data or not data.get("lyrics"):
+        return {"source": "youtube", "synced": False, "lines": []}
+    raw = data["lyrics"]
+    if isinstance(raw, list):
+        lines = []
+        for ln in raw:
+            if isinstance(ln, dict):
+                st = ln.get("start_time") or 0
+                en = ln.get("end_time") or 0
+                tx = ln.get("text") or ""
+            else:
+                st = getattr(ln, "start_time", None) or 0
+                en = getattr(ln, "end_time", None) or 0
+                tx = getattr(ln, "text", None) or ""
+            lines.append({"t": st / 1000.0, "end": en / 1000.0, "text": tx})
+        return {"source": "youtube", "synced": True, "lines": lines}
+    lines = [{"t": None, "end": None, "text": t} for t in str(raw).split("\n")]
+    return {"source": "youtube", "synced": False, "lines": lines}
+
+
 def handle(req):
     op = req.get("op")
     if op == "search":
         try:
-            send({"rid": req["rid"], "ok": True, "data": search(req.get("q") or "")})
+            limit = int(req.get("limit") or 20)
+            send({"rid": req["rid"], "ok": True, "data": search(req.get("q") or "", limit=limit)})
+        except Exception as e:  # noqa: BLE001
+            send({"rid": req["rid"], "ok": False, "error": str(e).splitlines()[0][:300] if str(e) else "hata"})
+        return
+    if op in ("home", "lyrics"):
+        try:
+            data = home() if op == "home" else lyrics(req.get("id") or "")
+            send({"rid": req["rid"], "ok": True, "data": data})
         except Exception as e:  # noqa: BLE001
             send({"rid": req["rid"], "ok": False, "error": str(e).splitlines()[0][:300] if str(e) else "hata"})
         return

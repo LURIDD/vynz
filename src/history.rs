@@ -56,8 +56,7 @@ pub fn now() -> u64 {
 }
 
 fn dir() -> PathBuf {
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or(home.join(".local/share")).join("vynz")
+    crate::paths::data_dir()
 }
 
 /// Asıl sanatçı, karşılaştırma için sadeleştirilmiş.

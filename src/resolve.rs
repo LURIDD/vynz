@@ -90,8 +90,7 @@ fn now() -> u64 {
 }
 
 fn data_dir() -> PathBuf {
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).unwrap_or(home.join(".cache")).join("vynz")
+    crate::paths::cache_dir()
 }
 
 fn cache_file() -> PathBuf {
@@ -293,6 +292,15 @@ impl Resolver {
                 d(Err("çözücüye yazılamadı".into()));
             }
         }
+    }
+
+    /// Genel isteği senkron olarak çalıştırır (arka plan iş parçacıklarından çağrılır).
+    pub fn request_sync(&self, payload: serde_json::Value, prio: Prio) -> Result<serde_json::Value, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.request(payload, prio, Box::new(move |r| {
+            let _ = tx.send(r);
+        }));
+        rx.recv_timeout(Duration::from_secs(30)).map_err(|_| "çözücü zaman aşımı".to_string())?
     }
 
     /// Program kapanırken yardımcıyı kapat ve önbelleği yaz.

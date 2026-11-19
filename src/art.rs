@@ -15,10 +15,7 @@ pub struct Art {
 pub const BLUR: u32 = 48;
 
 fn cache_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
-    base.join("vynz").join("covers")
+    crate::paths::cache_dir().join("covers")
 }
 
 /// Liste ve raflardaki kapak boyutu; çalan şarkı için BIG.
