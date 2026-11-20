@@ -3117,6 +3117,59 @@ fn on_mpris(ui: &AppWindow, a: mpris::Act) {
     }
 }
 
+/// Pencereyi sistem tepsisine gizle ve düşük RAM (oyun) moduna geç.
+#[allow(dead_code)]
+fn hide_to_tray(ui: &AppWindow) {
+    ui.set_window_hidden(true);
+    let now_key = if ui.get_has_now() { Some(ui.get_now().key.to_string()) } else { None };
+    ARTS.with(|m| m.borrow_mut().retain(|k, _| now_key.as_deref() == Some(k.as_str())));
+    ART_ORDER.with(|q| q.borrow_mut().retain(|k| now_key.as_deref() == Some(k.as_str())));
+    BANNER_ORDER.with(|q| q.borrow_mut().clear());
+    BLURS.with(|m| m.borrow_mut().clear());
+    BLUR_ORDER.with(|q| q.borrow_mut().clear());
+    BIGS.with(|m| m.borrow_mut().clear());
+    BIG_ORDER.with(|q| q.borrow_mut().clear());
+    with_state(|st| {
+        st.requested.clear();
+        if let Some(k) = &now_key {
+            st.requested.insert(k.clone());
+        }
+        st.viz = None;
+    });
+    ui.set_viz_on(false);
+    use slint::winit_030::WinitWindowAccessor;
+    ui.window().with_winit_window(|w| w.set_visible(false));
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};
+        let _ = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+    }
+}
+
+/// Tepsiden geri dön: pencereyi göster ve kapakları disk önbelleğinden hızla doldur.
+#[allow(dead_code)]
+fn show_from_tray(ui: &AppWindow) {
+    ui.set_window_hidden(false);
+    use slint::winit_030::WinitWindowAccessor;
+    let _ = ui.show();
+    ui.window().with_winit_window(|w| {
+        w.set_visible(true);
+        w.set_minimized(false);
+        w.focus_window();
+    });
+    with_state(|st| {
+        let shelves = st.shelves.clone();
+        for s in &shelves {
+            for t in s.items.iter().take(if s.style == 1 || s.style == 6 { 12 } else { 8 }) {
+                request_art(st, t);
+            }
+            for c in s.cards.iter().take(10) {
+                request_card_art(st, c);
+            }
+        }
+    });
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = AppWindow::new()?;
     if let Ok(t) = std::env::var("VYNZ_TITLE") {
@@ -3270,8 +3323,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = weak.clone();
         move |i| {
             let Some(ui) = weak.upgrade() else { return };
-            let list = with_state(|st| st.results.clone());
-            play_list(&ui, list, i as usize);
+            if let Some(t) = with_state(|st| st.results.get(i as usize).cloned()) {
+                play_list(&ui, vec![t.clone()], 0);
+                start_radio(&ui, t);
+            }
         }
     });
     ui.on_play_queue({
@@ -3463,9 +3518,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(ui) = weak.upgrade() else { return };
             match with_state(|st| st.top.clone()) {
                 Some(Top::Song(t)) => {
-                    let mut list = vec![t.clone()];
-                    list.extend(with_state(|st| st.results.clone()).into_iter().filter(|x| x.key() != t.key()));
-                    play_list(&ui, list, 0);
+                    play_list(&ui, vec![t.clone()], 0);
+                    start_radio(&ui, t);
                 }
                 Some(Top::Card(c)) => open_card(&ui, c),
                 None => {}
@@ -3944,15 +3998,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(ui) = weak.upgrade() else { return };
                 match act {
-                    tray::TrayAct::Show => {
-                        use slint::winit_030::WinitWindowAccessor;
-                        let _ = ui.show();
-                        ui.window().with_winit_window(|w| {
-                            w.set_visible(true);
-                            w.set_minimized(false);
-                            w.focus_window();
-                        });
-                    }
+                    tray::TrayAct::Show => show_from_tray(&ui),
                     tray::TrayAct::PlayPause => on_mpris(&ui, mpris::Act::PlayPause),
                     tray::TrayAct::Next => on_mpris(&ui, mpris::Act::Next),
                     tray::TrayAct::Quit => {
@@ -3999,8 +4045,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move || {
             let Some(ui) = weak.upgrade() else { return };
             if cfg!(target_os = "windows") && ui.get_close_to_tray() {
-                use slint::winit_030::WinitWindowAccessor;
-                ui.window().with_winit_window(|w| w.set_visible(false));
+                hide_to_tray(&ui);
             } else {
                 fq.store(true, Ordering::Relaxed);
                 let _ = slint::quit_event_loop();
@@ -4014,8 +4059,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(target_os = "windows") && !fq.load(Ordering::Relaxed) {
                 if let Some(ui) = weak.upgrade() {
                     if ui.get_close_to_tray() {
-                        use slint::winit_030::WinitWindowAccessor;
-                        ui.window().with_winit_window(|w| w.set_visible(false));
+                        hide_to_tray(&ui);
                         return slint::CloseRequestResponse::KeepWindowShown;
                     }
                 }
@@ -4028,7 +4072,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _win_frame_timer = {
         let t = Timer::default();
         let weak = weak.clone();
-        t.start(TimerMode::SingleShot, Duration::from_millis(10), move || {
+        t.start(TimerMode::SingleShot, Duration::from_millis(120), move || {
             if let Some(ui) = weak.upgrade() {
                 use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
                 use slint::winit_030::WinitWindowAccessor;

@@ -320,6 +320,7 @@ component SettingRow inherits Rectangle {
 export component AppWindow inherits Window {
     in property <string> window-title: "vynz";
     title: window-title;
+    no-frame: is-windows;
     icon: @image-url("../design/logo/vynz-icon.svg");
     forward-focus: keys;
     preferred-width: 1400px;
@@ -359,6 +360,7 @@ export component AppWindow inherits Window {
     property <length> sidebar-w: compact ? 64px : 196px;
 
     in property <bool> is-windows: false;
+    in property <bool> window-hidden: false;
     in-out property <bool> close-to-tray: true;
     callback win-drag();
     callback win-minimize();
@@ -1595,14 +1597,14 @@ export component AppWindow inherits Window {
 
         Timer {
             interval: 50ms;
-            running: lyrics-open && playing && lyric-state == 2;
+            running: !window-hidden && lyrics-open && playing && lyric-state == 2;
             triggered => { root.lyric-tick(); }
         }
 
         // Hareketli zemin: bulanık kapak yavaşça döner (yalnız açıkken)
         Timer {
             interval: 8s;
-            running: lyrics-open && lyrics-motion;
+            running: !window-hidden && lyrics-open && lyrics-motion;
             triggered => { lyr.spin += 24deg; }
         }
 
@@ -1906,6 +1908,17 @@ export component AppWindow inherits Window {
                 }
             }
 
+            // Windows'ta Lyrics açıkken de üst şeritten pencereyi sürükle / çift tıkla büyüt
+            if is-windows: TouchArea {
+                x: 60px; y: 0px; width: parent.width - 310px; height: 48px;
+                pointer-event(e) => {
+                    if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                        root.win-drag();
+                    }
+                }
+                double-clicked => { root.win-maximize(); }
+            }
+
             // Sol üst: kenar çubuğunu üst katman olarak aç/kapa
             IconButton {
                 x: 16px; y: 16px;
@@ -1914,12 +1927,12 @@ export component AppWindow inherits Window {
                 clicked => { sidebar-peek = !sidebar-peek; }
             }
 
-            // Sağ üst: söz/kapak kipi, stil, kapat
+            // Sağ üst: söz/kapak kipi, stil, çekmeceyi indir
             HorizontalLayout {
                 x: parent.width - self.preferred-width - (is-windows ? 148px : 16px); y: 16px; spacing: 6px;
                 IconButton { icon: Icons.mic; tint: lyrics-mode ? Theme.accent : Theme.text-secondary; clicked => { lyrics-mode = !lyrics-mode; lyr.menu = false; } }
                 if lyrics-mode: IconButton { icon: Icons.type; tint: lyr.menu ? Theme.accent : Theme.text-secondary; clicked => { lyr.menu = !lyr.menu; } }
-                IconButton { icon: Icons.x; clicked => { lyrics-open = false; sidebar-peek = false; lyr.menu = false; } }
+                IconButton { icon: Icons.chevron-down; clicked => { lyrics-open = false; sidebar-peek = false; lyr.menu = false; } }
             }
 
             // Stil menüsü
