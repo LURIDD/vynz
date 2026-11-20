@@ -4042,7 +4042,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let RawWindowHandle::Win32(h) = handle.as_raw() {
                             let hwnd = HWND(h.hwnd.get() as *mut std::ffi::c_void);
                             let dark: u32 = 1;
-                            let round = DWMWCP_ROUND;
+                            let round: i32 = DWMWCP_ROUND.0;
                             unsafe {
                                 let _ = DwmSetWindowAttribute(
                                     hwnd,
@@ -4053,8 +4053,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let _ = DwmSetWindowAttribute(
                                     hwnd,
                                     DWMWA_WINDOW_CORNER_PREFERENCE,
-                                    (&round as *const _).cast(),
-                                    std::mem::size_of_val(&round) as u32,
+                                    (&round as *const i32).cast(),
+                                    std::mem::size_of::<i32>() as u32,
                                 );
                             }
                         }
