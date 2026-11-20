@@ -5,7 +5,7 @@ fn main() {
         let mut res = winresource::WindowsResource::new();
         res.set_icon("design/logo/vynz.ico");
         res.set("ProductName", "Vynz");
-        res.set("FileDescription", "Vynz Müzik Çalar");
+        res.set("FileDescription", "Vynz Music Player");
         if let Err(e) = res.compile() {
             println!("cargo:warning=winresource hatası: {e}");
         }
