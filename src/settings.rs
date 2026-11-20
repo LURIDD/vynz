@@ -39,6 +39,8 @@ pub struct Settings {
     pub lyrics_translate: i32,
     /// Ses seviyesi dengeleme (mpv dynaudnorm)
     pub normalize: bool,
+    /// Windows'ta çarpıya basınca sistem tepsisine in (varsayılan açık)
+    pub close_to_tray: bool,
     /// İlk açılış Zevkler seçimi tamamlandı mı (veya geçildi mi)
     pub tastes_done: bool,
     /// Seçilen müzik türleri (ana sayfa önerileri için)
@@ -66,6 +68,7 @@ impl Default for Settings {
             keep_days: 30,
             lyrics_translate: 0,
             normalize: false,
+            close_to_tray: true,
             tastes_done: false,
             taste_genres: Vec::new(),
             blocked_genres: Vec::new(),
