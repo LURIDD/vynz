@@ -106,7 +106,7 @@ component ShelfRow inherits VerticalLayout {
                 }
                 HorizontalLayout {
                     alignment: start;
-                    PillButton { pill-height: 32px; text: "Tümünü çal"; primary: true; clicked => { root.play(0); } }
+                    PillButton { pill-height: 32px; text: "Tümünü çal"; primary: true; clicked => { root.play(-1); } }
                 }
             }
             VerticalLayout {
@@ -411,6 +411,12 @@ export component AppWindow inherits Window {
     callback taste-preview-sample(int);
     callback taste-save();
     callback taste-skip();
+
+    // Gizlenenler ("İlgilenmiyorum")
+    in property <[string]> hidden-artists;
+    in property <[string]> hidden-tracks;
+    callback unhide-artist(int);
+    callback unhide-track(int);
 
     // Liste aktarma
     in property <[ImportRow]> import-rows;
@@ -1298,6 +1304,30 @@ export component AppWindow inherits Window {
                             title: "Müzik zevklerin";
                             note: taste-summary + " · Yalnızca Ana Sayfa önerilerini besler; başlattığın radyoları etkilemez.";
                             PillButton { pill-height: 32px; text: "Zevkleri düzenle"; primary: true; clicked => { root.open-tastes(); } }
+                        }
+                        if hidden-artists.length > 0: Rectangle {
+                            border-radius: Theme.r-md; background: Theme.surface-1;
+                            VerticalLayout {
+                                padding: 16px; spacing: 8px;
+                                Text { text: "Önerilmeyen sanatçılar (" + hidden-artists.length + ")"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; }
+                                for name[i] in hidden-artists: HorizontalLayout {
+                                    height: 32px; spacing: 8px;
+                                    Text { text: name; vertical-alignment: center; horizontal-stretch: 1; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                                    PillButton { pill-height: 26px; text: "Kaldır"; clicked => { root.unhide-artist(i); } }
+                                }
+                            }
+                        }
+                        if hidden-tracks.length > 0: Rectangle {
+                            border-radius: Theme.r-md; background: Theme.surface-1;
+                            VerticalLayout {
+                                padding: 16px; spacing: 8px;
+                                Text { text: "İlgilenmediğin şarkılar (" + hidden-tracks.length + ")"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; }
+                                for label[i] in hidden-tracks: HorizontalLayout {
+                                    height: 32px; spacing: 8px;
+                                    Text { text: label; vertical-alignment: center; horizontal-stretch: 1; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                                    PillButton { pill-height: 26px; text: "Kaldır"; clicked => { root.unhide-track(i); } }
+                                }
+                            }
                         }
                     }
 
@@ -2574,6 +2604,8 @@ export component AppWindow inherits Window {
             MenuItem { icon: Icons.radio; text: "Radyo başlat"; clicked => { root.menu-action(3); } }
             MenuItem { icon: Icons.heart; text: menu-liked ? "Beğenmekten vazgeç" : "Beğen"; clicked => { root.menu-action(4); } }
             MenuItem { icon: Icons.user; text: "Sanatçıya git"; clicked => { root.menu-action(5); } }
+            MenuItem { icon: Icons.ban; text: "İlgilenmiyorum"; clicked => { root.menu-action(7); } }
+            MenuItem { icon: Icons.ban; text: "Sanatçıyı önerme"; clicked => { root.menu-action(8); } }
             if view == "playlist": MenuItem { icon: Icons.trash; text: "Listeden çıkar"; clicked => { root.menu-action(6); } }
             if playlists.length > 0: MenuItem {
                 icon: Icons.plus;
