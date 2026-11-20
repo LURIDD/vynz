@@ -68,6 +68,20 @@ pub fn artist_id(t: &TrackInfo) -> String {
 pub struct History {
     pub listens: Vec<Listen>,
     pub likes: Vec<TrackInfo>,
+    pub disliked_tracks: Vec<TrackInfo>,
+    pub disliked_artists: Vec<String>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct DislikesFile {
+    #[serde(default)]
+    tracks: Vec<TrackInfo>,
+    #[serde(default)]
+    artists: Vec<String>,
+}
+
+pub fn norm_artist(name: &str) -> String {
+    norm(name.split(',').next().unwrap_or("")).split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 impl History {
@@ -83,7 +97,71 @@ impl History {
         if let Ok(raw) = std::fs::read(dir().join("likes.json")) {
             h.likes = serde_json::from_slice(&raw).unwrap_or_default();
         }
+        if let Ok(raw) = std::fs::read(dir().join("dislikes.json")) {
+            if let Ok(d) = serde_json::from_slice::<DislikesFile>(&raw) {
+                h.disliked_tracks = d.tracks;
+                h.disliked_artists = d.artists;
+            }
+        }
         h
+    }
+
+    fn save_dislikes(&self) {
+        let _ = std::fs::create_dir_all(dir());
+        let f = DislikesFile { tracks: self.disliked_tracks.clone(), artists: self.disliked_artists.clone() };
+        let _ = std::fs::write(dir().join("dislikes.json"), serde_json::to_vec_pretty(&f).unwrap_or_default());
+    }
+
+    pub fn dislike_track(&mut self, t: &TrackInfo) {
+        let key = t.key();
+        if !self.disliked_tracks.iter().any(|x| x.key() == key) {
+            self.disliked_tracks.insert(0, t.clone());
+        }
+        if let Some(pos) = self.likes.iter().position(|x| x.key() == key) {
+            self.likes.remove(pos);
+            let _ = std::fs::write(dir().join("likes.json"), serde_json::to_vec_pretty(&self.likes).unwrap_or_default());
+        }
+        self.save_dislikes();
+    }
+
+    pub fn undislike_track(&mut self, key: &str) {
+        self.disliked_tracks.retain(|x| x.key() != key);
+        self.save_dislikes();
+    }
+
+    pub fn dislike_artist(&mut self, artist: &str) {
+        let primary = artist.split(',').next().unwrap_or("").trim();
+        if primary.is_empty() {
+            return;
+        }
+        let nid = norm_artist(primary);
+        if !self.disliked_artists.iter().any(|a| norm_artist(a) == nid) {
+            self.disliked_artists.insert(0, primary.to_string());
+            self.save_dislikes();
+        }
+    }
+
+    pub fn undislike_artist(&mut self, artist: &str) {
+        let nid = norm_artist(artist);
+        self.disliked_artists.retain(|a| norm_artist(a) != nid);
+        self.save_dislikes();
+    }
+
+    pub fn disliked_track_keys(&self) -> std::collections::HashSet<String> {
+        self.disliked_tracks.iter().map(TrackInfo::key).collect()
+    }
+
+    pub fn disliked_artist_ids(&self) -> std::collections::HashSet<String> {
+        self.disliked_artists.iter().map(|a| norm_artist(a)).filter(|s| !s.is_empty()).collect()
+    }
+
+    pub fn is_disliked(&self, t: &TrackInfo) -> bool {
+        let key = t.key();
+        if self.disliked_tracks.iter().any(|x| x.key() == key) {
+            return true;
+        }
+        let aid = artist_id(t);
+        !aid.is_empty() && self.disliked_artists.iter().any(|a| norm_artist(a) == aid)
     }
 
     pub fn record(&mut self, track: TrackInfo, played: f32) {
@@ -135,6 +213,10 @@ impl History {
         for t in &self.likes {
             m.entry(t.key()).or_insert((0.0, t.clone())).0 += 3.0;
         }
+        // İlgilenmiyorum: o şarkıyı negatif yapar, aynı sanatçıdan 2-3 tane olunca sanatçıyı da aşağı çeker.
+        for t in &self.disliked_tracks {
+            m.entry(t.key()).or_insert((0.0, t.clone())).0 -= 2.5;
+        }
         m
     }
 
@@ -147,13 +229,13 @@ impl History {
         m
     }
 
-    /// Son dinlenenler (tekrarsız, yeniden eskiye).
+    /// Son dinlenenler (tekrarsız, yeniden eskiye, engellenenler hariç).
     pub fn recent(&self, n: usize) -> Vec<TrackInfo> {
         let mut seen = std::collections::HashSet::new();
         self.listens
             .iter()
             .rev()
-            .filter(|l| !l.skipped())
+            .filter(|l| !l.skipped() && !self.is_disliked(&l.track))
             .filter(|l| seen.insert(l.track.key()))
             .take(n)
             .map(|l| l.track.clone())
@@ -174,7 +256,12 @@ impl History {
 
     /// Arka plan hesapları için kopya.
     pub fn snapshot(&self) -> History {
-        History { listens: self.listens.clone(), likes: self.likes.clone() }
+        History {
+            listens: self.listens.clone(),
+            likes: self.likes.clone(),
+            disliked_tracks: self.disliked_tracks.clone(),
+            disliked_artists: self.disliked_artists.clone(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {

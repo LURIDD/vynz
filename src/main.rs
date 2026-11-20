@@ -1314,7 +1314,10 @@ fn start_radio(ui: &AppWindow, seed: TrackInfo) {
             match res {
                 Ok(list) => {
                     let mut q = vec![seed2.clone()];
-                    q.extend(list.into_iter().filter(|t| t.key() != seed2.key()));
+                    let filtered: Vec<TrackInfo> = with_state(|st| {
+                        list.into_iter().filter(|t| t.key() != seed2.key() && !st.history.is_disliked(t)).collect()
+                    });
+                    q.extend(filtered);
                     if playing_same {
                         // Çalan şarkı kesilmeden kuyruğun geri kalanı radyo olur.
                         with_state(|st| {
@@ -1354,7 +1357,11 @@ fn extend_with_radio(ui: &AppWindow, then_play: bool) {
                 let Ok(list) = res else { return 0 };
                 let have: HashSet<String> = st.queue.iter().map(TrackInfo::key).collect();
                 let skipped = st.history.recently_skipped(14);
-                let new: Vec<TrackInfo> = list.into_iter().filter(|t| !have.contains(&t.key()) && !skipped.contains(&t.key())).take(25).collect();
+                let new: Vec<TrackInfo> = list
+                    .into_iter()
+                    .filter(|t| !have.contains(&t.key()) && !skipped.contains(&t.key()) && !st.history.is_disliked(t))
+                    .take(25)
+                    .collect();
                 let n = new.len();
                 st.queue.extend(new);
                 n
@@ -1601,8 +1608,65 @@ fn menu_action(ui: &AppWindow, action: i32) {
                 toast(ui, "Listeden çıkarıldı");
             }
         }
+        7 => {
+            let home_data = with_state(|st| {
+                st.history.dislike_track(&t);
+                (!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone())
+            });
+            refresh_hidden(ui);
+            refresh_liked(ui);
+            if let Some(d) = home_data {
+                show_home(ui, d);
+            }
+            if ui.get_has_now() && ui.get_now().key == t.key().as_str() {
+                ui.set_liked(false);
+                step(ui, 1);
+            }
+            toast(ui, &format!("Artık önerilmeyecek: {}", t.title));
+        }
+        8 => {
+            let artist = t.artist.split(',').next().unwrap_or("").trim().to_string();
+            if artist.is_empty() {
+                return;
+            }
+            let (home_data, skip_now) = with_state(|st| {
+                st.history.dislike_artist(&artist);
+                let skip = st.index.and_then(|i| st.queue.get(i)).is_some_and(|cur| st.history.is_disliked(cur));
+                let hd = (!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone());
+                (hd, skip)
+            });
+            refresh_hidden(ui);
+            if let Some(d) = home_data {
+                show_home(ui, d);
+            }
+            if skip_now {
+                step(ui, 1);
+            }
+            toast(ui, &format!("Artık önerilmeyecek sanatçı: {artist}"));
+        }
         _ => {}
     }
+}
+
+fn refresh_hidden(ui: &AppWindow) {
+    let (artists, tracks) = with_state(|st| {
+        let a: Vec<slint::SharedString> = st.history.disliked_artists.iter().map(|s| s.as_str().into()).collect();
+        let t: Vec<slint::SharedString> = st
+            .history
+            .disliked_tracks
+            .iter()
+            .map(|x| {
+                if x.artist.is_empty() {
+                    x.title.as_str().into()
+                } else {
+                    format!("{} — {}", x.title, x.artist).into()
+                }
+            })
+            .collect();
+        (a, t)
+    });
+    ui.set_hidden_artists(ModelRc::new(VecModel::from(artists)));
+    ui.set_hidden_tracks(ModelRc::new(VecModel::from(tracks)));
 }
 
 fn add_menu_track_to_playlist(ui: &AppWindow, pl_idx: usize) {
@@ -1708,13 +1772,14 @@ fn compose(st: &State, h: &HomeData) -> Vec<Section> {
     let mut seen: HashSet<String> = HashSet::new();
 
     let dedup = |items: Vec<TrackInfo>, seen: &mut HashSet<String>, keep_min: usize| -> Vec<TrackInfo> {
+        let allowed: Vec<TrackInfo> = items.into_iter().filter(|t| !st.history.is_disliked(t)).collect();
         let mut fresh = Vec::new();
-        for t in &items {
+        for t in &allowed {
             if !seen.contains(&t.key()) {
                 fresh.push(t.clone());
             }
         }
-        let chosen = if fresh.len() >= keep_min { fresh } else { items };
+        let chosen = if fresh.len() >= keep_min { fresh } else { allowed };
         for t in &chosen {
             seen.insert(t.key());
         }
@@ -3294,6 +3359,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     with_state(|st| st.player.send(Cmd::Normalize(st.settings.normalize)));
     refresh_playlists(&ui);
     refresh_liked(&ui);
+    refresh_hidden(&ui);
     refresh_taste_summary(&ui);
     ui.set_runtime_status(runtime::status_text().into());
     if !runtime::is_ready() {
@@ -3314,8 +3380,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |si, i| {
             let Some(ui) = weak.upgrade() else { return };
             let list = with_state(|st| st.shelves.get(si as usize).map(|s| s.items.clone()));
-            if let Some(list) = list {
-                play_list(&ui, list, i as usize);
+            let Some(list) = list else { return };
+            if i < 0 {
+                // Odak bandı "Tümünü çal": tüm listeyi sırayla çal
+                if !list.is_empty() {
+                    play_list(&ui, list, 0);
+                }
+            } else if let Some(t) = list.get(i as usize).cloned() {
+                // Tekil şarkı tıklaması: hemen çal ve o şarkının radyosunu başlat
+                play_list(&ui, vec![t.clone()], 0);
+                start_radio(&ui, t);
             }
         }
     });
@@ -3962,6 +4036,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(ui) = weak.upgrade() {
                 taste_skip(&ui);
             }
+        }
+    });
+    ui.on_unhide_artist({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let home_data = with_state(|st| {
+                if let Some(a) = st.history.disliked_artists.get(i as usize).cloned() {
+                    st.history.undislike_artist(&a);
+                }
+                (!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone())
+            });
+            refresh_hidden(&ui);
+            if let Some(d) = home_data {
+                show_home(&ui, d);
+            }
+            toast(&ui, "Sanatçı engeli kaldırıldı");
+        }
+    });
+    ui.on_unhide_track({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let home_data = with_state(|st| {
+                if let Some(t) = st.history.disliked_tracks.get(i as usize).cloned() {
+                    st.history.undislike_track(&t.key());
+                }
+                (!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone())
+            });
+            refresh_hidden(&ui);
+            if let Some(d) = home_data {
+                show_home(&ui, d);
+            }
+            toast(&ui, "Şarkı engeli kaldırıldı");
         }
     });
 

@@ -122,6 +122,8 @@ pub fn build_with_blocked(
     let mut out = Vec::new();
     let artist_score = h.artist_scores();
     let skipped = h.recently_skipped(14);
+    let disliked_tracks = h.disliked_track_keys();
+    let disliked_artists = h.disliked_artist_ids();
     let fresh = h.played_since(36);
     let seed_keys: HashSet<String> = seeds.iter().map(|s| s.0.key()).collect();
     let known_artists: HashSet<&String> = artist_score.iter().filter(|(_, s)| **s > 0.0).map(|(a, _)| a).collect();
@@ -133,10 +135,11 @@ pub fn build_with_blocked(
         let len = list.len().max(1) as f32;
         for (rank, t) in list.iter().enumerate() {
             let key = t.key();
-            if seed_keys.contains(&key) || skipped.contains(&key) {
+            let aid = artist_id(t);
+            if seed_keys.contains(&key) || skipped.contains(&key) || disliked_tracks.contains(&key) || disliked_artists.contains(&aid) {
                 continue;
             }
-            if !blocked_artists.is_empty() && blocked_artists.contains(&artist_id(t)) && !known_artists.contains(&artist_id(t)) {
+            if !blocked_artists.is_empty() && blocked_artists.contains(&aid) && !known_artists.contains(&aid) {
                 continue;
             }
             let e = pool.entry(key).or_insert((0.0, 0, t.clone()));
@@ -220,7 +223,7 @@ pub fn quick_picks(h: &History, personal: &[Section], fallback: &[Section]) -> V
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     let mut push = |t: &TrackInfo, out: &mut Vec<TrackInfo>| {
-        if out.len() < 16 && seen.insert(t.key()) {
+        if out.len() < 16 && !h.is_disliked(t) && seen.insert(t.key()) {
             out.push(t.clone());
         }
     };
