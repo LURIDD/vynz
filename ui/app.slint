@@ -1699,21 +1699,59 @@ export component AppWindow inherits Window {
                     clip: true;
                     property <length> active-y: 0;
                     property <length> anchor: self.height * 0.4;
+                    property <bool> manual: false;
+                    property <length> manual-y: 0px;
+                    property <length> col-h: 0px;
+                    property <int> idle-ticks: 0;
+                    property <string> track-key: now.key;
+                    changed track-key => { self.manual = false; self.idle-ticks = 0; }
+
+                    function wheel(dy: length) {
+                        if (lyric-state != 2) { return; }
+                        if (!self.manual) {
+                            self.manual-y = self.anchor - self.active-y;
+                        }
+                        self.manual = true;
+                        self.idle-ticks = 0;
+                        let min-y = Math.min(self.anchor - self.col-h + 80px, 0px);
+                        self.manual-y = Math.clamp(self.manual-y + dy * 1.4, min-y, self.anchor);
+                    }
+
+                    Timer {
+                        interval: 1s;
+                        running: lview.manual && playing && lyrics-open && !window-hidden;
+                        triggered => {
+                            lview.idle-ticks += 1;
+                            if (lview.idle-ticks >= 10) {
+                                lview.manual = false;
+                                lview.idle-ticks = 0;
+                            }
+                        }
+                    }
+
+                    TouchArea {
+                        scroll-event(e) => {
+                            lview.wheel(e.delta-y);
+                            return accept;
+                        }
+                    }
 
                     // Etkin satırın arkasında kapak renginde yumuşak ışıma
                     if lyric-state == 2: Rectangle {
                         width: lview.width * 1.1; height: lview.height * 0.7;
                         x: lyr.centered ? (lview.width - self.width) / 2 : -lview.width * 0.25;
                         y: lview.anchor - self.height / 2;
+                        opacity: lview.manual ? 0.35 : 1.0;
                         background: @radial-gradient(circle, Theme.accent.with-alpha(0.16) 0%, transparent 60%);
-                        animate background { duration: 600ms; }
+                        animate background, opacity { duration: 400ms; }
                     }
                     if lyric-state == 2: Rectangle {
-                        // Etkin satır görünümün %40'ına hizalanır; liste yumuşakça kayar.
-                        y: lview.anchor - lview.active-y;
-                        animate y { duration: 560ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                        // Etkin satır görünümün %40'ına hizalanır; manuel kaydırmada kullanıcının konumunu korur.
+                        y: lview.manual ? lview.manual-y : (lview.anchor - lview.active-y);
+                        animate y { duration: lview.manual ? 120ms : 560ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
                         width: lview.width;
                         height: col.preferred-height;
+                        changed height => { lview.col-h = self.height; }
                         col := VerticalLayout {
                             width: parent.width;
                             spacing: lyr.fsz * 0.55;
@@ -1727,11 +1765,22 @@ export component AppWindow inherits Window {
                                 changed active => { if (self.active) { lview.active-y = self.y + self.height / 2; } }
                                 changed y => { if (self.active) { lview.active-y = self.y + self.height / 2; } }
                                 changed height => { if (self.active) { lview.active-y = self.y + self.height / 2; } }
-                                opacity: active ? 1 : l.dist == 1 ? 0.55 : l.dist == 2 ? 0.38 : l.dist <= 4 ? 0.26 : 0.14;
+                                opacity: active ? 1 : lview.manual ? 0.72 : (l.dist == 1 ? 0.55 : l.dist == 2 ? 0.38 : l.dist <= 4 ? 0.26 : 0.14);
                                 transform-scale: active ? 1.0 : 0.93;
                                 transform-origin: { x: lyr.centered ? self.width / 2 : 0px, y: self.height / 2 };
                                 animate opacity, transform-scale { duration: 420ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                                lt := TouchArea { mouse-cursor: pointer; clicked => { root.lyric-seek(l.t); } }
+                                lt := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        lview.manual = false;
+                                        lview.idle-ticks = 0;
+                                        root.lyric-seek(l.t);
+                                    }
+                                    scroll-event(e) => {
+                                        lview.wheel(e.delta-y);
+                                        return accept;
+                                    }
+                                }
                                 body := VerticalLayout {
                                     spacing: lyr.fsz * 0.15;
                                     if !active: Text {
@@ -1764,6 +1813,28 @@ export component AppWindow inherits Window {
                                     }
                                 }
                             }
+                        }
+                    }
+                    // Manuel kaydırma aktifken alt ortada "Kaldığı yere dön" chip'i
+                    if lyric-state == 2 && lview.manual: Rectangle {
+                        width: lr-row.preferred-width + 28px;
+                        height: 36px;
+                        x: (parent.width - self.width) / 2;
+                        y: parent.height - self.height - 16px;
+                        border-radius: 18px;
+                        background: lr-ta.has-hover ? Theme.surface-3 : Theme.floating;
+                        border-width: 1px;
+                        border-color: Theme.accent.with-alpha(0.55);
+                        drop-shadow-blur: 24px; drop-shadow-offset-y: 8px; drop-shadow-color: #00000099;
+                        animate background { duration: Theme.micro; }
+                        lr-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { lview.manual = false; lview.idle-ticks = 0; }
+                        }
+                        lr-row := HorizontalLayout {
+                            x: 14px; spacing: 8px; alignment: center;
+                            Icon { y: 10px; width: 15px; height: 15px; commands: Icons.refresh; stroke: Theme.accent; }
+                            Text { text: "Kaldığı yere dön"; vertical-alignment: center; font-size: 12.5px; font-weight: 700; color: Theme.text-primary; }
                         }
                     }
                     if lyric-state == 3: Flickable {
