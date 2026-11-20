@@ -239,7 +239,7 @@ component ShelfRow inherits VerticalLayout {
                                 }
                                 Text { text: t.artist; font-size: 11.5px; color: Theme.text-secondary; overflow: elide; }
                             }
-                            Text { text: Fmt.time(t.duration); vertical-alignment: center; font-family: Theme.mono; font-size: 10.5px; color: Theme.text-muted; }
+                            if t.duration > 0: Text { text: Fmt.time(t.duration); vertical-alignment: center; font-family: Theme.mono; font-size: 10.5px; color: Theme.text-muted; }
                         }
                     }
                 }
@@ -738,13 +738,13 @@ export component AppWindow inherits Window {
                 }
             }
             Rectangle {
-                width: 96px; height: 34px; y: 13px; x: parent.width - self.width - (is-windows ? 152px : 32px);
+                width: q-row.preferred-width + 28px; height: 34px; y: 13px; x: parent.width - self.width - (is-windows ? 152px : 32px);
                 border-radius: 17px;
                 background: drawer-open || q-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
                 animate background { duration: Theme.micro; }
                 q-ta := TouchArea { mouse-cursor: pointer; clicked => { drawer-open = !drawer-open; } }
-                HorizontalLayout {
-                    x: 14px; spacing: 6px;
+                q-row := HorizontalLayout {
+                    x: 14px; spacing: 8px;
                     Text { text: "Kuyruk"; vertical-alignment: center; font-size: 12.5px; font-weight: 600; color: drawer-open ? Theme.text-primary : Theme.text-secondary; }
                     Text { text: queue.length; vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
                 }
