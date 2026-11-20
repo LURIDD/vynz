@@ -3953,8 +3953,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             w.focus_window();
                         });
                     }
-                    tray::TrayAct::PlayPause => toggle_play(&ui),
-                    tray::TrayAct::Next => step(&ui, 1),
+                    tray::TrayAct::PlayPause => on_mpris(&ui, mpris::Act::PlayPause),
+                    tray::TrayAct::Next => on_mpris(&ui, mpris::Act::Next),
                     tray::TrayAct::Quit => {
                         fq.store(true, Ordering::Relaxed);
                         let _ = slint::quit_event_loop();

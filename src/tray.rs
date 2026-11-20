@@ -26,7 +26,7 @@ mod imp {
     }
 
     impl Tray {
-        pub fn start(on_act: impl Fn(TrayAct) + Send + 'static) -> Option<Tray> {
+        pub fn start(on_act: impl Fn(TrayAct) + Send + Sync + 'static) -> Option<Tray> {
             let img = image::load_from_memory(ICON_PNG).ok()?.to_rgba8();
             let (w, h) = img.dimensions();
             let icon = Icon::from_rgba(img.into_raw(), w, h).ok()?;
