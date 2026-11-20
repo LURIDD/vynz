@@ -25,6 +25,7 @@ mod runtime;
 mod settings;
 mod sources;
 mod stats;
+mod tray;
 mod viz;
 
 use std::cell::RefCell;
@@ -102,8 +103,9 @@ struct State {
     radio_busy: bool,
     /// Sağ tık menüsünün hedefi
     menu: Option<TrackInfo>,
-    /// Kişisel karışım (ana sayfadaki "Karışımı çal")
+    /// Kişisel karışım ve keşif listesi (ana sayfadaki vitrin kartları)
     mix: Vec<TrackInfo>,
+    discover: Vec<TrackInfo>,
     /// Açık koleksiyon (liste/albüm/sanatçı): başlık, kart, şarkılar
     coll: Option<(Card, Vec<TrackInfo>)>,
     /// Açık sanatçı sayfası: kart, popüler şarkılar, raflar
@@ -1584,6 +1586,21 @@ fn menu_action(ui: &AppWindow, action: i32) {
                 search(ui, artist);
             }
         }
+        6 => {
+            let removed = with_state(|st| {
+                let pi = st.current_pl?;
+                let pl = st.playlists.get_mut(pi)?;
+                let pos = pl.tracks.iter().position(|x| x.key() == t.key())?;
+                pl.tracks.remove(pos);
+                let _ = library::save(&st.playlists);
+                Some(pi)
+            });
+            if let Some(pi) = removed {
+                open_playlist(ui, pi);
+                refresh_playlists(ui);
+                toast(ui, "Listeden çıkarıldı");
+            }
+        }
         _ => {}
     }
 }
@@ -1664,53 +1681,154 @@ fn explore_sections(d: &serde_json::Value) -> Vec<Section> {
     out
 }
 
-/// Ana sayfayı diz: kişisel, kaynak ve keşfet raflarını iç içe geçirerek.
+fn artists_summary(tracks: &[TrackInfo]) -> String {
+    let mut seen = HashSet::new();
+    let mut names = Vec::new();
+    for t in tracks {
+        let a = t.artist.split(',').next().unwrap_or("").trim();
+        if !a.is_empty() && seen.insert(a.to_lowercase()) {
+            names.push(a.to_string());
+            if names.len() >= 3 {
+                break;
+            }
+        }
+    }
+    if names.is_empty() {
+        format!("{} şarkı", tracks.len())
+    } else {
+        format!("{} ve daha fazlası", names.join(", "))
+    }
+}
+
+/// Ana sayfayı diz: tekrar önlemeli, aşağı indikçe değişen görsel şablonlarla ritmik akış.
 fn compose(st: &State, h: &HomeData) -> Vec<Section> {
-    let take = |list: &[Section], pred: &dyn Fn(&Section) -> bool| -> Vec<Section> { list.iter().filter(|s| pred(s)).cloned().collect() };
     let p = &h.personal;
-    let is = |t: &'static str| move |s: &Section| s.title == t;
+    let find_title = |list: &[Section], title: &str| list.iter().find(|s| s.title == title).cloned();
     let mut out = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    let dedup = |items: Vec<TrackInfo>, seen: &mut HashSet<String>, keep_min: usize| -> Vec<TrackInfo> {
+        let mut fresh = Vec::new();
+        for t in &items {
+            if !seen.contains(&t.key()) {
+                fresh.push(t.clone());
+            }
+        }
+        let chosen = if fresh.len() >= keep_min { fresh } else { items };
+        for t in &chosen {
+            seen.insert(t.key());
+        }
+        chosen
+    };
+
+    // 1. Hızlı erişim (style 1: kompakt 2×4 kutucuklar)
     let quick = recommend::quick_picks(&st.history, p, &h.external);
     if !quick.is_empty() {
-        out.push(Section { title: "Hızlı erişim".into(), items: quick, cards: Vec::new(), style: 1 });
+        let q: Vec<TrackInfo> = quick.into_iter().take(8).collect();
+        for t in &q {
+            seen.insert(t.key());
+        }
+        out.push(Section { title: "Hızlı erişim".into(), items: q, cards: Vec::new(), style: 1 });
     }
-    out.extend(take(p, &|s| s.title.ends_with("için karışım")));
-    out.extend(take(p, &is("Kaldığın yerden")));
-    if !st.playlists.is_empty() {
-        let cards = st.playlists.iter().enumerate().map(|(i, pl)| Card {
-            kind: "saved".into(),
-            key: format!("saved-{i}"),
-            title: pl.name.clone(),
-            sub: format!("{} şarkı", pl.tracks.len()),
-            thumb: pl.tracks.first().map(|t| t.thumb.clone()).unwrap_or_default(),
-        }).collect();
-        out.push(Section { title: "Listelerim".into(), items: Vec::new(), cards, style: 2 });
+
+    // 2. Öne çıkan karışımlar (style 5: 2'li büyük vitrin kartları)
+    let mix_sec = p.iter().find(|s| s.title.ends_with("için karışım")).cloned();
+    let disc_sec = find_title(p, "Yeni keşifler");
+    let mut feature_cards = Vec::new();
+    if let Some(m) = &mix_sec {
+        if !m.items.is_empty() {
+            feature_cards.push(Card {
+                kind: "mix".into(),
+                key: "mix".into(),
+                title: m.title.clone(),
+                sub: artists_summary(&m.items),
+                thumb: m.items[0].thumb.clone(),
+            });
+        }
     }
-    let ext_tracks = take(&h.external, &|s| s.style == 0);
-    let ext_cards = take(&h.external, &|s| s.style != 0);
-    out.extend(ext_tracks);
-    out.extend(take(&h.explore, &is("Ruh hâli ve türler")));
-    out.extend(take(p, &|s| s.title.ends_with(" ve benzerleri")));
-    out.extend(take(&h.explore, &is("Trend şarkılar")));
-    out.extend(ext_cards.iter().take(2).cloned());
-    out.extend(take(p, &is("Yeni keşifler")));
-    out.extend(take(&h.explore, &is("Yeni albümler")));
-    out.extend(ext_cards.iter().skip(2).take(2).cloned());
-    out.extend(take(&h.explore, &is("Türkiye'de popüler sanatçılar")));
-    out.extend(take(p, &is("En çok dinlediklerin")));
-    out.extend(take(p, &is("Beğendiklerin")));
-    out.extend(ext_cards.iter().skip(4).cloned());
+    if let Some(d) = &disc_sec {
+        if !d.items.is_empty() {
+            feature_cards.push(Card {
+                kind: "discover".into(),
+                key: "discover".into(),
+                title: "Yeni keşifler".into(),
+                sub: artists_summary(&d.items),
+                thumb: d.items[0].thumb.clone(),
+            });
+        }
+    }
+    if !feature_cards.is_empty() {
+        out.push(Section { title: "Sana özel".into(), items: Vec::new(), cards: feature_cards, style: 5 });
+    }
+
+    // 3. Trend şarkılar veya harici şarkılar (style 6: 3 sütun × 4 satır kompakt liste)
+    let ext_tracks: Vec<Section> = h.external.iter().filter(|s| s.style == 0).cloned().collect();
+    let chart_src = find_title(&h.explore, "Trend şarkılar").or_else(|| ext_tracks.first().cloned());
+    if let Some(c) = chart_src {
+        let items = dedup(c.items, &mut seen, 6);
+        if !items.is_empty() {
+            out.push(Section { title: c.title, items, cards: Vec::new(), style: 6 });
+        }
+    }
+
+    // 4. Türkiye'de popüler sanatçılar (style 3: yuvarlak portre şeridi — ortaya taşındı)
+    if let Some(artists) = find_title(&h.explore, "Türkiye'de popüler sanatçılar") {
+        out.push(artists);
+    }
+
+    // 5. Sanatçı / Tema Odak Bandı (style 7: sol büyük kapak + sağ 4 şarkılık mini liste)
+    let spotlight_src = p
+        .iter()
+        .find(|s| s.title.ends_with(" ve benzerleri"))
+        .cloned()
+        .or_else(|| mix_sec.clone())
+        .or_else(|| ext_tracks.get(1).cloned());
+    if let Some(sp) = spotlight_src {
+        let items = dedup(sp.items, &mut seen, 4);
+        if items.len() >= 4 {
+            let title = if sp.title.ends_with(" ve benzerleri") {
+                format!("Çünkü {} dinliyorsun", sp.title.trim_end_matches(" ve benzerleri"))
+            } else {
+                sp.title
+            };
+            out.push(Section { title, items, cards: Vec::new(), style: 7 });
+        }
+    }
+
+    // 6. Ruh hâli ve türler (style 4: renkli blok ızgarası)
+    if let Some(moods) = find_title(&h.explore, "Ruh hâli ve türler") {
+        out.push(moods);
+    }
+
+    // 7. Yeni albümler (style 2)
+    if let Some(albums) = find_title(&h.explore, "Yeni albümler") {
+        out.push(albums);
+    }
+
+    // 8. Kaldığın yerden (style 0 — yukarıda çıkmayanlar)
+    if let Some(rec) = find_title(p, "Kaldığın yerden") {
+        let items = dedup(rec.items, &mut seen, 4);
+        if items.len() >= 3 {
+            out.push(Section { title: rec.title, items, cards: Vec::new(), style: 0 });
+        }
+    }
+
+    // 9. Harici oynatma listeleri (en fazla 2 raf — sonsuz tekrar olmasın)
+    for s in h.external.iter().filter(|s| s.style != 0).take(2) {
+        out.push(s.clone());
+    }
     out
 }
 
 /// Ana sayfayı göster.
 fn show_home(ui: &AppWindow, data: HomeData) {
     let all: Vec<Section> = with_state(|st| {
+        st.mix = data.personal.iter().find(|s| s.title.ends_with("için karışım")).map(|s| s.items.clone()).unwrap_or_default();
+        st.discover = data.personal.iter().find(|s| s.title == "Yeni keşifler").map(|s| s.items.clone()).unwrap_or_default();
         let all = compose(st, &data);
         st.home = data;
-        st.mix = all.iter().find(|s| s.title.ends_with("için karışım")).map(|s| s.items.clone()).unwrap_or_default();
         for s in &all {
-            for t in s.items.iter().take(if s.style == 1 { 16 } else { 8 }) {
+            for t in s.items.iter().take(if s.style == 1 || s.style == 6 { 12 } else { 8 }) {
                 request_art(st, t);
             }
             for c in s.cards.iter().take(10) {
@@ -1997,6 +2115,20 @@ fn sheet_back(ui: &AppWindow) {
 }
 
 fn open_card(ui: &AppWindow, c: Card) {
+    if c.kind == "mix" {
+        let list = with_state(|st| st.mix.clone());
+        if !list.is_empty() {
+            play_list(ui, list, 0);
+        }
+        return;
+    }
+    if c.kind == "discover" {
+        let list = with_state(|st| st.discover.clone());
+        if !list.is_empty() {
+            play_list(ui, list, 0);
+        }
+        return;
+    }
     if c.kind == "saved" {
         if let Some(i) = c.key.strip_prefix("saved-").and_then(|x| x.parse::<usize>().ok()) {
             open_playlist(ui, i);
@@ -2797,6 +2929,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_cache_index(s.cache_index());
     ui.set_prefetch_on(s.prefetch);
     ui.set_normalize_on(s.normalize);
+    ui.set_close_to_tray(s.close_to_tray);
     ui.set_readahead_index(s.readahead_index());
     ui.set_cookies_index(s.cookies_index());
     ui.set_download_index(s.download_index());
@@ -2822,6 +2955,7 @@ fn apply_settings(ui: &AppWindow) {
         cache_gb: settings::CACHE_GB[ui.get_cache_index().clamp(0, 4) as usize],
         prefetch: ui.get_prefetch_on(),
         normalize: ui.get_normalize_on(),
+        close_to_tray: ui.get_close_to_tray(),
         readahead_secs: settings::READAHEAD_SECS[ui.get_readahead_index().clamp(0, 3) as usize],
         cookies_browser: settings::COOKIE_BROWSERS[ui.get_cookies_index().clamp(0, 1) as usize].map(str::to_string),
         download_kbps: settings::DOWNLOAD_KBPS[ui.get_download_index().clamp(0, 3) as usize],
@@ -3069,6 +3203,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             radio_busy: false,
             menu: None,
             mix: Vec::new(),
+            discover: Vec::new(),
             coll: None,
             artist: None,
             banner_key: String::new(),
@@ -3795,6 +3930,140 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     });
+
+    let force_quit = Arc::new(AtomicBool::new(false));
+    ui.set_is_windows(cfg!(target_os = "windows"));
+
+    #[cfg(target_os = "windows")]
+    let _tray_guard = {
+        let weak = weak.clone();
+        let fq = force_quit.clone();
+        tray::Tray::start(move |act| {
+            let weak = weak.clone();
+            let fq = fq.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                let Some(ui) = weak.upgrade() else { return };
+                match act {
+                    tray::TrayAct::Show => {
+                        use slint::winit_030::WinitWindowAccessor;
+                        let _ = ui.show();
+                        ui.window().with_winit_window(|w| {
+                            w.set_visible(true);
+                            w.set_minimized(false);
+                            w.focus_window();
+                        });
+                    }
+                    tray::TrayAct::PlayPause => toggle_play(&ui),
+                    tray::TrayAct::Next => step(&ui, 1),
+                    tray::TrayAct::Quit => {
+                        fq.store(true, Ordering::Relaxed);
+                        let _ = slint::quit_event_loop();
+                    }
+                }
+            });
+        })
+    };
+
+    ui.on_win_drag({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                use slint::winit_030::WinitWindowAccessor;
+                ui.window().with_winit_window(|w| {
+                    let _ = w.drag_window();
+                });
+            }
+        }
+    });
+    ui.on_win_minimize({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                use slint::winit_030::WinitWindowAccessor;
+                ui.window().with_winit_window(|w| w.set_minimized(true));
+            }
+        }
+    });
+    ui.on_win_maximize({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                use slint::winit_030::WinitWindowAccessor;
+                ui.window().with_winit_window(|w| w.set_maximized(!w.is_maximized()));
+            }
+        }
+    });
+    ui.on_win_close({
+        let weak = weak.clone();
+        let fq = force_quit.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if cfg!(target_os = "windows") && ui.get_close_to_tray() {
+                use slint::winit_030::WinitWindowAccessor;
+                ui.window().with_winit_window(|w| w.set_visible(false));
+            } else {
+                fq.store(true, Ordering::Relaxed);
+                let _ = slint::quit_event_loop();
+            }
+        }
+    });
+    ui.window().on_close_requested({
+        let weak = weak.clone();
+        let fq = force_quit.clone();
+        move || {
+            if cfg!(target_os = "windows") && !fq.load(Ordering::Relaxed) {
+                if let Some(ui) = weak.upgrade() {
+                    if ui.get_close_to_tray() {
+                        use slint::winit_030::WinitWindowAccessor;
+                        ui.window().with_winit_window(|w| w.set_visible(false));
+                        return slint::CloseRequestResponse::KeepWindowShown;
+                    }
+                }
+            }
+            slint::CloseRequestResponse::HideWindow
+        }
+    });
+
+    #[cfg(target_os = "windows")]
+    let _win_frame_timer = {
+        let t = Timer::default();
+        let weak = weak.clone();
+        t.start(TimerMode::SingleShot, Duration::from_millis(10), move || {
+            if let Some(ui) = weak.upgrade() {
+                use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                use slint::winit_030::WinitWindowAccessor;
+                use windows::Win32::Foundation::HWND;
+                use windows::Win32::Graphics::Dwm::{
+                    DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+                };
+                ui.window().with_winit_window(|w| {
+                    w.set_decorations(false);
+                    if let Ok(handle) = w.window_handle() {
+                        if let RawWindowHandle::Win32(h) = handle.as_raw() {
+                            let hwnd = HWND(h.hwnd.get() as *mut std::ffi::c_void);
+                            let dark: u32 = 1;
+                            let round = DWMWCP_ROUND;
+                            unsafe {
+                                let _ = DwmSetWindowAttribute(
+                                    hwnd,
+                                    DWMWA_USE_IMMERSIVE_DARK_MODE,
+                                    (&dark as *const u32).cast(),
+                                    std::mem::size_of::<u32>() as u32,
+                                );
+                                let _ = DwmSetWindowAttribute(
+                                    hwnd,
+                                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                                    (&round as *const _).cast(),
+                                    std::mem::size_of_val(&round) as u32,
+                                );
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        t
+    };
 
     restore_session(&ui);
     // SIGTERM/SIGINT (kapanış, oturum sonu, kill): döngüden düzgün çık ki oturum kaydedilsin.
