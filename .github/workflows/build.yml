@@ -110,5 +110,5 @@ jobs:
           if [[ "$TAG" == *-* ]]; then
             FLAGS="$FLAGS --prerelease"
           fi
-          gh release create "$TAG" artifacts/* --title "Vynz $TAG" $FLAGS
+          gh release create "$TAG" artifacts/* -R "${{ github.repository }}" --title "Vynz $TAG" $FLAGS
 
