@@ -208,8 +208,47 @@ export struct TasteGenre {
 export struct PlaylistInfo {
     name: string,
     count: int,
+    duration-text: string,
     art: image,
     has-art: bool,
+    art2: image,
+    has-art2: bool,
+    art3: image,
+    has-art3: bool,
+    art4: image,
+    has-art4: bool,
+    mosaic: bool,
+    // Kullanıcının seçtiği özel kapak
+    custom: bool,
+    accent: color,
+}
+
+// Çalma listesi kapağı: 4+ kapakta 2×2 mozaik, 1–3 şarkıda tek kapak, boşta Vynz yer tutucu.
+// Tüm karolar mevcut ARTS (160 px) önbelleğinden gelir; ekstra görsel üretilmez.
+export component PlaylistCover inherits Rectangle {
+    in property <PlaylistInfo> info;
+    in property <length> radius: Theme.r-md;
+    in property <length> tile-gap: 2px;
+    border-radius: radius;
+    clip: true;
+    background: @linear-gradient(135deg, #1E1B4B 0%, #312E81 48%, #0F172A 100%);
+
+    if info.mosaic: Rectangle {
+        property <length> half: (parent.width - root.tile-gap) / 2;
+        background: #00000055;
+        Image { x: 0; y: 0; width: half; height: half; source: root.info.art; image-fit: cover; }
+        Image { x: half + root.tile-gap; y: 0; width: half; height: half; source: root.info.art2; image-fit: cover; }
+        Image { x: 0; y: half + root.tile-gap; width: half; height: half; source: root.info.art3; image-fit: cover; }
+        Image { x: half + root.tile-gap; y: half + root.tile-gap; width: half; height: half; source: root.info.art4; image-fit: cover; }
+    }
+    if !info.mosaic && info.has-art: Image {
+        width: parent.width; height: parent.height;
+        source: root.info.art; image-fit: cover;
+    }
+    if !info.mosaic && !info.has-art: Icon {
+        width: Math.max(14px, parent.width * 0.34); height: self.width;
+        commands: Icons.logo; stroke: #A78BFA; stroke-width: 1.8px;
+    }
 }
 
 // Kaynak rozetleri: 0 YouTube Music, 1 SoundCloud, 2 Spotify
@@ -369,6 +408,27 @@ export component PillButton inherits Rectangle {
         font-weight: root.primary || root.active ? 700 : 600;
         color: root.primary ? Theme.on-primary : (root.active ? Theme.text-primary : Theme.text-secondary);
     }
+}
+
+// İki aşamalı düğme: ilk tıklama "Emin misin?"e döner, 4 sn içinde ikinci tıklama onaylar.
+// (PillButton'dan sonra tanımlı olmalı: Slint öne bildirim kabul etmiyor.)
+export component ConfirmPill inherits HorizontalLayout {
+    in property <string> text;
+    in property <string> confirm-text: "Emin misin?";
+    in property <length> pill-height: 32px;
+    in property <bool> enabled: true;
+    callback confirmed;
+    property <bool> armed;
+    PillButton {
+        pill-height: root.pill-height;
+        text: root.armed ? root.confirm-text : root.text;
+        primary: root.armed;
+        enabled: root.enabled;
+        clicked => {
+            if (root.armed) { root.armed = false; root.confirmed(); } else { root.armed = true; }
+        }
+    }
+    Timer { interval: 4s; running: root.armed; triggered => { root.armed = false; } }
 }
 
 // İnce, üzerine gelince kalınlaşan kaydırıcı.

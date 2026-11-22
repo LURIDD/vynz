@@ -159,6 +159,33 @@ impl History {
         self.save_dislikes();
     }
 
+    /// Geri al: sıfırlanan öneri profilini geri koy.
+    pub fn restore_profile(&mut self, boosts: Vec<TrackInfo>, tracks: Vec<TrackInfo>, artists: Vec<String>) {
+        self.boosted_tracks = boosts;
+        self.disliked_tracks = tracks;
+        self.disliked_artists = artists;
+        self.save_boosts();
+        self.save_dislikes();
+    }
+
+    /// Geri al: silinen dinleme geçmişini dosyasıyla birlikte geri yaz.
+    pub fn restore_listens(&mut self, listens: Vec<Listen>) {
+        let _ = std::fs::create_dir_all(dir());
+        let body: String = listens.iter().filter_map(|l| serde_json::to_string(l).ok()).map(|s| s + "\n").collect();
+        let _ = std::fs::write(dir().join("history.jsonl"), body);
+        // Geri alma sırasında yeni dinleme eklendiyse onu da koru.
+        let newer = std::mem::take(&mut self.listens);
+        self.listens = listens;
+        for l in newer {
+            if let Ok(line) = serde_json::to_string(&l) {
+                if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(dir().join("history.jsonl")) {
+                    let _ = writeln!(f, "{line}");
+                }
+            }
+            self.listens.push(l);
+        }
+    }
+
     /// Dinleme geçmişini sil (beğeniler kütüphane olduğu için korunur).
     pub fn clear_listens(&mut self) {
         self.listens.clear();

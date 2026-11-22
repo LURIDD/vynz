@@ -5,7 +5,7 @@ import "fonts/InstrumentSerif-Regular.ttf";
 import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
 
 export { Theme, Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
 
@@ -340,6 +340,9 @@ export component AppWindow inherits Window {
     in property <[Track]> queue;
     in property <int> queue-index: -1;
     in property <string> toast;
+    // Bildirimde "Geri al" düğmesi (son yıkıcı işlem, 8 sn) ve Ctrl+Z
+    in property <bool> toast-undo;
+    callback undo();
 
     // Çalan
     in property <bool> has-now;
@@ -388,6 +391,7 @@ export component AppWindow inherits Window {
     // Beğendiklerim & Yeni liste
     in property <[Track]> liked-tracks;
     in property <int> liked-count: 0;
+    in property <string> liked-duration;
     callback play-liked(int);
     callback shuffle-liked();
     in-out property <bool> create-pl-open: false;
@@ -413,7 +417,6 @@ export component AppWindow inherits Window {
     callback open-tastes();
     // Algoritma sıfırlama: false = öneri profili, true = dinleme geçmişi de (iki adımlı onay)
     callback reset-recs(bool);
-    in-out property <int> reset-confirm: 0;
     callback taste-toggle-genre(string);
     callback taste-block-genre(string);
     callback taste-toggle-sample(int);
@@ -496,8 +499,18 @@ export component AppWindow inherits Window {
     in property <[PlaylistInfo]> playlists;
     in property <int> current-playlist: -1;
     in property <[Track]> playlist-tracks;
+    in-out property <bool> pl-rename-open: false;
+    in-out property <string> pl-rename-text: "";
+    in-out property <string> pl-filter: "";
+    in-out property <bool> pl-input-focus: false;
     callback open-playlist(int);
     callback play-playlist(int);
+    callback shuffle-playlist();
+    callback rename-playlist(int, string);
+    callback pick-playlist-image(int);
+    callback clear-playlist-image(int);
+    callback move-playlist-track(int, int);
+    callback filter-playlist(string);
     callback delete-playlist(int);
 
     // Ana sayfa / algoritma
@@ -618,6 +631,9 @@ export component AppWindow inherits Window {
 
     // Arama: yazarken (gecikmeli) ve sonuç bölümleri
     callback search-edited(string);
+    in-out property <int> search-tab: 0; // 0 Tümü, 1 Şarkılar, 2 Albümler, 3 Sanatçılar, 4 Listeler
+    // İki sütun ancak içerik alanı sol sütuna (≥340px) ve şarkılara (≥560px) yer bırakıyorsa
+    property <bool> search-wide: main.width >= 980px;
     in property <bool> has-top;
     in property <TopResult> search-top;
     callback play-top();
@@ -641,20 +657,22 @@ export component AppWindow inherits Window {
     init => { self.focus(); }
     key-pressed(e) => {
         if (e.modifiers.control && (e.text == "k" || e.text == "K")) { search-input.focus(); search-input.select-all(); return accept; }
+        if (e.modifiers.control && (e.text == "z" || e.text == "Z") && toast-undo) { root.undo(); return accept; }
         if (e.text == Key.Escape) {
             if (create-pl-open) { create-pl-open = false; return accept; }
+            if (pl-rename-open) { pl-rename-open = false; return accept; }
             if (pl-pick-open) { pl-pick-open = false; return accept; }
             if (del-pl-index >= 0) { del-pl-index = -1; return accept; }
             if (tastes-open) { tastes-open = false; return accept; }
             if (menu-open) { menu-open = false; menu-pl-open = false; return accept; }
             if (sidebar-peek) { sidebar-peek = false; return accept; }
-            if (search-input.has-focus) { keys.focus(); return accept; }
+            if (search-input.has-focus || pl-input-focus) { keys.focus(); return accept; }
             if (lyrics-open) { lyrics-open = false; return accept; }
             if (drawer-open) { drawer-open = false; return accept; }
             if (sheet != "") { root.sheet-back(); return accept; }
             return accept;
         }
-        if (search-input.has-focus || create-pl-open) { return reject; }
+        if (search-input.has-focus || create-pl-open || pl-rename-open || pl-input-focus || pl-pick-open) { return reject; }
         if (e.text == "/") { search-input.focus(); return accept; }
         if (e.text == " ") { root.toggle-play(); return accept; }
         if (e.modifiers.alt && e.text == Key.LeftArrow) { if (sheet != "") { root.sheet-back(); } else { root.go-back(); } return accept; }
@@ -848,12 +866,12 @@ export component AppWindow inherits Window {
 
                 // ===== Arama =====
                 if view == "search": VerticalLayout {
-                    spacing: 30px;
+                    spacing: 22px;
                     HorizontalLayout {
                         spacing: 12px;
                         Text {
                             text: last-query == "" ? "Ara" : "“" + last-query + "”";
-                            font-family: Theme.display; font-size: 38px; font-weight: 800; letter-spacing: -1.4px;
+                            font-family: Theme.display; font-size: 36px; font-weight: 800; letter-spacing: -1.4px;
                             color: Theme.text-primary; overflow: elide; horizontal-stretch: 1;
                         }
                         if searching: Text { text: "Aranıyor…"; vertical-alignment: center; font-size: 13px; color: Theme.text-secondary; }
@@ -863,72 +881,194 @@ export component AppWindow inherits Window {
                         font-size: 14px; color: Theme.text-secondary;
                     }
 
-                    // Üst bölüm: en iyi sonuç + şarkılar
+                    // Kategori sekmeleri + kaynak filtresi
                     if last-query != "": HorizontalLayout {
+                        spacing: 8px;
+                        HorizontalLayout {
+                            spacing: 6px; horizontal-stretch: 1; alignment: start;
+                            PillButton { pill-height: 30px; text: "Tümü"; active: search-tab == 0; clicked => { search-tab = 0; } }
+                            PillButton { pill-height: 30px; text: "Şarkılar"; active: search-tab == 1; clicked => { search-tab = 1; } }
+                            PillButton { pill-height: 30px; text: "Albümler"; active: search-tab == 2; clicked => { search-tab = 2; } }
+                            PillButton { pill-height: 30px; text: "Sanatçılar"; active: search-tab == 3; clicked => { search-tab = 3; } }
+                            PillButton { pill-height: 30px; text: "Listeler"; active: search-tab == 4; clicked => { search-tab = 4; } }
+                        }
+                        if search-tab <= 1: HorizontalLayout {
+                            spacing: 6px; alignment: end;
+                            if sc-searching: Text { text: "SoundCloud…"; vertical-alignment: center; font-size: 12px; color: Theme.text-muted; }
+                            PillButton { pill-height: 28px; text: "Tüm kaynaklar"; active: source-filter == -1; clicked => { source-filter = -1; } }
+                            PillButton { pill-height: 28px; text: "YTM"; active: source-filter == 0; clicked => { source-filter = 0; } }
+                            PillButton { pill-height: 28px; text: "SC"; active: source-filter == 1; clicked => { source-filter = 1; } }
+                        }
+                    }
+
+                    // GENİŞ PENCERE (>= 1150px) & Tümü: Solda %41 Katalog (2'li kartlar), Sağda %59 En İyi Sonuç + Şarkılar
+                    if last-query != "" && search-wide && search-tab == 0: srow := HorizontalLayout {
                         spacing: 28px;
-                        // En iyi sonuç
+                        // Sol sütun: Sanatçılar, Albümler, Listeler (kompakt 2'li kart ızgarası).
+                        // Genişlik sabit: uzun şarkı adları esneme payını yiyip kartları eziyordu.
                         VerticalLayout {
-                            horizontal-stretch: 2; spacing: 14px; alignment: start;
-                            Text { text: "En iyi sonuç"; font-family: Theme.display; font-size: 21px; font-weight: 700; color: Theme.text-primary; }
-                            top-card := Rectangle {
-                                height: 250px; border-radius: Theme.r-lg;
-                                background: top-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
-                                animate background { duration: Theme.micro; }
-                                top-ta := TouchArea { enabled: has-top; mouse-cursor: pointer; clicked => { root.play-top(); } }
-                                // Yükleniyor: iskelet
-                                if !has-top: Rectangle {
-                                    Rectangle { x: 24px; y: 24px; width: 116px; height: 116px; border-radius: Theme.r-md; background: Theme.surface-2; }
-                                    Rectangle { x: 24px; y: 162px; width: parent.width * 0.5; height: 26px; border-radius: 8px; background: Theme.surface-2; }
-                                    Rectangle { x: 24px; y: 200px; width: parent.width * 0.3; height: 14px; border-radius: 7px; background: Theme.surface-2; }
-                                }
-                                if has-top: Rectangle {
-                                    Cover {
-                                        x: 24px; y: 24px; width: 116px; height: 116px;
-                                        radius: search-top.kind == 2 ? 58px : Theme.r-md;
-                                        art: search-top.art; has-art: search-top.has-art;
-                                        drop-shadow-blur: 30px; drop-shadow-offset-y: 12px; drop-shadow-color: #00000080;
-                                    }
-                                    Text {
-                                        x: 24px; y: 156px; width: parent.width - 120px;
-                                        text: search-top.title; overflow: elide;
-                                        font-family: Theme.display; font-size: 30px; font-weight: 800; letter-spacing: -1px; color: Theme.text-primary;
-                                    }
-                                    Rectangle {
-                                        x: 24px; y: 202px; height: 24px; width: sub-t.preferred-width + 20px; border-radius: 12px; background: Theme.surface-2;
-                                        sub-t := Text { text: search-top.sub; font-size: 12px; font-weight: 600; color: Theme.text-secondary; }
-                                    }
-                                    // Oynat düğmesi: üzerine gelince belirginleşir
-                                    Rectangle {
-                                        width: 56px; height: 56px; border-radius: 28px;
-                                        x: parent.width - 80px;
-                                        y: parent.height - (top-ta.has-hover ? 80px : 72px);
-                                        opacity: top-ta.has-hover ? 1 : 0.0;
-                                        animate y, opacity { duration: Theme.card; easing: ease-out; }
-                                        background: Theme.accent;
-                                        drop-shadow-blur: 24px; drop-shadow-offset-y: 10px; drop-shadow-color: #00000099;
-                                        Icon { x: 20px; width: 20px; height: 20px; commands: search-top.kind == 0 ? Icons.play : Icons.chevron-right; stroke: Theme.on-primary; fill: search-top.kind == 0 ? Theme.on-primary : transparent; stroke-width: 2px; }
+                            width: Math.max(340px, Math.min(460px, srow.width * 0.38));
+                            spacing: 24px; alignment: start;
+                            for sh[si] in search-shelves: VerticalLayout {
+                                spacing: 12px;
+                                Text { text: sh.title; font-family: Theme.display; font-size: 18px; font-weight: 700; color: Theme.text-primary; }
+                                sg := Rectangle {
+                                    property <length> gap: 12px;
+                                    property <int> max-cards: Math.min(sh.cards.length, 4);
+                                    property <length> cw: (self.width - gap) / 2;
+                                    property <length> ch: sh.style == 3 ? cw + 44px : cw + 48px;
+                                    property <int> rows-n: Math.ceil(max-cards / 2);
+                                    height: rows-n > 0 ? rows-n * ch + (rows-n - 1) * gap : 0px;
+                                    for c[ci] in sh.cards: CardTile {
+                                        visible: ci < 4;
+                                        x: Math.mod(ci, 2) * (sg.cw + sg.gap);
+                                        y: Math.floor(ci / 2) * (sg.ch + sg.gap);
+                                        width: ci < 4 ? sg.cw : 0px;
+                                        height: ci < 4 ? sg.ch : 0px;
+                                        card: c;
+                                        clicked => { root.open-search-card(si, ci); }
                                     }
                                 }
                             }
                         }
-                        // Şarkılar (ilk dört)
+
+                        // Sağ sütun: En İyi Sonuç + kesintisiz Şarkılar listesi
                         VerticalLayout {
-                            horizontal-stretch: 3; spacing: 14px; alignment: start;
-                            Text { text: "Şarkılar"; font-family: Theme.display; font-size: 21px; font-weight: 700; color: Theme.text-primary; }
+                            horizontal-stretch: 3; spacing: 18px; alignment: start;
+                            if has-top || searching: VerticalLayout {
+                                spacing: 10px;
+                                Text { text: "En iyi sonuç"; font-family: Theme.display; font-size: 18px; font-weight: 700; color: Theme.text-primary; }
+                                Rectangle {
+                                    height: 104px; border-radius: Theme.r-lg;
+                                    background: top-ta-w.has-hover
+                                        ? @linear-gradient(125deg, Theme.accent.with-alpha(0.22) 0%, Theme.surface-2 72%)
+                                        : @linear-gradient(125deg, Theme.accent.with-alpha(0.14) 0%, Theme.surface-1 72%);
+                                    border-width: 1px;
+                                    border-color: top-ta-w.has-hover ? Theme.accent.with-alpha(0.45) : Theme.border;
+                                    animate border-color { duration: Theme.micro; }
+                                    top-ta-w := TouchArea { enabled: has-top; mouse-cursor: pointer; clicked => { root.play-top(); } }
+                                    if !has-top: HorizontalLayout {
+                                        padding: 16px; spacing: 16px;
+                                        Rectangle { width: 72px; height: 72px; border-radius: Theme.r-md; background: Theme.surface-2; }
+                                        VerticalLayout {
+                                            alignment: center; spacing: 8px; horizontal-stretch: 1;
+                                            Rectangle { width: 180px; height: 18px; border-radius: 6px; background: Theme.surface-2; }
+                                            Rectangle { width: 120px; height: 12px; border-radius: 6px; background: Theme.surface-1; }
+                                        }
+                                    }
+                                    if has-top: HorizontalLayout {
+                                        padding: 16px; spacing: 16px;
+                                        Cover {
+                                            width: 72px; height: 72px;
+                                            radius: search-top.kind == 2 ? 36px : Theme.r-md;
+                                            art: search-top.art; has-art: search-top.has-art;
+                                            drop-shadow-blur: 20px; drop-shadow-offset-y: 8px; drop-shadow-color: #00000070;
+                                        }
+                                        VerticalLayout {
+                                            horizontal-stretch: 1; alignment: center; spacing: 4px;
+                                            Text { text: "EN İYİ SONUÇ"; font-size: 10px; font-weight: 800; letter-spacing: 0.8px; color: Theme.accent; }
+                                            Text { text: search-top.title; font-family: Theme.display; font-size: 20px; font-weight: 800; letter-spacing: -0.4px; color: Theme.text-primary; overflow: elide; }
+                                            Text { text: search-top.sub; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                                        }
+                                        Rectangle {
+                                            width: 44px; height: 44px; y: 14px; border-radius: 22px;
+                                            background: Theme.accent;
+                                            Icon {
+                                                width: 18px; height: 18px; x: 14px; y: 13px;
+                                                commands: search-top.kind == 0 ? Icons.play : Icons.chevron-right;
+                                                stroke: Theme.on-primary;
+                                                fill: search-top.kind == 0 ? Theme.on-primary : transparent;
+                                                stroke-width: 1.8px;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 10px;
+                                Text { text: "Şarkılar"; font-family: Theme.display; font-size: 18px; font-weight: 700; color: Theme.text-primary; }
+                                if searching && results.length == 0: VerticalLayout {
+                                    spacing: 6px;
+                                    for k in 6: Rectangle {
+                                        height: 56px; border-radius: Theme.r-sm; background: Theme.surface-subtle;
+                                        Rectangle { x: 14px; y: 8px; width: 40px; height: 40px; border-radius: 8px; background: Theme.surface-2; }
+                                        Rectangle { x: 68px; y: 14px; width: parent.width * (0.35 + 0.08 * k); height: 12px; border-radius: 6px; background: Theme.surface-2; }
+                                        Rectangle { x: 68px; y: 32px; width: parent.width * 0.22; height: 10px; border-radius: 5px; background: Theme.surface-1; }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 0px;
+                                    for t[i] in results: TrackRow {
+                                        visible: source-filter == -1 || t.source == source-filter;
+                                        height: self.visible ? 56px : 0px;
+                                        track: t; index: i;
+                                        playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                                        clicked => { root.play-result(i); }
+                                        hovered(on) => { root.hover-result(i, on); }
+                                        menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 1; root.menu-for(1, i, 0); }
+                                    }
+                                }
+                                if !searching && results.length == 0 && !sc-searching: Text {
+                                    text: "Şarkı bulunamadı. Başka bir şekilde yazmayı dene."; font-size: 14px; color: Theme.text-secondary;
+                                }
+                            }
+                        }
+                    }
+
+                    // DAR PENCERE (< 1150px) veya Şarkılar sekmesi: En İyi Sonuç + Şarkılar EN ÜSTTE
+                    if last-query != "" && (!search-wide || search-tab == 1) && (search-tab == 0 || search-tab == 1): VerticalLayout {
+                        spacing: 22px;
+                        if has-top: Rectangle {
+                            height: 104px; border-radius: Theme.r-lg;
+                            background: top-ta-n.has-hover
+                                ? @linear-gradient(125deg, Theme.accent.with-alpha(0.22) 0%, Theme.surface-2 72%)
+                                : @linear-gradient(125deg, Theme.accent.with-alpha(0.14) 0%, Theme.surface-1 72%);
+                            border-width: 1px;
+                            border-color: top-ta-n.has-hover ? Theme.accent.with-alpha(0.45) : Theme.border;
+                            top-ta-n := TouchArea { enabled: has-top; mouse-cursor: pointer; clicked => { root.play-top(); } }
+                            HorizontalLayout {
+                                padding: 16px; spacing: 16px;
+                                Cover {
+                                    width: 72px; height: 72px;
+                                    radius: search-top.kind == 2 ? 36px : Theme.r-md;
+                                    art: search-top.art; has-art: search-top.has-art;
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1; alignment: center; spacing: 4px;
+                                    Text { text: "EN İYİ SONUÇ"; font-size: 10px; font-weight: 800; letter-spacing: 0.8px; color: Theme.accent; }
+                                    Text { text: search-top.title; font-family: Theme.display; font-size: 20px; font-weight: 800; color: Theme.text-primary; overflow: elide; }
+                                    Text { text: search-top.sub; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                                }
+                                Rectangle {
+                                    width: 44px; height: 44px; y: 14px; border-radius: 22px; background: Theme.accent;
+                                    Icon {
+                                        width: 18px; height: 18px; x: 14px; y: 13px;
+                                        commands: search-top.kind == 0 ? Icons.play : Icons.chevron-right;
+                                        stroke: Theme.on-primary;
+                                        fill: search-top.kind == 0 ? Theme.on-primary : transparent;
+                                        stroke-width: 1.8px;
+                                    }
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 10px;
+                            Text { text: "Şarkılar"; font-family: Theme.display; font-size: 20px; font-weight: 700; color: Theme.text-primary; }
                             if searching && results.length == 0: VerticalLayout {
                                 spacing: 6px;
                                 for k in 4: Rectangle {
                                     height: 56px; border-radius: Theme.r-sm; background: Theme.surface-subtle;
                                     Rectangle { x: 14px; y: 8px; width: 40px; height: 40px; border-radius: 8px; background: Theme.surface-2; }
                                     Rectangle { x: 68px; y: 14px; width: parent.width * (0.35 + 0.1 * k); height: 12px; border-radius: 6px; background: Theme.surface-2; }
-                                    Rectangle { x: 68px; y: 32px; width: parent.width * 0.2; height: 10px; border-radius: 5px; background: Theme.surface-1; }
                                 }
                             }
                             VerticalLayout {
                                 spacing: 0px;
                                 for t[i] in results: TrackRow {
-                                    visible: i < 4;
-                                    height: i < 4 ? 56px : 0px;
+                                    visible: source-filter == -1 || t.source == source-filter;
+                                    height: self.visible ? 56px : 0px;
                                     track: t; index: i;
                                     playing: has-now && t.key == now.key; is-running: playing && !buffering;
                                     clicked => { root.play-result(i); }
@@ -936,39 +1076,26 @@ export component AppWindow inherits Window {
                                     menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 1; root.menu-for(1, i, 0); }
                                 }
                             }
-                            if !searching && last-query != "" && results.length == 0 && !sc-searching: Text {
+                            if !searching && results.length == 0 && !sc-searching: Text {
                                 text: "Şarkı bulunamadı. Başka bir şekilde yazmayı dene."; font-size: 14px; color: Theme.text-secondary;
                             }
                         }
                     }
 
-                    // Albümler, sanatçılar, listeler
-                    for sh[si] in search-shelves: ShelfRow {
-                        shelf: sh; now-key: has-now ? now.key : ""; wide: main.width > 1150px;
-                        open(i) => { root.open-search-card(si, i); }
-                    }
-
-                    // Tüm şarkılar (YouTube Music + SoundCloud)
-                    if results.length > 4 || sc-searching: VerticalLayout {
-                        spacing: 14px;
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Tüm şarkılar"; font-family: Theme.display; font-size: 21px; font-weight: 700; color: Theme.text-primary; vertical-alignment: center; horizontal-stretch: 1; }
-                            if sc-searching: Text { text: "SoundCloud aranıyor…"; vertical-alignment: center; font-size: 12.5px; color: Theme.text-muted; }
-                            PillButton { pill-height: 30px; text: "Tümü"; active: source-filter == -1; clicked => { source-filter = -1; } }
-                            PillButton { pill-height: 30px; text: "YouTube Music"; active: source-filter == 0; clicked => { source-filter = 0; } }
-                            PillButton { pill-height: 30px; text: "SoundCloud"; active: source-filter == 1; clicked => { source-filter = 1; } }
-                        }
-                        VerticalLayout {
-                            spacing: 0px;
-                            for t[i] in results: TrackRow {
-                                visible: i >= 4 && (source-filter == -1 || t.source == source-filter);
-                                height: self.visible ? 56px : 0px;
-                                track: t; index: i;
-                                playing: has-now && t.key == now.key; is-running: playing && !buffering;
-                                clicked => { root.play-result(i); }
-                                hovered(on) => { root.hover-result(i, on); }
-                                menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 1; root.menu-for(1, i, 0); }
+                    // Dar pencerede (Tümü) veya kategori sekmelerinde (Albümler=2, Sanatçılar=3, Listeler=4) raflar
+                    if last-query != "" && ((!search-wide && search-tab == 0) || search-tab >= 2): VerticalLayout {
+                        spacing: 28px;
+                        for sh[si] in search-shelves: Rectangle {
+                            property <bool> show-sh: search-tab == 0
+                                || (search-tab == 2 && sh.title == "Albümler")
+                                || (search-tab == 3 && sh.title == "Sanatçılar")
+                                || (search-tab == 4 && sh.title == "Listeler");
+                            visible: show-sh;
+                            height: show-sh ? sr-inner.preferred-height : 0px;
+                            sr-inner := ShelfRow {
+                                width: parent.width;
+                                shelf: sh; now-key: has-now ? now.key : ""; wide: main.width > 1150px;
+                                open(i) => { root.open-search-card(si, i); }
                             }
                         }
                     }
@@ -1162,9 +1289,9 @@ export component AppWindow inherits Window {
                                 Text { text: import-name; font-family: Theme.display; font-size: 22px; font-weight: 800; color: Theme.text-primary; overflow: elide; }
                                 Text { text: import-note; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
                             }
-                            PillButton {
-                                y: 4px; text: "Temizle";
-                                clicked => { root.import-clear(); }
+                            ConfirmPill {
+                                pill-height: 40px; text: "Temizle"; confirm-text: "Aktarım silinsin mi?";
+                                confirmed => { root.import-clear(); }
                             }
                             PillButton {
                                 y: 4px; text: "Kütüphaneye kaydet ("+ (import-counts[0] + import-counts[1] + import-counts[3]) + ")"; primary: true;
@@ -1194,37 +1321,250 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // ===== Kaydedilen liste =====
+                // ===== Kaydedilen liste (2×2 mozaik, kapaktan renk geçişli üst başlık, toplam süre, yeniden adlandırma & filtre) =====
                 if view == "playlist" && current-playlist >= 0 && current-playlist < playlists.length: VerticalLayout {
                     spacing: 20px;
-                    HorizontalLayout {
-                        spacing: 16px;
-                        VerticalLayout {
-                            horizontal-stretch: 1; spacing: 4px;
-                            HorizontalLayout {
-                                spacing: 8px; alignment: start;
-                                if can-back: IconButton { icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.go-back(); } }
-                                Text { text: "Liste"; vertical-alignment: center; font-size: 12px; font-weight: 700; color: Theme.accent; }
+
+                    // Kapaktan türeyen üst başlık (Hero)
+                    Rectangle {
+                        border-radius: Theme.r-xl;
+                        background: @linear-gradient(180deg, playlists[current-playlist].accent.with-alpha(0.22) 0%, Theme.surface-1 100%);
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        HorizontalLayout {
+                            padding: 24px; spacing: 26px;
+                            Rectangle {
+                                width: 180px; height: 180px;
+                                PlaylistCover {
+                                    width: parent.width; height: parent.height;
+                                    radius: Theme.r-lg; tile-gap: 2px;
+                                    info: playlists[current-playlist];
+                                    drop-shadow-blur: 40px; drop-shadow-offset-y: 16px; drop-shadow-color: #00000099;
+                                }
+                                // Üzerine gelince: özel kapak seç / kaldır
+                                plc-ta := TouchArea { mouse-cursor: pointer; clicked => { root.pick-playlist-image(current-playlist); } }
+                                Rectangle {
+                                    border-radius: Theme.r-lg;
+                                    background: #000000a0;
+                                    opacity: plc-ta.has-hover || plc-x-ta.has-hover ? 1 : 0;
+                                    animate opacity { duration: Theme.micro; }
+                                    VerticalLayout {
+                                        alignment: center; spacing: 6px;
+                                        Icon { x: (parent.width - self.width) / 2; width: 26px; height: 26px; commands: Icons.plus; stroke: #FFFFFF; }
+                                        Text {
+                                            text: playlists[current-playlist].custom ? "Kapağı değiştir" : "Kapak seç";
+                                            horizontal-alignment: center; font-size: 12.5px; font-weight: 700; color: #FFFFFF;
+                                        }
+                                    }
+                                    Rectangle {
+                                        visible: playlists[current-playlist].custom;
+                                        x: parent.width - 34px; y: 8px; width: 26px; height: 26px; border-radius: 13px;
+                                        background: plc-x-ta.has-hover ? #FF4E45cc : #00000099;
+                                        plc-x-ta := TouchArea { mouse-cursor: pointer; clicked => { root.clear-playlist-image(current-playlist); } }
+                                        Icon { width: 13px; height: 13px; commands: Icons.x; stroke: #FFFFFF; }
+                                    }
+                                }
                             }
-                            Text { text: playlists[current-playlist].name; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; overflow: elide; }
-                            Text { text: playlists[current-playlist].count + " şarkı"; font-size: 14px; color: Theme.text-secondary; }
-                        }
-                        VerticalLayout {
-                            alignment: end;
-                            HorizontalLayout {
-                                spacing: 10px;
-                                PillButton { text: "Çal"; primary: true; enabled: playlist-tracks.length > 0; clicked => { root.play-playlist(0); } }
-                                PillButton { text: "Sil"; clicked => { del-pl-index = current-playlist; } }
+                            VerticalLayout {
+                                horizontal-stretch: 1; alignment: end; spacing: 8px;
+                                HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    if can-back: IconButton { icon: Icons.chevron-left; tint: Theme.text-primary; clicked => { root.go-back(); } }
+                                    Text { text: "ÇALMA LİSTESİ"; vertical-alignment: center; font-size: 11px; font-weight: 800; letter-spacing: 0.8px; color: Theme.accent; }
+                                }
+                                if !pl-rename-open: Text {
+                                    text: playlists[current-playlist].name;
+                                    font-family: Theme.display; font-size: 38px; font-weight: 800; letter-spacing: -1.4px;
+                                    color: Theme.text-primary; overflow: elide;
+                                }
+                                if pl-rename-open: HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    Rectangle {
+                                        width: 340px; height: 42px; border-radius: Theme.r-sm;
+                                        background: Theme.surface-2; border-width: 1px; border-color: Theme.accent;
+                                        pl-ren-input := TextInput {
+                                            x: 12px; y: 0; width: parent.width - 24px; height: parent.height;
+                                            vertical-alignment: center; single-line: true;
+                                            font-family: Theme.display; font-size: 20px; font-weight: 700; color: Theme.text-primary;
+                                            text <=> pl-rename-text;
+                                            changed has-focus => { root.pl-input-focus = self.has-focus; }
+                                            accepted => {
+                                                if (pl-rename-text != "") {
+                                                    root.rename-playlist(current-playlist, pl-rename-text);
+                                                }
+                                                pl-rename-open = false;
+                                                keys.focus();
+                                            }
+                                        }
+                                    }
+                                    PillButton {
+                                        pill-height: 36px; y: 3px; text: "Kaydet"; primary: true; enabled: pl-rename-text != "";
+                                        clicked => {
+                                            root.rename-playlist(current-playlist, pl-rename-text);
+                                            pl-rename-open = false;
+                                            keys.focus();
+                                        }
+                                    }
+                                    PillButton {
+                                        pill-height: 36px; y: 3px; text: "İptal";
+                                        clicked => { pl-rename-open = false; keys.focus(); }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    Text {
+                                        text: playlists[current-playlist].count + " şarkı" + (playlists[current-playlist].duration-text != "" ? " · " + playlists[current-playlist].duration-text : "");
+                                        font-family: Theme.mono; font-size: 12.5px; color: Theme.text-secondary;
+                                    }
+                                }
+                                Rectangle { height: 4px; }
+                                HorizontalLayout {
+                                    spacing: 10px; alignment: start;
+                                    PillButton { pill-height: 38px; text: "Çal"; primary: true; enabled: playlist-tracks.length > 0; clicked => { root.play-playlist(0); } }
+                                    PillButton { pill-height: 38px; text: "Karıştır"; enabled: playlists[current-playlist].count > 1; clicked => { root.shuffle-playlist(); } }
+                                    PillButton {
+                                        pill-height: 38px; text: "Yeniden adlandır";
+                                        clicked => {
+                                            pl-rename-text = playlists[current-playlist].name;
+                                            pl-rename-open = true;
+                                        }
+                                    }
+                                    PillButton { pill-height: 38px; text: "Sil"; clicked => { del-pl-index = current-playlist; } }
+                                }
                             }
                         }
                     }
+
+                    // Liste içi hızlı filtre çubuğu
+                    if playlists[current-playlist].count > 0: HorizontalLayout {
+                        spacing: 12px;
+                        Rectangle {
+                            width: 290px; height: 36px; border-radius: 18px;
+                            background: pl-flt-in.has-focus ? Theme.surface-2 : Theme.surface-1;
+                            border-width: 1px; border-color: pl-flt-in.has-focus ? Theme.accent.with-alpha(0.6) : Theme.border;
+                            HorizontalLayout {
+                                padding-left: 12px; padding-right: 10px; spacing: 8px;
+                                Icon { y: 10px; width: 15px; height: 15px; commands: Icons.search; stroke: Theme.text-muted; }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                    pl-flt-in := TextInput {
+                                        x: 0; y: 0; width: parent.width; height: parent.height;
+                                        vertical-alignment: center; single-line: true;
+                                        font-size: 13px; color: Theme.text-primary;
+                                        text <=> pl-filter;
+                                        changed has-focus => { root.pl-input-focus = self.has-focus; }
+                                        edited => { root.filter-playlist(self.text); }
+                                    }
+                                    if pl-filter == "": Text {
+                                        x: 0; height: parent.height; vertical-alignment: center;
+                                        text: "Liste içinde ara…"; font-size: 13px; color: Theme.text-muted;
+                                    }
+                                }
+                                if pl-filter != "": IconButton {
+                                    y: 5px; width: 24px; height: 24px; icon: Icons.x;
+                                    clicked => { pl-filter = ""; root.filter-playlist(""); }
+                                }
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1; horizontal-alignment: right; vertical-alignment: center;
+                            text: pl-filter == "" ? "Satır üzerine gel: ↑/↓ sırala · × çıkar" : playlist-tracks.length + " eşleşme";
+                            font-size: 12px; color: Theme.text-muted;
+                        }
+                    }
+
+                    if playlists[current-playlist].count == 0: Text {
+                        text: "Bu listede henüz şarkı yok. Şarkılara sağ tıklayıp \"Listeye ekle…\" diyebilirsin.";
+                        font-size: 13.5px; color: Theme.text-muted;
+                    }
+                    if playlists[current-playlist].count > 0 && playlist-tracks.length == 0: Text {
+                        text: "“" + pl-filter + "” ile eşleşen şarkı bulunamadı.";
+                        font-size: 13.5px; color: Theme.text-muted;
+                    }
+
                     VerticalLayout {
                         spacing: 0px;
-                        for t[i] in playlist-tracks: TrackRow {
-                            track: t; index: i;
-                            playing: has-now && t.key == now.key; is-running: playing && !buffering;
-                            clicked => { root.play-playlist(i); }
-                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 2; root.menu-for(2, i, 0); }
+                        for t[i] in playlist-tracks: Rectangle {
+                            height: 56px; border-radius: Theme.r-sm;
+                            background: (has-now && t.key == now.key) || plt-ta.has-hover ? Theme.surface-1 : transparent;
+                            animate background { duration: Theme.micro; }
+                            plt-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.play-playlist(i); }
+                                pointer-event(e) => {
+                                    if (e.button == PointerEventButton.right && e.kind == PointerEventKind.down) {
+                                        menu-x = self.absolute-position.x + self.mouse-x;
+                                        menu-y = self.absolute-position.y + self.mouse-y;
+                                        menu-open = true; menu-kind = 2; root.menu-for(2, i, 0);
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                padding-left: 14px; padding-right: 10px; spacing: 14px;
+                                Rectangle {
+                                    width: 24px;
+                                    if has-now && t.key == now.key: EqBars { x: 0; running: playing && !buffering; }
+                                    if !(has-now && t.key == now.key): Text {
+                                        x: 0; text: (i < 9 ? "0" : "") + (i + 1);
+                                        font-family: Theme.mono; font-size: 12px; color: Theme.text-muted; vertical-alignment: center;
+                                    }
+                                }
+                                Cover { width: 40px; height: 40px; y: 8px; radius: 8px; art: t.art; has-art: t.has-art; }
+                                VerticalLayout {
+                                    alignment: center; spacing: 1px; horizontal-stretch: 2;
+                                    Text {
+                                        text: t.title; overflow: elide; font-size: 14px;
+                                        font-weight: (has-now && t.key == now.key) ? 700 : 600;
+                                        color: (has-now && t.key == now.key) ? Theme.accent : Theme.text-primary;
+                                    }
+                                    Text { text: t.artist; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                                }
+                                Text {
+                                    horizontal-stretch: 1; text: t.album; overflow: elide;
+                                    horizontal-alignment: left; vertical-alignment: center; font-size: 13px; color: Theme.text-secondary;
+                                }
+                                Text {
+                                    width: 48px; horizontal-alignment: right; vertical-alignment: center;
+                                    text: t.duration > 0 ? Fmt.time(t.duration) : "";
+                                    font-family: Theme.mono; font-size: 12px; color: Theme.text-muted;
+                                }
+                                // Hover'da beliren sıralama (↑/↓) ve çıkarma (×) düğmeleri
+                                pl-acts := HorizontalLayout {
+                                    property <bool> hot-u: false;
+                                    property <bool> hot-d: false;
+                                    spacing: 2px; alignment: end;
+                                    opacity: (plt-ta.has-hover || self.hot-u || self.hot-d || plx-ta.has-hover) ? 1 : 0;
+                                    animate opacity { duration: Theme.micro; }
+                                    if pl-filter == "": Rectangle {
+                                        width: 28px; height: 28px; y: 14px; border-radius: 7px;
+                                        background: plu-ta.has-hover && i > 0 ? Theme.surface-3 : transparent;
+                                        opacity: i > 0 ? 1 : 0.3;
+                                        plu-ta := TouchArea {
+                                            enabled: i > 0; mouse-cursor: pointer;
+                                            changed has-hover => { pl-acts.hot-u = self.has-hover; }
+                                            clicked => { root.move-playlist-track(i, -1); }
+                                        }
+                                        Icon { width: 14px; height: 14px; commands: Icons.chevron-up; stroke: Theme.text-secondary; }
+                                    }
+                                    if pl-filter == "": Rectangle {
+                                        width: 28px; height: 28px; y: 14px; border-radius: 7px;
+                                        background: pldn-ta.has-hover && i + 1 < playlist-tracks.length ? Theme.surface-3 : transparent;
+                                        opacity: i + 1 < playlist-tracks.length ? 1 : 0.3;
+                                        pldn-ta := TouchArea {
+                                            enabled: i + 1 < playlist-tracks.length; mouse-cursor: pointer;
+                                            changed has-hover => { pl-acts.hot-d = self.has-hover; }
+                                            clicked => { root.move-playlist-track(i, 1); }
+                                        }
+                                        Icon { width: 14px; height: 14px; commands: Icons.chevron-down; stroke: Theme.text-secondary; }
+                                    }
+                                    Rectangle {
+                                        width: 28px; height: 28px; y: 14px; border-radius: 7px;
+                                        background: plx-ta.has-hover ? #FF4E4530 : transparent;
+                                        plx-ta := TouchArea { mouse-cursor: pointer; clicked => { root.remove-from-playlist(i); } }
+                                        Icon { width: 14px; height: 14px; commands: Icons.x; stroke: plx-ta.has-hover ? #FF6B63 : Theme.text-secondary; }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1232,20 +1572,41 @@ export component AppWindow inherits Window {
                 // ===== Beğendiklerim =====
                 if view == "liked": VerticalLayout {
                     spacing: 20px;
-                    HorizontalLayout {
-                        spacing: 16px;
-                        VerticalLayout {
-                            horizontal-stretch: 1; spacing: 4px;
-                            Text { text: "Kütüphane"; font-size: 12px; font-weight: 700; color: Theme.accent; }
-                            Text { text: "Beğendiklerim"; font-family: Theme.display; font-size: 44px; font-weight: 800; letter-spacing: -1.6px; color: Theme.text-primary; }
-                            Text { text: liked-count + " şarkı"; font-size: 14px; color: Theme.text-secondary; }
-                        }
-                        VerticalLayout {
-                            alignment: end;
-                            HorizontalLayout {
-                                spacing: 10px;
-                                PillButton { text: "Çal"; primary: true; enabled: liked-tracks.length > 0; clicked => { root.play-liked(0); } }
-                                PillButton { text: "Karıştır"; enabled: liked-tracks.length > 1; clicked => { root.shuffle-liked(); } }
+                    // Listelerim ile aynı üst başlık; kapak kalp simgeli degrade
+                    Rectangle {
+                        border-radius: Theme.r-xl;
+                        background: @linear-gradient(180deg, #FB718538 0%, Theme.surface-1 100%);
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        HorizontalLayout {
+                            padding: 24px; spacing: 26px;
+                            Rectangle {
+                                width: 180px; height: 180px; border-radius: Theme.r-lg;
+                                background: @linear-gradient(135deg, #FB7185 0%, #A855F7 55%, #4338CA 100%);
+                                drop-shadow-blur: 40px; drop-shadow-offset-y: 16px; drop-shadow-color: #00000099;
+                                Icon {
+                                    width: 64px; height: 64px;
+                                    commands: Icons.heart; stroke: #FFFFFF; fill: #FFFFFF; stroke-width: 1.4px;
+                                }
+                            }
+                            VerticalLayout {
+                                horizontal-stretch: 1; alignment: end; spacing: 8px;
+                                Text { text: "KÜTÜPHANE"; font-size: 11px; font-weight: 800; letter-spacing: 0.8px; color: Theme.accent; }
+                                Text {
+                                    text: "Beğendiklerim";
+                                    font-family: Theme.display; font-size: 38px; font-weight: 800; letter-spacing: -1.4px;
+                                    color: Theme.text-primary; overflow: elide;
+                                }
+                                Text {
+                                    text: liked-count + " şarkı" + (liked-duration != "" && liked-count > 0 ? " · " + liked-duration : "");
+                                    font-family: Theme.mono; font-size: 12.5px; color: Theme.text-secondary;
+                                }
+                                Rectangle { height: 4px; }
+                                HorizontalLayout {
+                                    spacing: 10px; alignment: start;
+                                    PillButton { pill-height: 38px; text: "Çal"; primary: true; enabled: liked-tracks.length > 0; clicked => { root.play-liked(0); } }
+                                    PillButton { pill-height: 38px; text: "Karıştır"; enabled: liked-tracks.length > 1; clicked => { root.shuffle-liked(); } }
+                                }
                             }
                         }
                     }
@@ -1336,21 +1697,12 @@ export component AppWindow inherits Window {
                         SettingRow {
                             title: "Öneri profilini sıfırla";
                             note: "Zevkleri, \"Bunu daha çok öner\" ve \"İlgilenmiyorum\" seçimlerini siler. Dinleme geçmişin ve beğenilerin korunur.";
-                            PillButton { pill-height: 30px; text: "Sıfırla"; clicked => { reset-confirm = 0; root.reset-recs(false); } }
+                            ConfirmPill { pill-height: 30px; text: "Sıfırla"; confirm-text: "Emin misin? Sıfırla"; confirmed => { root.reset-recs(false); } }
                         }
                         SettingRow {
                             title: "Dinleme geçmişini de temizle";
-                            note: reset-confirm == 2
-                                ? "Emin misin? Geçmiş, istatistikler ve öneri profili silinir; geri alınamaz. Beğendiklerin korunur."
-                                : "Tamamen sıfırdan başla: öneri profiliyle birlikte tüm dinleme geçmişi silinir.";
-                            PillButton {
-                                pill-height: 30px;
-                                text: reset-confirm == 2 ? "Evet, hepsini sil" : "Temizle";
-                                clicked => {
-                                    if (reset-confirm == 2) { reset-confirm = 0; root.reset-recs(true); } else { reset-confirm = 2; }
-                                }
-                            }
-                            if reset-confirm == 2: PillButton { pill-height: 30px; text: "Vazgeç"; clicked => { reset-confirm = 0; } }
+                            note: "Tamamen sıfırdan başla: öneri profiliyle birlikte dinleme geçmişi ve istatistikler silinir. Beğendiklerin korunur; 8 sn içinde geri alınabilir.";
+                            ConfirmPill { pill-height: 30px; text: "Temizle"; confirm-text: "Evet, hepsini sil"; confirmed => { root.reset-recs(true); } }
                         }
                         if hidden-artists.length > 0: Rectangle {
                             border-radius: Theme.r-md; background: Theme.surface-1;
@@ -1387,7 +1739,7 @@ export component AppWindow inherits Window {
                                 pill-height: 30px; text: label; active: cache-index == i;
                                 clicked => { cache-index = i; root.settings-changed(); }
                             }
-                            PillButton { pill-height: 30px; text: "Temizle"; clicked => { root.clear-cache(); } }
+                            ConfirmPill { pill-height: 30px; text: "Temizle"; confirm-text: "Önbelleği sil?"; confirmed => { root.clear-cache(); } }
                         }
                         SettingRow {
                             title: "Dinlenmeyenleri sil";
@@ -1665,10 +2017,10 @@ export component AppWindow inherits Window {
 
         x: 16px;
         width: root.width - 32px;
-        height: root.height - Theme.player-clearance - 4px;
+        height: (lyrics-open && lyrics-mode) ? root.height - 24px : root.height - Theme.player-clearance - 4px;
         y: lyrics-open ? 12px : root.height + 20px;
         opacity: lyrics-open ? 1 : 0;
-        animate y, opacity { duration: 260ms; easing: ease-out; }
+        animate y, height, opacity { duration: 240ms; easing: ease-out; }
         drop-shadow-blur: 60px; drop-shadow-offset-y: 20px; drop-shadow-color: #000000aa;
         border-radius: Theme.r-xl;
 
@@ -1716,29 +2068,107 @@ export component AppWindow inherits Window {
                 visible: self.opacity > 0;
                 animate x, opacity { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
             HorizontalLayout {
-                padding: 48px; padding-right: 64px; spacing: 64px;
-                // Sol: kapak ve kimlik
+                // Kapak kenardan uzak, geniş pencerede ortaya doğru kayar
+                padding-left: Math.max(112px, lyr.width * 0.09); padding-right: 64px; padding-top: 48px; padding-bottom: 36px;
+                spacing: Math.max(64px, lyr.width * 0.05);
+                // Sol: büyük kapak + kapak altı sade kontroller
                 VerticalLayout {
-                    width: 300px; alignment: center; spacing: 16px;
-                    Cover {
-                        width: 300px; height: 300px; radius: Theme.r-lg;
-                        art: now.art; has-art: has-now && now.has-art;
-                        drop-shadow-blur: 60px; drop-shadow-offset-y: 30px; drop-shadow-color: #000000b0;
+                    property <length> cs: Math.max(260px, Math.min(Math.min(440px, lyr.width * 0.3), lyr.height - 290px));
+                    width: cs; alignment: center; spacing: 14px;
+                    Rectangle {
+                        width: parent.cs; height: parent.cs;
+                        cov-ta := TouchArea { }
+                        Cover {
+                            width: parent.width; height: parent.height; radius: Theme.r-lg;
+                            art: now.art; has-art: has-now && now.has-art;
+                            drop-shadow-blur: 60px; drop-shadow-offset-y: 30px; drop-shadow-color: #000000b8;
+                        }
+                        // Beğeni yalnız başlık satırındaki kalpte (kapak rozeti kaldırıldı)
                     }
-                    Text { text: has-now ? now.title : "Çalan yok"; font-family: Theme.display; font-size: 26px; font-weight: 800; letter-spacing: -0.8px; color: Theme.text-primary; overflow: elide; }
-                    Text { text: has-now ? now.artist : ""; font-size: 14px; color: Theme.text-secondary; overflow: elide; }
+
+                    // Başlık & sanatçı + sağda sade kalp
+                    HorizontalLayout {
+                        spacing: 10px;
+                        VerticalLayout {
+                            horizontal-stretch: 1; spacing: 2px;
+                            Text { text: has-now ? now.title : "Çalan yok"; font-family: Theme.display; font-size: 22px; font-weight: 800; letter-spacing: -0.6px; color: Theme.text-primary; overflow: elide; }
+                            Text { text: has-now ? now.artist : ""; font-size: 13.5px; color: Theme.text-secondary; overflow: elide; }
+                        }
+                        if has-now: IconButton {
+                            y: 4px; icon: Icons.heart;
+                            tint: liked ? #FB7185 : Theme.text-muted;
+                            filled: liked;
+                            clicked => { root.toggle-like(); }
+                        }
+                    }
+
+                    // Kapağın altında sade oynatma kontrolleri (alt çubuk gizliyken ana kontrol alanı)
+                    VerticalLayout {
+                        spacing: 6px;
+                        lprog := Scrubber {
+                            enabled: has-now && duration > 0;
+                            value: duration > 0 ? position / duration : 0;
+                            seek(f) => { root.seek(f * duration); }
+                        }
+                        HorizontalLayout {
+                            Text {
+                                text: Fmt.time(lprog.dragging ? lprog.shown * duration : position);
+                                horizontal-stretch: 1; font-family: Theme.mono; font-size: 11px;
+                                color: lprog.dragging ? Theme.text-primary : Theme.text-muted;
+                            }
+                            Text { text: Fmt.time(duration); font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        alignment: space-between;
+                        HorizontalLayout {
+                            spacing: 2px;
+                            IconButton { y: 3px; width: 32px; height: 32px; icon: Icons.shuffle; enabled: has-now; tint: shuffle-on ? Theme.accent : Theme.text-muted; clicked => { root.toggle-shuffle(); } }
+                            Rectangle {
+                                width: 32px; height: 32px; y: 3px;
+                                IconButton { width: 32px; height: 32px; icon: Icons.repeat; enabled: has-now; tint: repeat-mode > 0 ? Theme.accent : Theme.text-muted; clicked => { root.cycle-repeat(); } }
+                                if repeat-mode == 2: Text { x: 21px; y: 2px; text: "1"; font-size: 9px; font-weight: 800; color: Theme.accent; }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            IconButton { y: 3px; icon: Icons.skip-back; enabled: has-now; tint: Theme.text-primary; clicked => { root.prev(); } }
+                            IconButton { icon: playing ? Icons.pause : Icons.play; primary: true; enabled: has-now; clicked => { root.toggle-play(); } }
+                            IconButton { y: 3px; icon: Icons.skip-forward; enabled: has-now; tint: Theme.text-primary; clicked => { root.next(); } }
+                        }
+                        HorizontalLayout {
+                            spacing: 4px;
+                            IconButton {
+                                y: 4px; width: 30px; height: 30px;
+                                icon: volume < 0.001 ? Icons.volume-x : Icons.volume;
+                                tint: Theme.text-muted;
+                                clicked => {
+                                    if (volume > 0.001) { root.muted-volume = volume; volume = 0; }
+                                    else { volume = root.muted-volume > 0.001 ? root.muted-volume : 0.5; }
+                                    root.set-volume(volume);
+                                }
+                            }
+                            Scrubber {
+                                width: 52px; y: 12px; live: true; wheel: true;
+                                value: volume;
+                                seek(f) => { volume = f; root.set-volume(f); }
+                            }
+                        }
+                    }
+
                     if lyric-state == 2: HorizontalLayout {
                         spacing: 6px; alignment: start;
-                        PillButton { pill-height: 30px; text: "−0.5 sn"; clicked => { root.lyric-shift(-0.5); } }
+                        PillButton { pill-height: 28px; text: "−0.5 sn"; clicked => { root.lyric-shift(-0.5); } }
                         Text {
                             text: (lyric-offset > 0 ? "+" : "") + Math.round(lyric-offset * 10) / 10 + " sn";
-                            vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-secondary; width: 56px; horizontal-alignment: center;
+                            vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-secondary; width: 54px; horizontal-alignment: center;
                         }
-                        PillButton { pill-height: 30px; text: "+0.5 sn"; clicked => { root.lyric-shift(0.5); } }
+                        PillButton { pill-height: 28px; text: "+0.5 sn"; clicked => { root.lyric-shift(0.5); } }
                     }
-                    if lyric-source != "" && !has-lyric-credit: Text { text: "Kaynak: " + lyric-source + (lyric-state == 2 ? " · satıra tıkla, oraya atla" : ""); font-size: 11.5px; color: Theme.text-muted; }
+                    if lyric-source != "" && !has-lyric-credit: Text { text: "Kaynak: " + lyric-source + (lyric-state == 2 ? " · satıra tıkla, oraya atla" : ""); font-size: 11px; color: Theme.text-muted; }
                     if has-lyric-credit && (lyric-state == 2 || lyric-state == 3): UnisonCredit { user: lyric-credit-user; open(w) => { root.open-lyric-link(w); } }
-                    if lyrics-translate > 0 && lyric-tr-note != "": Text { text: lyric-tr-note; font-size: 11.5px; color: Theme.accent; }
+                    if lyrics-translate > 0 && lyric-tr-note != "": Text { text: lyric-tr-note; font-size: 11px; color: Theme.accent; }
                 }
 
                 // Sağ: kayan söz akışı
@@ -2075,9 +2505,10 @@ export component AppWindow inherits Window {
                 clicked => { sidebar-peek = !sidebar-peek; }
             }
 
-            // Sağ üst: söz/kapak kipi, stil, çekmeceyi indir
+            // Sağ üst: söz/kapak kipi, kuyruk, stil, çekmeceyi indir
             HorizontalLayout {
                 x: parent.width - self.preferred-width - (is-windows ? 148px : 16px); y: 16px; spacing: 6px;
+                IconButton { icon: Icons.list-music; tint: drawer-open ? Theme.accent : Theme.text-secondary; clicked => { drawer-open = !drawer-open; } }
                 IconButton { icon: Icons.mic; tint: lyrics-mode ? Theme.accent : Theme.text-secondary; clicked => { lyrics-mode = !lyrics-mode; lyr.menu = false; } }
                 if lyrics-mode: IconButton { icon: Icons.type; tint: lyr.menu ? Theme.accent : Theme.text-secondary; clicked => { lyr.menu = !lyr.menu; } }
                 IconButton { icon: Icons.chevron-down; clicked => { lyrics-open = false; sidebar-peek = false; lyr.menu = false; } }
@@ -2242,12 +2673,13 @@ export component AppWindow inherits Window {
                         HorizontalLayout {
                             padding-left: compact ? 8px : 8px;
                             padding-right: 6px; spacing: 10px;
-                            alignment: compact ? center : start;
-                            Cover {
+                            // start uzamayı kapatır: çöp kutusu adın hemen yanına düşüyordu
+                            alignment: compact ? center : stretch;
+                            PlaylistCover {
                                 width: compact ? 24px : 28px; height: self.width;
                                 y: (parent.height - self.height) / 2;
-                                radius: 6px;
-                                art: p.art; has-art: p.has-art;
+                                radius: 6px; tile-gap: 1px;
+                                info: p;
                             }
                             if !compact: VerticalLayout {
                                 alignment: center; horizontal-stretch: 1; spacing: 1px;
@@ -2263,7 +2695,7 @@ export component AppWindow inherits Window {
                                 }
                             }
                             if !compact: Rectangle {
-                                width: 24px; height: 24px; y: 10px; border-radius: 12px;
+                                width: 24px; height: 24px; y: (parent.height - self.height) / 2; border-radius: 12px;
                                 opacity: (pli-ta.has-hover || pld-ta.has-hover) ? 1 : 0;
                                 animate opacity { duration: Theme.micro; }
                                 background: pld-ta.has-hover ? #FF4E4530 : transparent;
@@ -2317,7 +2749,7 @@ export component AppWindow inherits Window {
             HorizontalLayout {
                 spacing: 6px; alignment: start;
                 PillButton { pill-height: 30px; text: radio-busy ? "Radyo…" : "Radyo başlat"; enabled: has-now && !radio-busy; clicked => { root.radio-from-current(); } }
-                PillButton { pill-height: 30px; text: "Temizle"; enabled: queue.length > 1; clicked => { root.queue-clear(); } }
+                ConfirmPill { pill-height: 30px; text: "Temizle"; confirm-text: "Kuyruk silinsin mi?"; enabled: queue.length > 1; confirmed => { root.queue-clear(); } }
             }
             if queue.length == 0: Text { text: "Kuyruk boş."; font-size: 13px; color: Theme.text-secondary; }
             Flickable {
@@ -2364,19 +2796,33 @@ export component AppWindow inherits Window {
     if toast != "": Rectangle {
         y: root.height - Theme.player-clearance - 12px;
         x: (root.width - self.width) / 2;
-        width: tt.preferred-width + 32px; height: 36px;
+        width: trow.preferred-width; height: 36px;
         border-radius: 18px; background: Theme.surface-3;
-        tt := Text { text: toast; font-size: 13px; font-weight: 600; color: Theme.text-primary; }
+        drop-shadow-blur: 18px; drop-shadow-offset-y: 6px; drop-shadow-color: #00000080;
+        trow := HorizontalLayout {
+            padding-left: 16px; padding-right: toast-undo ? 4px : 16px; spacing: 12px;
+            Text { text: toast; vertical-alignment: center; font-size: 13px; font-weight: 600; color: Theme.text-primary; }
+            if toast-undo: Rectangle {
+                width: ut.preferred-width + 24px; height: 28px; y: 4px; border-radius: 14px;
+                background: ut-ta.has-hover ? Theme.accent.with-alpha(0.28) : Theme.accent.with-alpha(0.16);
+                animate background { duration: Theme.micro; }
+                ut-ta := TouchArea { mouse-cursor: pointer; clicked => { root.undo(); } }
+                ut := Text { text: "Geri al"; font-size: 12.5px; font-weight: 700; color: Theme.accent; }
+            }
+        }
     }
 
-    // ---------- Yüzen oynatma çubuğu ----------
+    // ---------- Yüzen oynatma çubuğu (Söz kipinde yumuşakça aşağı gizlenir; kontroller kapağın altında) ----------
     Rectangle {
         x: 20px; width: root.width - 40px;
         height: Theme.player-height;
-        y: root.height - self.height - Theme.player-offset;
+        y: (lyrics-open && lyrics-mode) ? root.height + 24px : root.height - self.height - Theme.player-offset;
+        opacity: (lyrics-open && lyrics-mode) ? 0 : 1;
+        visible: self.opacity > 0;
+        animate y, opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
         border-radius: Theme.r-lg;
         background: Theme.floating;
-        drop-shadow-blur: 48px; drop-shadow-offset-y: 24px; drop-shadow-color: #000000b8;
+        drop-shadow-blur: 48px; drop-shadow-offset-y: 24px; drop-shadow-color: (lyrics-open && lyrics-mode) ? transparent : #000000b8;
 
         // Çubuğun boş yeri: sahne açıksa (hangi kipte olursa olsun) kapatır, kapalıysa kapak kipinde açar.
         TouchArea { enabled: has-now; clicked => { if (lyrics-open) { lyrics-open = false; } else { root.show-now(false); } } }
@@ -2617,7 +3063,7 @@ export component AppWindow inherits Window {
                             ppk-ta := TouchArea { mouse-cursor: pointer; clicked => { root.add-to-playlist(i); pl-pick-open = false; } }
                             HorizontalLayout {
                                 padding-left: 8px; padding-right: 10px; spacing: 12px;
-                                Cover { width: 36px; height: 36px; y: 8px; radius: 7px; art: p.art; has-art: p.has-art; }
+                                PlaylistCover { width: 36px; height: 36px; y: 8px; radius: 7px; tile-gap: 1px; info: p; }
                                 VerticalLayout {
                                     alignment: center; horizontal-stretch: 1;
                                     Text { text: p.name; font-size: 13.5px; font-weight: 600; color: Theme.text-primary; overflow: elide; }
@@ -2848,7 +3294,6 @@ export component AppWindow inherits Window {
             MenuItem { icon: Icons.list-start; text: "Sıradaki çal"; clicked => { root.menu-action(1); } }
             MenuItem { icon: Icons.list-plus; text: "Kuyruğa ekle"; clicked => { root.menu-action(2); } }
             MenuItem { icon: Icons.radio; text: "Radyo başlat"; clicked => { root.menu-action(3); } }
-            MenuItem { icon: Icons.heart; text: menu-liked ? "Beğenmekten vazgeç" : "Beğen"; clicked => { root.menu-action(4); } }
             MenuItem { icon: Icons.user; text: "Sanatçıya git"; clicked => { root.menu-action(5); } }
             MenuItem { icon: Icons.sparkles; text: menu-boosted ? "Daha çok önermeyi bırak" : "Bunu daha çok öner"; clicked => { root.menu-action(9); } }
             MenuItem { icon: Icons.ban; text: "İlgilenmiyorum"; clicked => { root.menu-action(7); } }

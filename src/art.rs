@@ -182,6 +182,40 @@ fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (f64, f64, f64) {
 }
 
 /// Kapak önbelleği temizliği: `days` gündür kullanılmayanları sil, sonra toplamı `limit` baytın altına indir.
+/// Listelere özel kapaklar: kullanıcı verisi, önbellek temizliği silmez.
+pub fn playlist_cover_dir() -> PathBuf {
+    crate::paths::data_dir().join("playlist-covers")
+}
+
+/// Liste kapağı kare boyutu (başlıkta 180 px gösterilir).
+pub const PL_COVER: u32 = 320;
+
+/// Seçilen resmi kareye kırpıp küçültür ve kendi klasörüne kaydeder; dosya adını döner.
+pub fn import_playlist_cover(src: &std::path::Path) -> Result<String, String> {
+    let img = image::open(src).map_err(|e| format!("resim açılamadı: {e}"))?;
+    let img = img.resize_to_fill(PL_COVER, PL_COVER, image::imageops::FilterType::Lanczos3);
+    let dir = playlist_cover_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let name = format!("pl-{stamp}.png");
+    img.to_rgba8().save(dir.join(&name)).map_err(|e| format!("kaydedilemedi: {e}"))?;
+    Ok(name)
+}
+
+/// Kaydedilmiş liste kapağını çöz (vurgu rengiyle).
+pub fn load_playlist_cover(name: &str) -> Result<Art, String> {
+    let img = image::open(playlist_cover_dir().join(name)).map_err(|e| e.to_string())?.to_rgba8();
+    let accent = accent_of(&img);
+    let (width, height) = img.dimensions();
+    Ok(Art { rgba: img.into_raw(), width, height, accent, blur: Vec::new() })
+}
+
+pub fn remove_playlist_cover(name: &str) {
+    if !name.is_empty() && !name.contains('/') && !name.contains('\\') {
+        let _ = std::fs::remove_file(playlist_cover_dir().join(name));
+    }
+}
+
 pub fn prune(days: u64, limit: u64) {
     let Ok(rd) = std::fs::read_dir(cache_dir()) else { return };
     let mut files: Vec<(PathBuf, u64, std::time::SystemTime)> = Vec::new();

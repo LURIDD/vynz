@@ -76,6 +76,8 @@ struct State {
     search_seq: u64,
     requested: HashSet<String>,
     toast_timer: Timer,
+    /// Son yıkıcı işlemin tersi; bildirim görünür kaldıkça "Geri al" ile uygulanır.
+    undo: Option<Undo>,
     hover_timer: Timer,
     metered: Arc<AtomicBool>,
     on_battery: Arc<AtomicBool>,
@@ -83,6 +85,9 @@ struct State {
     import_origin: String,
     playlists: Vec<library::Playlist>,
     current_pl: Option<usize>,
+    /// Liste içi filtre aktifken ekrandaki satır -> gerçek playlist.tracks indeksi
+    pl_visible: Vec<usize>,
+    pl_filter: String,
     /// Söz önbelleği: None = bulunamadı.
     lyrics: HashMap<String, Option<lyrics::Lyrics>>,
     lyr_pending: HashSet<String>,
@@ -197,6 +202,8 @@ thread_local! {
     static BLUR_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
     /// Yalnız çalan şarkı için büyük kapaklar (kahraman, söz çekmecesi).
     static BIGS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
+    /// Listelere özel kapaklar (dosya adı -> görüntü, vurgu); liste sayısı kadar, ~400 KB/adet.
+    static PL_COVERS: RefCell<HashMap<String, (Image, Color)>> = RefCell::new(HashMap::new());
     static BIG_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
 }
 
@@ -369,15 +376,159 @@ fn request_art_hot(st: &mut State, key: String, url: &str) {
 }
 
 fn toast(ui: &AppWindow, msg: &str) {
+    show_toast(ui, msg, None);
+}
+
+/// Bildirim + "Geri al": yıkıcı işlemden sonra 8 sn boyunca geri alınabilir.
+fn toast_undo(ui: &AppWindow, msg: &str, u: Undo) {
+    show_toast(ui, msg, Some(u));
+}
+
+fn show_toast(ui: &AppWindow, msg: &str, u: Option<Undo>) {
+    let has_undo = u.is_some();
     ui.set_toast(msg.into());
+    ui.set_toast_undo(has_undo);
     let weak = ui.as_weak();
     with_state(|st| {
-        st.toast_timer.start(TimerMode::SingleShot, Duration::from_secs(4), move || {
+        st.undo = u; // yeni bildirim eskisinin geri alma hakkını kapatır
+        let secs = if has_undo { 8 } else { 4 };
+        st.toast_timer.start(TimerMode::SingleShot, Duration::from_secs(secs), move || {
+            with_state(|st| st.undo = None);
             if let Some(ui) = weak.upgrade() {
                 ui.set_toast("".into());
+                ui.set_toast_undo(false);
             }
         })
     });
+}
+
+/// Geri alınabilir işlemler (tek seviye).
+enum Undo {
+    Playlist { idx: usize, pl: library::Playlist },
+    PlaylistTrack { pl: usize, pos: usize, t: TrackInfo },
+    QueueItem { pos: usize, t: TrackInfo },
+    Queue { queue: Vec<TrackInfo>, index: Option<usize> },
+    Import(import::Fetched),
+    ImportRow { pos: usize, row: import::Row },
+    Dislike { t: TrackInfo, liked: bool },
+    DislikeArtist(String),
+    Reset {
+        boosts: Vec<TrackInfo>,
+        disliked_tracks: Vec<TrackInfo>,
+        disliked_artists: Vec<String>,
+        listens: Option<Vec<history::Listen>>,
+        taste_genres: Vec<String>,
+        blocked_genres: Vec<String>,
+        taste_tracks: Vec<TrackInfo>,
+        tastes_done: bool,
+    },
+}
+
+fn apply_undo(ui: &AppWindow) {
+    let Some(u) = with_state(|st| st.undo.take()) else { return };
+    with_state(|st| st.toast_timer.stop());
+    ui.set_toast("".into());
+    ui.set_toast_undo(false);
+    match u {
+        Undo::Playlist { idx, pl } => {
+            with_state(|st| {
+                let idx = idx.min(st.playlists.len());
+                st.playlists.insert(idx, pl);
+                let _ = library::save(&st.playlists);
+            });
+            refresh_playlists(ui);
+        }
+        Undo::PlaylistTrack { pl, pos, t } => {
+            let ok = with_state(|st| {
+                let p = st.playlists.get_mut(pl)?;
+                let pos = pos.min(p.tracks.len());
+                p.tracks.insert(pos, t);
+                let _ = library::save(&st.playlists);
+                Some(())
+            });
+            if ok.is_some() {
+                if with_state(|st| st.current_pl) == Some(pl) {
+                    sync_playlist_view(ui);
+                }
+                refresh_playlists_ui_only(ui);
+            }
+        }
+        Undo::QueueItem { pos, t } => {
+            with_state(|st| {
+                let pos = pos.min(st.queue.len());
+                st.queue.insert(pos, t);
+                if let Some(cur) = st.index {
+                    if pos <= cur {
+                        st.index = Some(cur + 1);
+                    }
+                }
+            });
+            queue_changed(ui);
+        }
+        Undo::Queue { queue, index } => {
+            with_state(|st| {
+                // Çalan şarkı o arada değiştiyse eski kuyrukta onun yerini bul.
+                let now = st.index.and_then(|i| st.queue.get(i)).map(TrackInfo::key);
+                let at = match now {
+                    Some(k) => queue.iter().position(|t| t.key() == k).or(index),
+                    None => None,
+                };
+                st.queue = queue;
+                st.index = at.filter(|i| *i < st.queue.len());
+            });
+            queue_changed(ui);
+        }
+        Undo::Import(f) => {
+            with_state(|st| st.imported = Some(f));
+            refresh_import(ui);
+        }
+        Undo::ImportRow { pos, row } => {
+            with_state(|st| {
+                if let Some(f) = st.imported.as_mut() {
+                    let pos = pos.min(f.rows.len());
+                    f.rows.insert(pos, row);
+                }
+            });
+            refresh_import(ui);
+        }
+        Undo::Dislike { t, liked } => {
+            with_state(|st| {
+                st.history.undislike_track(&t.key());
+                // İlgilenmiyorum beğeniyi de siliyordu: geri koy.
+                if liked && !st.history.is_liked(&t.key()) {
+                    st.history.toggle_like(&t);
+                }
+            });
+            if ui.get_has_now() && ui.get_now().key == t.key().as_str() {
+                ui.set_liked(liked);
+            }
+            refresh_hidden(ui);
+            refresh_liked(ui);
+        }
+        Undo::DislikeArtist(a) => {
+            with_state(|st| st.history.undislike_artist(&a));
+            refresh_hidden(ui);
+        }
+        Undo::Reset { boosts, disliked_tracks, disliked_artists, listens, taste_genres, blocked_genres, taste_tracks, tastes_done } => {
+            with_state(|st| {
+                st.history.restore_profile(boosts, disliked_tracks, disliked_artists);
+                if let Some(l) = listens {
+                    st.history.restore_listens(l);
+                }
+                st.settings.taste_genres = taste_genres;
+                st.settings.blocked_genres = blocked_genres;
+                st.settings.taste_tracks = taste_tracks;
+                st.settings.tastes_done = tastes_done;
+                let _ = st.settings.save();
+            });
+            ui.set_tastes_open(false);
+            refresh_hidden(ui);
+            refresh_taste_summary(ui);
+            refresh_profile(ui);
+            load_home(ui);
+        }
+    }
+    toast(ui, "Geri alındı");
 }
 
 // ---------- Kapaklar ----------
@@ -507,6 +658,9 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     update_rows(&ui.get_results(), &key, &img);
     update_rows(&ui.get_queue(), &key, &img);
     update_rows(&ui.get_playlist_tracks(), &key, &img);
+    if with_state(|st| st.playlists.iter().any(|p| p.tracks.iter().take(12).any(|t| t.key() == key))) {
+        refresh_playlists_ui_only(ui);
+    }
     update_rows(&ui.get_liked_tracks(), &key, &img);
     update_rows(&ui.get_taste_samples(), &key, &img);
     let rows = ui.get_import_rows();
@@ -1407,29 +1561,33 @@ fn queue_remove(ui: &AppWindow, i: usize) {
     let current = with_state(|st| st.index == Some(i));
     if current {
         // Çalanı çıkarmak = sonrakine geç ve onu listeden sil.
-        with_state(|st| {
-            st.queue.remove(i);
+        let t = with_state(|st| {
             st.index = None;
+            st.queue.remove(i)
         });
         if with_state(|st| i < st.queue.len()) {
             play_index(ui, i);
-            queue_changed(ui);
-        } else {
-            queue_changed(ui);
         }
+        queue_changed(ui);
+        toast_undo(ui, "Kuyruktan çıkarıldı", Undo::QueueItem { pos: i, t });
         return;
     }
-    with_state(|st| {
-        if i < st.queue.len() {
-            st.queue.remove(i);
-            if let Some(cur) = st.index {
-                if i < cur {
-                    st.index = Some(cur - 1);
-                }
+    let removed = with_state(|st| {
+        if i >= st.queue.len() {
+            return None;
+        }
+        let t = st.queue.remove(i);
+        if let Some(cur) = st.index {
+            if i < cur {
+                st.index = Some(cur - 1);
             }
         }
+        Some(t)
     });
     queue_changed(ui);
+    if let Some(t) = removed {
+        toast_undo(ui, "Kuyruktan çıkarıldı", Undo::QueueItem { pos: i, t });
+    }
 }
 
 fn queue_move(ui: &AppWindow, i: usize, delta: i32) {
@@ -1449,6 +1607,7 @@ fn queue_move(ui: &AppWindow, i: usize, delta: i32) {
 }
 
 fn queue_clear(ui: &AppWindow) {
+    let (old, old_index) = with_state(|st| (st.queue.clone(), st.index));
     with_state(|st| {
         if let Some(t) = st.index.and_then(|i| st.queue.get(i).cloned()) {
             st.queue = vec![t];
@@ -1459,6 +1618,9 @@ fn queue_clear(ui: &AppWindow) {
         st.shuffle_orig = None;
     });
     queue_changed(ui);
+    if old.len() > 1 {
+        toast_undo(ui, &format!("Kuyruk temizlendi ({} şarkı)", old.len() - 1), Undo::Queue { queue: old, index: old_index });
+    }
 }
 
 fn play_next(ui: &AppWindow, t: TrackInfo) {
@@ -1538,6 +1700,7 @@ fn refresh_liked(ui: &AppWindow) {
         list
     });
     ui.set_liked_count(likes.len() as i32);
+    ui.set_liked_duration(format_total_duration(&likes).into());
     ui.set_liked_tracks(model_of(&likes));
 }
 
@@ -1561,7 +1724,10 @@ fn menu_target(st: &State, kind: i32, a: i32, b: i32) -> Option<TrackInfo> {
     match kind {
         0 => st.shelves.get(a).and_then(|s| s.items.get(b)).cloned(),
         1 => st.results.get(a).cloned(),
-        2 => st.current_pl.and_then(|p| st.playlists.get(p)).and_then(|p| p.tracks.get(a)).cloned(),
+        2 => st.current_pl.and_then(|p| st.playlists.get(p)).and_then(|p| {
+            let real = st.pl_visible.get(a).copied().unwrap_or(a);
+            p.tracks.get(real)
+        }).cloned(),
         3 => st.queue.get(a).cloned(),
         4 => st.coll.as_ref().and_then(|c| c.1.get(a)).cloned(),
         5 => st.artist.as_ref().and_then(|c| c.1.get(a)).cloned(),
@@ -1607,20 +1773,21 @@ fn menu_action(ui: &AppWindow, action: i32) {
                 let pi = st.current_pl?;
                 let pl = st.playlists.get_mut(pi)?;
                 let pos = pl.tracks.iter().position(|x| x.key() == t.key())?;
-                pl.tracks.remove(pos);
+                let t = pl.tracks.remove(pos);
                 let _ = library::save(&st.playlists);
-                Some(pi)
+                Some((pi, pos, t))
             });
-            if let Some(pi) = removed {
+            if let Some((pi, pos, t)) = removed {
                 open_playlist(ui, pi);
                 refresh_playlists(ui);
-                toast(ui, "Listeden çıkarıldı");
+                toast_undo(ui, "Listeden çıkarıldı", Undo::PlaylistTrack { pl: pi, pos, t });
             }
         }
         7 => {
-            let home_data = with_state(|st| {
+            let (home_data, was_liked) = with_state(|st| {
+                let was_liked = st.history.is_liked(&t.key());
                 st.history.dislike_track(&t);
-                (!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone())
+                ((!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone()), was_liked)
             });
             refresh_hidden(ui);
             refresh_liked(ui);
@@ -1631,7 +1798,8 @@ fn menu_action(ui: &AppWindow, action: i32) {
                 ui.set_liked(false);
                 step(ui, 1);
             }
-            toast(ui, &format!("Artık önerilmeyecek: {}", t.title));
+            let msg = format!("Artık önerilmeyecek: {}", t.title);
+            toast_undo(ui, &msg, Undo::Dislike { t, liked: was_liked });
         }
         8 => {
             let artist = t.artist.split(',').next().unwrap_or("").trim().to_string();
@@ -1651,7 +1819,7 @@ fn menu_action(ui: &AppWindow, action: i32) {
             if skip_now {
                 step(ui, 1);
             }
-            toast(ui, &format!("Artık önerilmeyecek sanatçı: {artist}"));
+            toast_undo(ui, &format!("Artık önerilmeyecek sanatçı: {artist}"), Undo::DislikeArtist(artist.clone()));
         }
         _ => {}
     }
@@ -1686,7 +1854,7 @@ fn create_playlist_with_track(ui: &AppWindow, name: String) {
     }
     let ok = with_state(|st| {
         let t = st.menu.take()?;
-        st.playlists.insert(0, library::Playlist { name: name.clone(), origin: String::new(), tracks: vec![t] });
+        st.playlists.insert(0, library::Playlist { name: name.clone(), origin: String::new(), tracks: vec![t], image: String::new() });
         // Açık liste indeksi bir kaydı.
         st.current_pl = st.current_pl.map(|i| i + 1);
         let _ = library::save(&st.playlists);
@@ -2390,7 +2558,7 @@ fn save_collection(ui: &AppWindow) {
         if tracks.is_empty() {
             return None;
         }
-        st.playlists.push(library::Playlist { name: ui.get_coll_title().to_string(), origin: format!("ytm:{}", c.key), tracks });
+        st.playlists.push(library::Playlist { name: ui.get_coll_title().to_string(), origin: format!("ytm:{}", c.key), tracks, image: String::new() });
         let _ = library::save(&st.playlists);
         Some(st.playlists.len())
     });
@@ -2740,14 +2908,22 @@ fn import_change(ui: &AppWindow, i: usize) {
 fn import_remove(ui: &AppWindow, i: usize) {
     let left = with_state(|st| {
         let f = st.imported.as_mut()?;
-        (i < f.rows.len()).then(|| f.rows.remove(i))?;
-        Some(f.rows.len())
+        let row = (i < f.rows.len()).then(|| f.rows.remove(i))?;
+        Some((f.rows.len(), row))
     });
-    let Some(left) = left else { return };
+    let Some((left, row)) = left else { return };
     if left == 0 {
+        // Son satır: aktarımın tamamı gider, geri alma da tamamını geri getirir.
+        with_state(|st| {
+            if let Some(f) = st.imported.as_mut() {
+                f.rows.push(row);
+            }
+        });
         import_clear(ui);
         return;
     }
+    let title = row.wanted.title.clone();
+    toast_undo(ui, &format!("Aktarımdan çıkarıldı: {title}"), Undo::ImportRow { pos: i, row });
     let model = ui.get_import_rows();
     match model.as_any().downcast_ref::<VecModel<ImportRow>>() {
         // Yerinde sil: kaydırma konumu korunur.
@@ -2770,12 +2946,16 @@ fn import_remove(ui: &AppWindow, i: usize) {
 
 /// Yanlış gelen aktarımı tamamen at; ekran boş aktarma formuna döner.
 fn import_clear(ui: &AppWindow) {
-    with_state(|st| st.imported = None);
+    let old = with_state(|st| st.imported.take());
     ui.set_import_rows(ModelRc::new(VecModel::from(Vec::<ImportRow>::new())));
     ui.set_import_counts(ModelRc::new(VecModel::from(vec![0; 4])));
     ui.set_import_name("".into());
     ui.set_import_note("".into());
     ui.set_import_filter(-1);
+    if let Some(f) = old {
+        let msg = format!("“{}” aktarımı temizlendi", f.name);
+        toast_undo(ui, &msg, Undo::Import(f));
+    }
 }
 
 fn import_save(ui: &AppWindow) {
@@ -2788,7 +2968,7 @@ fn import_save(ui: &AppWindow) {
             .filter_map(|r| r.pick().cloned())
             .collect();
         let n = tracks.len();
-        st.playlists.push(library::Playlist { name: f.name.clone(), origin: st.import_origin.clone(), tracks });
+        st.playlists.push(library::Playlist { name: f.name.clone(), origin: st.import_origin.clone(), tracks, image: String::new() });
         if let Err(e) = library::save(&st.playlists) {
             eprintln!("kütüphane kaydedilemedi: {e}");
         }
@@ -2804,33 +2984,163 @@ fn import_save(ui: &AppWindow) {
 
 // ---------- Kaydedilen listeler ----------
 
+fn format_total_duration(tracks: &[TrackInfo]) -> String {
+    let total = tracks.iter().map(|t| t.duration.max(0.0) as u64).sum::<u64>();
+    if total == 0 {
+        return String::new();
+    }
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    if h > 0 {
+        format!("{h} sa {m} dk")
+    } else if m > 0 {
+        format!("{m} dk {s} sn")
+    } else {
+        format!("{s} sn")
+    }
+}
+
+fn build_playlist_infos(st: &mut State) -> Vec<PlaylistInfo> {
+    let mut out = Vec::with_capacity(st.playlists.len());
+    let sample_tracks: Vec<TrackInfo> = st
+        .playlists
+        .iter()
+        .flat_map(|p| p.tracks.iter().take(8).cloned())
+        .collect();
+    for t in &sample_tracks {
+        request_art(st, t);
+    }
+    for p in &st.playlists {
+        // Özel kapak varsa mozaik yerine o.
+        if let Some((img, accent)) = playlist_cover(&p.image) {
+            out.push(PlaylistInfo {
+                name: p.name.as_str().into(),
+                count: p.tracks.len() as i32,
+                duration_text: format_total_duration(&p.tracks).into(),
+                art: img,
+                has_art: true,
+                mosaic: false,
+                custom: true,
+                accent,
+                ..Default::default()
+            });
+            continue;
+        }
+        // İlk 4 farklı kapak anahtarını ARTS (160px) önbelleğinden topla
+        let mut tiles: Vec<(Image, Color)> = Vec::with_capacity(4);
+        let mut seen_thumbs: HashSet<&str> = HashSet::new();
+        for t in &p.tracks {
+            if !t.thumb.is_empty() && !seen_thumbs.insert(t.thumb.as_str()) {
+                continue;
+            }
+            if let Some(pair) = ARTS.with(|a| a.borrow().get(&t.key()).cloned()) {
+                tiles.push(pair);
+                if tiles.len() == 4 {
+                    break;
+                }
+            }
+        }
+        let accent = tiles.first().map(|(_, c)| *c).unwrap_or(NEUTRAL);
+        let mosaic = tiles.len() == 4;
+        let (art, has_art) = tiles.first().map(|(i, _)| (i.clone(), true)).unwrap_or_default();
+        let (art2, has_art2) = tiles.get(1).map(|(i, _)| (i.clone(), true)).unwrap_or_default();
+        let (art3, has_art3) = tiles.get(2).map(|(i, _)| (i.clone(), true)).unwrap_or_default();
+        let (art4, has_art4) = tiles.get(3).map(|(i, _)| (i.clone(), true)).unwrap_or_default();
+        out.push(PlaylistInfo {
+            name: p.name.as_str().into(),
+            count: p.tracks.len() as i32,
+            duration_text: format_total_duration(&p.tracks).into(),
+            art,
+            has_art,
+            art2,
+            has_art2,
+            art3,
+            has_art3,
+            art4,
+            has_art4,
+            mosaic,
+            custom: false,
+            accent,
+        });
+    }
+    out
+}
+
+/// Özel liste kapağı: bellekte yoksa diskten çöz (320 px PNG, ~5 ms).
+fn playlist_cover(name: &str) -> Option<(Image, Color)> {
+    if name.is_empty() {
+        return None;
+    }
+    if let Some(c) = PL_COVERS.with(|m| m.borrow().get(name).cloned()) {
+        return Some(c);
+    }
+    let a = art::load_playlist_cover(name).ok()?;
+    let img = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.rgba, a.width, a.height));
+    let c = (img, Color::from_rgb_u8(a.accent.0, a.accent.1, a.accent.2));
+    PL_COVERS.with(|m| m.borrow_mut().insert(name.to_string(), c.clone()));
+    Some(c)
+}
+
+/// Liste için resim seç (sistem dosya seçicisi), kırp-küçült, kaydet.
+fn pick_playlist_image(ui: &AppWindow, i: usize) {
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Liste kapağı seç")
+            .add_filter("Resimler", &["png", "jpg", "jpeg", "webp"])
+            .pick_file()
+        else {
+            return;
+        };
+        let res = art::import_playlist_cover(&path);
+        let _ = weak.upgrade_in_event_loop(move |ui| match res {
+            Ok(name) => {
+                let old = with_state(|st| {
+                    let p = st.playlists.get_mut(i)?;
+                    let old = std::mem::replace(&mut p.image, name);
+                    let _ = library::save(&st.playlists);
+                    Some(old)
+                });
+                if let Some(old) = old {
+                    PL_COVERS.with(|m| m.borrow_mut().remove(&old));
+                    art::remove_playlist_cover(&old);
+                    refresh_playlists_ui_only(&ui);
+                    toast(&ui, "Liste kapağı güncellendi");
+                }
+            }
+            Err(e) => toast(&ui, &e),
+        });
+    });
+}
+
+/// Özel kapağı kaldır, mozaiğe dön.
+fn clear_playlist_image(ui: &AppWindow, i: usize) {
+    let old = with_state(|st| {
+        let p = st.playlists.get_mut(i)?;
+        let old = std::mem::take(&mut p.image);
+        let _ = library::save(&st.playlists);
+        Some(old)
+    });
+    if let Some(old) = old.filter(|o| !o.is_empty()) {
+        PL_COVERS.with(|m| m.borrow_mut().remove(&old));
+        art::remove_playlist_cover(&old);
+        refresh_playlists_ui_only(ui);
+        toast(ui, "Özel kapak kaldırıldı");
+    }
+}
+
+fn refresh_playlists_ui_only(ui: &AppWindow) {
+    let infos = with_state(build_playlist_infos);
+    ui.set_playlists(ModelRc::new(VecModel::from(infos)));
+}
+
 fn refresh_playlists(ui: &AppWindow) {
     let data = with_state(|st| (!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone()));
     if let Some(d) = data {
         show_home(ui, d);
     }
-    let infos: Vec<PlaylistInfo> = with_state(|st| {
-        let mut out = Vec::with_capacity(st.playlists.len());
-        let first_tracks: Vec<Option<TrackInfo>> = st.playlists.iter().map(|p| p.tracks.first().cloned()).collect();
-        for ft in first_tracks.iter().flatten() {
-            request_art(st, ft);
-        }
-        for p in &st.playlists {
-            let (art, has_art) = p
-                .tracks
-                .first()
-                .and_then(|t| ARTS.with(|a| a.borrow().get(&t.key()).map(|(i, _)| (i.clone(), true))))
-                .unwrap_or_default();
-            out.push(PlaylistInfo {
-                name: p.name.as_str().into(),
-                count: p.tracks.len() as i32,
-                art,
-                has_art,
-            });
-        }
-        out
-    });
-    ui.set_playlists(ModelRc::new(VecModel::from(infos)));
+    refresh_playlists_ui_only(ui);
 }
 
 fn create_new_playlist(ui: &AppWindow, name: String) {
@@ -2839,7 +3149,7 @@ fn create_new_playlist(ui: &AppWindow, name: String) {
         return;
     }
     with_state(|st| {
-        st.playlists.insert(0, library::Playlist { name: name.clone(), origin: String::new(), tracks: Vec::new() });
+        st.playlists.insert(0, library::Playlist { name: name.clone(), origin: String::new(), tracks: Vec::new(), image: String::new() });
         let _ = library::save(&st.playlists);
     });
     refresh_playlists(ui);
@@ -3029,6 +3339,16 @@ fn taste_save(ui: &AppWindow) {
 
 /// Algoritmayı sıfırla. Beğeniler kütüphane sayıldığı için her iki durumda da korunur.
 fn reset_recs(ui: &AppWindow, with_history: bool) {
+    let undo = with_state(|st| Undo::Reset {
+        boosts: st.history.boosted_tracks.clone(),
+        disliked_tracks: st.history.disliked_tracks.clone(),
+        disliked_artists: st.history.disliked_artists.clone(),
+        listens: with_history.then(|| st.history.listens.clone()),
+        taste_genres: st.settings.taste_genres.clone(),
+        blocked_genres: st.settings.blocked_genres.clone(),
+        taste_tracks: st.settings.taste_tracks.clone(),
+        tastes_done: st.settings.tastes_done,
+    });
     with_state(|st| {
         st.history.reset_profile();
         if with_history {
@@ -3046,7 +3366,7 @@ fn reset_recs(ui: &AppWindow, with_history: bool) {
     if with_history {
         refresh_profile(ui);
     }
-    toast(ui, if with_history { "Geçmiş ve öneri profili sıfırlandı" } else { "Öneri profili sıfırlandı" });
+    toast_undo(ui, if with_history { "Geçmiş ve öneri profili sıfırlandı" } else { "Öneri profili sıfırlandı" }, undo);
     load_home(ui);
     // Boş kalmasın: yeni zevkleri seçmeye yönlendir (vitrin yedek olarak arkada dolar).
     open_tastes(ui);
@@ -3062,35 +3382,143 @@ fn taste_skip(ui: &AppWindow) {
     ui.set_tastes_open(false);
 }
 
-fn open_playlist(ui: &AppWindow, i: usize) {
+fn sync_playlist_view(ui: &AppWindow) {
     let tracks = with_state(|st| {
+        let Some(pi) = st.current_pl else { return Vec::new() };
+        let Some(pl) = st.playlists.get(pi) else { return Vec::new() };
+        let q = st.pl_filter.trim().to_lowercase();
+        let mut vis = Vec::new();
+        let mut out = Vec::new();
+        for (idx, t) in pl.tracks.iter().enumerate() {
+            if q.is_empty()
+                || t.title.to_lowercase().contains(&q)
+                || t.artist.to_lowercase().contains(&q)
+                || t.album.to_lowercase().contains(&q)
+            {
+                vis.push(idx);
+                out.push(t.clone());
+            }
+        }
+        st.pl_visible = vis;
+        out
+    });
+    ui.set_playlist_tracks(model_of(&tracks));
+}
+
+fn open_playlist(ui: &AppWindow, i: usize) {
+    let ok = with_state(|st| {
         let p = st.playlists.get(i)?.tracks.clone();
         st.current_pl = Some(i);
+        st.pl_filter.clear();
         for t in p.iter().take(40) {
             request_art(st, t);
         }
         for t in p.iter().take(2) {
             speculate(st, t);
         }
-        Some(p)
+        Some(())
     });
-    let Some(tracks) = tracks else { return };
+    if ok.is_none() {
+        return;
+    }
     ui.set_current_playlist(i as i32);
-    ui.set_playlist_tracks(model_of(&tracks));
+    ui.set_pl_filter("".into());
+    ui.set_pl_rename_open(false);
+    sync_playlist_view(ui);
+}
+
+fn rename_playlist(ui: &AppWindow, i: usize, name: String) {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return;
+    }
+    let ok = with_state(|st| {
+        let pl = st.playlists.get_mut(i)?;
+        pl.name = name.clone();
+        let _ = library::save(&st.playlists);
+        Some(())
+    });
+    if ok.is_some() {
+        refresh_playlists(ui);
+        toast(ui, &format!("Liste adı güncellendi: {name}"));
+    }
+}
+
+fn move_playlist_track(ui: &AppWindow, vis_i: usize, delta: i32) {
+    let ok = with_state(|st| {
+        if !st.pl_filter.trim().is_empty() {
+            return false;
+        }
+        let Some(pi) = st.current_pl else { return false };
+        let Some(pl) = st.playlists.get_mut(pi) else { return false };
+        let j = vis_i as i64 + delta as i64;
+        if j < 0 || j as usize >= pl.tracks.len() || vis_i >= pl.tracks.len() {
+            return false;
+        }
+        pl.tracks.swap(vis_i, j as usize);
+        let _ = library::save(&st.playlists);
+        true
+    });
+    if ok {
+        sync_playlist_view(ui);
+        refresh_playlists_ui_only(ui);
+    }
+}
+
+fn remove_from_playlist(ui: &AppWindow, vis_i: usize) {
+    let ok = with_state(|st| {
+        let pi = st.current_pl?;
+        let real_i = st.pl_visible.get(vis_i).copied().unwrap_or(vis_i);
+        let pl = st.playlists.get_mut(pi)?;
+        if real_i >= pl.tracks.len() {
+            return None;
+        }
+        let t = pl.tracks.remove(real_i);
+        let _ = library::save(&st.playlists);
+        Some(Undo::PlaylistTrack { pl: pi, pos: real_i, t })
+    });
+    if let Some(u) = ok {
+        sync_playlist_view(ui);
+        refresh_playlists_ui_only(ui);
+        toast_undo(ui, "Listeden çıkarıldı", u);
+    }
+}
+
+fn filter_playlist(ui: &AppWindow, q: String) {
+    with_state(|st| st.pl_filter = q);
+    sync_playlist_view(ui);
+}
+
+fn shuffle_playlist(ui: &AppWindow) {
+    let list = with_state(|st| st.current_pl.and_then(|i| st.playlists.get(i)).map(|p| p.tracks.clone())).unwrap_or_default();
+    if !list.is_empty() {
+        play_list(ui, shuffled(list), 0);
+    }
 }
 
 fn delete_playlist(ui: &AppWindow, i: usize) {
-    with_state(|st| {
-        if i < st.playlists.len() {
-            st.playlists.remove(i);
-            st.current_pl = None;
-            if let Err(e) = library::save(&st.playlists) {
-                eprintln!("kütüphane kaydedilemedi: {e}");
-            }
+    let removed = with_state(|st| {
+        if i >= st.playlists.len() {
+            return None;
         }
+        let pl = st.playlists.remove(i);
+        // Açık olan başka bir listeyse indeksini kaydır, silinen açıksa kapat.
+        st.current_pl = match st.current_pl {
+            Some(c) if c == i => None,
+            Some(c) if c > i => Some(c - 1),
+            c => c,
+        };
+        if let Err(e) = library::save(&st.playlists) {
+            eprintln!("kütüphane kaydedilemedi: {e}");
+        }
+        Some(pl)
     });
-    ui.set_current_playlist(-1);
+    ui.set_current_playlist(with_state(|st| st.current_pl).map(|c| c as i32).unwrap_or(-1));
     refresh_playlists(ui);
+    if let Some(pl) = removed {
+        let msg = format!("“{}” silindi", pl.name);
+        toast_undo(ui, &msg, Undo::Playlist { idx: i, pl });
+    }
 }
 
 // ---------- Profil ve canlı spektrum ----------
@@ -3488,6 +3916,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             search_seq: 0,
             requested: HashSet::new(),
             toast_timer: Timer::default(),
+            undo: None,
             hover_timer: Timer::default(),
             metered,
             on_battery,
@@ -3495,6 +3924,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             import_origin: String::new(),
             playlists: library::load(),
             current_pl: None,
+            pl_visible: Vec::new(),
+            pl_filter: String::new(),
             lyrics: HashMap::new(),
             lyr_pending: HashSet::new(),
             lyr_line: None,
@@ -4093,9 +4524,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = weak.clone();
         move |j| {
             let Some(ui) = weak.upgrade() else { return };
-            let list = with_state(|st| st.current_pl.and_then(|i| st.playlists.get(i)).map(|p| p.tracks.clone()));
+            let (list, real_i) = with_state(|st| {
+                let real = st.pl_visible.get(j as usize).copied().unwrap_or(j as usize);
+                let list = st.current_pl.and_then(|i| st.playlists.get(i)).map(|p| p.tracks.clone());
+                (list, real)
+            });
             if let Some(list) = list {
-                play_list(&ui, list, j as usize);
+                if !list.is_empty() {
+                    let idx = real_i.min(list.len() - 1);
+                    play_list(&ui, list, idx);
+                }
+            }
+        }
+    });
+    ui.on_rename_playlist({
+        let weak = weak.clone();
+        move |i, name| {
+            if let Some(ui) = weak.upgrade() {
+                rename_playlist(&ui, i as usize, name.to_string());
+            }
+        }
+    });
+    ui.on_shuffle_playlist({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                shuffle_playlist(&ui);
+            }
+        }
+    });
+    ui.on_move_playlist_track({
+        let weak = weak.clone();
+        move |i, d| {
+            if let Some(ui) = weak.upgrade() {
+                move_playlist_track(&ui, i as usize, d);
+            }
+        }
+    });
+    ui.on_remove_from_playlist({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                remove_from_playlist(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_filter_playlist({
+        let weak = weak.clone();
+        move |q| {
+            if let Some(ui) = weak.upgrade() {
+                filter_playlist(&ui, q.to_string());
             }
         }
     });
@@ -4104,6 +4582,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |i| {
             if let Some(ui) = weak.upgrade() {
                 import_remove(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_pick_playlist_image({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                pick_playlist_image(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_clear_playlist_image({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                clear_playlist_image(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_undo({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                apply_undo(&ui);
             }
         }
     });
@@ -4120,7 +4622,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |i| {
             if let Some(ui) = weak.upgrade() {
                 delete_playlist(&ui, i as usize);
-                toast(&ui, "Liste silindi");
             }
         }
     });

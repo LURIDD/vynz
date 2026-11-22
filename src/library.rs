@@ -13,6 +13,9 @@ pub struct Playlist {
     #[serde(default)]
     pub origin: String,
     pub tracks: Vec<TrackInfo>,
+    /// Kullanıcının seçtiği kapak (playlist-covers içindeki dosya adı); boşsa mozaik.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub image: String,
 }
 
 fn path() -> PathBuf {

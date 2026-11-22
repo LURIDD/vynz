@@ -91,6 +91,55 @@ pub fn seeds_with_tastes(h: &History, taste_tracks: &[TrackInfo]) -> Vec<(TrackI
     out
 }
 
+/// Öneriye uygun olmayan kayıtlar: çeviri/söz videoları, hızlandırılmış/yavaşlatılmış
+/// yeniden yüklemeler, karaoke, çok kısa ya da çok uzun (mix/derleme) parçalar.
+/// Tohum ya da kullanıcının zaten dinlediği şarkılar bu süzgeçten geçmez.
+pub fn is_junk(t: &TrackInfo) -> bool {
+    // import::norm parantez içini atıyor; "(Türkçe Çeviri)" tam orada durur, o yüzden ayrı sadeleştir.
+    let title: String = t
+        .title
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'ç' => 'c',
+            'ş' => 's',
+            'ğ' => 'g',
+            'ı' | 'İ' => 'i',
+            'ö' => 'o',
+            'ü' => 'u',
+            c if c.is_alphanumeric() => c,
+            _ => ' ',
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    const BAD: &[&str] = &[
+        "ceviri", "translation", "lyrics", "lyric video", "sozleri", "altyazi", "slowed", "sped up", "speed up",
+        "nightcore", "8d audio", "reverb", "karaoke", "bass boosted", "1 hour", "1 saat", "full album", "mashup",
+    ];
+    if BAD.iter().any(|b| title.contains(b)) {
+        return true;
+    }
+    t.duration > 0.0 && (t.duration < 75.0 || t.duration > 600.0)
+}
+
+/// Tanıdık ve yeni şarkıları sırayla harmanla (3 tanıdık : 2 yeni); biri biterse öteki sürer.
+fn blend(familiar: Vec<TrackInfo>, fresh: Vec<TrackInfo>, n: usize) -> Vec<TrackInfo> {
+    let (mut a, mut b) = (familiar.into_iter(), fresh.into_iter());
+    let mut out = Vec::with_capacity(n);
+    let mut k = 0usize;
+    while out.len() < n {
+        let pick = if k % 5 < 3 { a.next().or_else(|| b.next()) } else { b.next().or_else(|| a.next()) };
+        match pick {
+            Some(t) => out.push(t),
+            None => break,
+        }
+        k += 1;
+    }
+    out
+}
+
 fn diversify(list: Vec<(f32, TrackInfo)>, per_artist: usize, n: usize) -> Vec<TrackInfo> {
     let mut count: HashMap<String, usize> = HashMap::new();
     let mut out = Vec::new();
@@ -141,6 +190,10 @@ pub fn build_with_blocked(
             if seed_keys.contains(&key) || skipped.contains(&key) || disliked_tracks.contains(&key) || disliked_artists.contains(&aid) {
                 continue;
             }
+            // Çok atlanan sanatçılar karışıma girmesin; çeviri/hızlandırılmış kopyalar da.
+            if artist_score.get(&aid).is_some_and(|s| *s < -1.5) || is_junk(t) {
+                continue;
+            }
             if !blocked_artists.is_empty() && blocked_artists.contains(&aid) && !known_artists.contains(&aid) {
                 continue;
             }
@@ -167,8 +220,22 @@ pub fn build_with_blocked(
         .collect();
     ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
 
-    // Senin için karışım
-    let mix = diversify(ranked.clone(), 2, 20);
+    // Kaç farklı tohumun radyosunda çıktı: ortak öneri, tek radyonun rastgele uzantısından güvenilir.
+    let hits: HashMap<String, usize> = pool.iter().map(|(k, (_, h, _))| (k.clone(), *h)).collect();
+    let multi_seed = seeds.len() >= 3;
+
+    // Senin için karışım: tanıdık sanatçılardan (sevdiğin) ve ortak önerilerden (yeni) dengeli
+    let familiar: Vec<(f32, TrackInfo)> = ranked.iter().filter(|(_, t)| known_artists.contains(&artist_id(t))).cloned().collect();
+    let fresh: Vec<(f32, TrackInfo)> = ranked
+        .iter()
+        .filter(|(_, t)| !known_artists.contains(&artist_id(t)))
+        .filter(|(_, t)| !multi_seed || hits.get(&t.key()).copied().unwrap_or(0) >= 2)
+        .cloned()
+        .collect();
+    let mut mix = blend(diversify(familiar, 2, 12), diversify(fresh, 1, 12), 20);
+    if mix.len() < 12 {
+        mix = diversify(ranked.clone(), 2, 20); // az veri: eski davranış
+    }
     let mix_keys: HashSet<String> = mix.iter().map(TrackInfo::key).collect();
     if !mix.is_empty() {
         // Geçmiş henüz yoksa tohumlar YouTube Music'in sana özel önerilerinden gelir.
@@ -185,23 +252,27 @@ pub fn build_with_blocked(
     // "<Sanatçı> ve benzerleri": en sevilen iki sanatçının radyosu
     for (seed, _) in seeds.iter().take(2) {
         let Some(list) = radios.get(&seed.key()) else { continue };
-        let items = diversify(list.iter().map(|t| (0.0, t.clone())).filter(|(_, t)| !skipped.contains(&t.key())).collect(), 2, 14);
+        let items = diversify(list.iter().map(|t| (0.0, t.clone())).filter(|(_, t)| !skipped.contains(&t.key()) && !is_junk(t)).collect(), 2, 14);
         if items.len() >= 4 && !h.is_empty() {
             let name = seed.artist.split(',').next().unwrap_or("").trim().to_string();
             out.push(Section { style: 0, cards: Vec::new(), title: format!("{name} ve benzerleri"), items });
         }
     }
 
-    // Yeni keşifler: hiç dinlemediğin sanatçılar, karışımda olmayanlar
-    let discover = diversify(
-        ranked
-            .iter()
-            .filter(|(_, t)| !known_artists.contains(&artist_id(t)) && !mix_keys.contains(&t.key()))
-            .cloned()
-            .collect(),
-        1,
-        16,
-    );
+    // Yeni keşifler: hiç dinlemediğin sanatçılar, karışımda olmayanlar. Önce en az iki
+    // tohumun ortak önerdikleri; yetmezse tek tohumlu en yüksek puanlılarla tamamla.
+    let unknown: Vec<(f32, TrackInfo)> = ranked
+        .iter()
+        .filter(|(_, t)| !known_artists.contains(&artist_id(t)) && !mix_keys.contains(&t.key()))
+        .cloned()
+        .collect();
+    let (strong, weak): (Vec<_>, Vec<_>) = unknown.into_iter().partition(|(_, t)| !multi_seed || hits.get(&t.key()).copied().unwrap_or(0) >= 2);
+    let mut discover = diversify(strong, 1, 16);
+    if discover.len() < 10 {
+        let have: HashSet<String> = discover.iter().map(|t| artist_id(t)).collect();
+        let extra = diversify(weak.into_iter().filter(|(_, t)| !have.contains(&artist_id(t))).collect(), 1, 16 - discover.len());
+        discover.extend(extra);
+    }
     if discover.len() >= 4 {
         out.push(Section { style: 0, cards: Vec::new(), title: "Yeni keşifler".into(), items: discover });
     }
@@ -282,6 +353,20 @@ mod tests {
         assert!(!mix.iter().any(|t| t.id == "bad" || t.id == "seed"));
         assert!(mix.iter().filter(|t| t.artist == "R").count() <= 2);
         assert_eq!(mix.first().map(|t| t.id.as_str()), Some("r1"));
+    }
+
+    #[test]
+    fn junk_uploads_are_filtered() {
+        let mut t = tr("x", "Someone");
+        t.title = "Tame Impala - Loser (Türkçe Çeviri)".into();
+        assert!(is_junk(&t));
+        t.title = "Let It Happen".into();
+        assert!(!is_junk(&t));
+        t.title = "Song (Slowed + Reverb)".into();
+        assert!(is_junk(&t));
+        t.title = "Long Mix".into();
+        t.duration = 3600.0;
+        assert!(is_junk(&t));
     }
 
     #[test]
