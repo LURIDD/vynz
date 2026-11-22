@@ -70,6 +70,17 @@ pub struct History {
     pub likes: Vec<TrackInfo>,
     pub disliked_tracks: Vec<TrackInfo>,
     pub disliked_artists: Vec<String>,
+    /// "Bunu daha çok öner": şarkı ve asıl sanatçısı güçlü pozitif sinyal alır.
+    pub boosted_tracks: Vec<TrackInfo>,
+}
+
+/// "Daha çok öner" ağırlığı (beğeni +3, İlgilenmiyorum −2.5).
+pub const BOOST: f32 = 4.0;
+
+#[derive(Default, Serialize, Deserialize)]
+struct BoostsFile {
+    #[serde(default)]
+    tracks: Vec<TrackInfo>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -103,7 +114,55 @@ impl History {
                 h.disliked_artists = d.artists;
             }
         }
+        if let Ok(raw) = std::fs::read(dir().join("boosts.json")) {
+            if let Ok(b) = serde_json::from_slice::<BoostsFile>(&raw) {
+                h.boosted_tracks = b.tracks;
+            }
+        }
         h
+    }
+
+    fn save_boosts(&self) {
+        let _ = std::fs::create_dir_all(dir());
+        let f = BoostsFile { tracks: self.boosted_tracks.clone() };
+        let _ = std::fs::write(dir().join("boosts.json"), serde_json::to_vec_pretty(&f).unwrap_or_default());
+    }
+
+    pub fn is_boosted(&self, key: &str) -> bool {
+        self.boosted_tracks.iter().any(|t| t.key() == key)
+    }
+
+    /// "Bunu daha çok öner"i değiştir; yeni durumu döner. Öne çıkarılan şarkı "İlgilenmiyorum"dan çıkar.
+    pub fn toggle_boost(&mut self, t: &TrackInfo) -> bool {
+        let key = t.key();
+        let on = if let Some(i) = self.boosted_tracks.iter().position(|x| x.key() == key) {
+            self.boosted_tracks.remove(i);
+            false
+        } else {
+            self.boosted_tracks.insert(0, t.clone());
+            if self.disliked_tracks.iter().any(|x| x.key() == key) {
+                self.undislike_track(&key);
+            }
+            true
+        };
+        self.save_boosts();
+        on
+    }
+
+    /// Öneri profilini sıfırla: "daha çok öner" ve "İlgilenmiyorum" listeleri.
+    /// Dinleme geçmişi ve beğeniler korunur.
+    pub fn reset_profile(&mut self) {
+        self.boosted_tracks.clear();
+        self.disliked_tracks.clear();
+        self.disliked_artists.clear();
+        self.save_boosts();
+        self.save_dislikes();
+    }
+
+    /// Dinleme geçmişini sil (beğeniler kütüphane olduğu için korunur).
+    pub fn clear_listens(&mut self) {
+        self.listens.clear();
+        let _ = std::fs::remove_file(dir().join("history.jsonl"));
     }
 
     fn save_dislikes(&self) {
@@ -116,6 +175,10 @@ impl History {
         let key = t.key();
         if !self.disliked_tracks.iter().any(|x| x.key() == key) {
             self.disliked_tracks.insert(0, t.clone());
+        }
+        if let Some(pos) = self.boosted_tracks.iter().position(|x| x.key() == key) {
+            self.boosted_tracks.remove(pos);
+            self.save_boosts();
         }
         if let Some(pos) = self.likes.iter().position(|x| x.key() == key) {
             self.likes.remove(pos);
@@ -217,6 +280,10 @@ impl History {
         for t in &self.disliked_tracks {
             m.entry(t.key()).or_insert((0.0, t.clone())).0 -= 2.5;
         }
+        // Daha çok öner: şarkı puanı, dolayısıyla sanatçı yakınlığı da yükselir.
+        for t in &self.boosted_tracks {
+            m.entry(t.key()).or_insert((0.0, t.clone())).0 += BOOST;
+        }
         m
     }
 
@@ -261,10 +328,11 @@ impl History {
             likes: self.likes.clone(),
             disliked_tracks: self.disliked_tracks.clone(),
             disliked_artists: self.disliked_artists.clone(),
+            boosted_tracks: self.boosted_tracks.clone(),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.listens.is_empty() && self.likes.is_empty()
+        self.listens.is_empty() && self.likes.is_empty() && self.boosted_tracks.is_empty()
     }
 }

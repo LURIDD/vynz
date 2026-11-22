@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark" data-accent="cobalt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vynz v3 — Arama Sayfası (Madde 10: Geniş & Dar Pencere)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       Vynz v3 Taslak — Madde 10: Arama Sonuçları Sayfası
+       tokens-v2.json + ui/theme.slint ile 1:1 uyumlu.
+       Slint uyarlama kuralları:
+       - Kırılım eşiği: wide = root.width >= 1150px
+       - Geniş pencerede (>= 1150px):
+           2 sütunlu asimetrik düzen:
+           • Sol (%41): Kompakt 2'li kart ızgarası (Sanatçılar, Albümler, Oynatma Listeleri)
+           • Sağ (%59): En üstte "En İyi Sonuç" kartı + hemen altında kesintisiz Şarkılar listesi
+       - Dar pencerede (< 1150px, ör. 960px):
+           Tek sütun — En İyi Sonuç + Şarkılar EN ÜSTTE; Sanatçılar, Albümler, Listeler altında.
+       - Üstte hızlı kategori sekmeleri: Tümü · Şarkılar · Albümler · Sanatçılar · Listeler
+       ========================================================================== */
+    :root, [data-theme="dark"] {
+      --outer: #050507;
+      --bg-canvas: #090A0D;
+      --surface-subtle: rgba(255, 255, 255, 0.028);
+      --surface-1: rgba(255, 255, 255, 0.048);
+      --surface-2: rgba(255, 255, 255, 0.08);
+      --surface-3: rgba(255, 255, 255, 0.125);
+      --border: rgba(255, 255, 255, 0.08);
+      --surface-floating: #13151C;
+      --text-primary: #F5F6F8;
+      --text-secondary: rgba(245, 246, 248, 0.64);
+      --text-muted: rgba(245, 246, 248, 0.38);
+      --on-primary: #090A0D;
+      --cover-accent: #60A5FA;
+      --cover-accent-soft: rgba(96, 165, 250, 0.15);
+      --blob-1: rgba(59, 130, 246, 0.16);
+      --blob-2: rgba(30, 58, 138, 0.20);
+      --shadow-floating: 0 24px 48px -12px rgba(0, 0, 0, 0.72);
+    }
+
+    [data-theme="light"] {
+      --outer: #E7E5DE;
+      --bg-canvas: #F3F2EE;
+      --surface-subtle: rgba(15, 18, 24, 0.025);
+      --surface-1: rgba(15, 18, 24, 0.045);
+      --surface-2: rgba(15, 18, 24, 0.075);
+      --surface-3: rgba(15, 18, 24, 0.115);
+      --border: rgba(15, 18, 24, 0.08);
+      --surface-floating: #FFFFFF;
+      --text-primary: #111318;
+      --text-secondary: rgba(17, 19, 24, 0.62);
+      --text-muted: rgba(17, 19, 24, 0.40);
+      --on-primary: #FFFFFF;
+      --cover-accent: #1D4ED8;
+      --cover-accent-soft: rgba(29, 78, 216, 0.12);
+      --blob-1: rgba(59, 130, 246, 0.12);
+      --blob-2: rgba(96, 165, 250, 0.10);
+      --shadow-floating: 0 20px 44px -10px rgba(17, 19, 24, 0.16);
+    }
+
+    :root {
+      --font-display: 'Plus Jakarta Sans', 'Manrope', system-ui, sans-serif;
+      --font-sans: 'Manrope', 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+      --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 26px; --r-pill: 9999px;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--outer);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 16px 68px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app-window {
+      position: relative;
+      width: 1320px;
+      max-width: 100%;
+      height: 800px;
+      background: var(--bg-canvas);
+      border-radius: var(--r-xl);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 196px 1fr;
+      box-shadow: 0 36px 80px -20px rgba(0,0,0,0.75);
+      transition: width 240ms var(--ease);
+    }
+    .app-window.narrow {
+      width: 960px;
+      grid-template-columns: 184px 1fr;
+    }
+
+    .ambient-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(55% 60% at 15% 10%, var(--blob-1), transparent 65%),
+        radial-gradient(50% 55% at 88% 85%, var(--blob-2), transparent 65%);
+    }
+
+    /* Sade Sol Bar */
+    .sidebar {
+      position: relative;
+      z-index: 5;
+      padding: 18px 12px;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: var(--surface-subtle);
+    }
+    .sb-brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 6px 10px 18px;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .sb-brand svg { color: var(--cover-accent); }
+    .sb-nav {
+      height: 38px;
+      padding: 0 11px;
+      border-radius: var(--r-sm);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-secondary);
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .sb-nav:hover { background: var(--surface-1); color: var(--text-primary); }
+    .sb-nav.active { background: var(--surface-2); color: var(--text-primary); }
+    .sb-section {
+      margin: 14px 10px 4px;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+    .sb-pl {
+      height: 36px;
+      padding: 0 10px;
+      border-radius: var(--r-sm);
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .sb-pl:hover { background: var(--surface-1); color: var(--text-primary); }
+    .sb-thumb {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      flex-shrink: 0;
+    }
+    .sb-footer {
+      margin-top: auto;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    /* Sağ İçerik Alanı */
+    .main-area {
+      position: relative;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    /* Üst Arama Çubuğu + Filtre Sekmeleri */
+    .search-header {
+      padding: 18px 28px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .search-box-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .search-input-wrap {
+      flex: 1;
+      max-width: 520px;
+      height: 42px;
+      padding: 0 14px;
+      border-radius: var(--r-pill);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .search-input-wrap input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .width-badge {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: var(--r-pill);
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .filter-tabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .tab-pill {
+      height: 30px;
+      padding: 0 14px;
+      border-radius: var(--r-pill);
+      border: 1px solid var(--border);
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 140ms var(--ease), color 140ms var(--ease);
+    }
+    .tab-pill:hover { background: var(--surface-2); color: var(--text-primary); }
+    .tab-pill.active {
+      background: var(--text-primary);
+      color: var(--on-primary);
+      border-color: transparent;
+    }
+
+    /* Kaydırılabilir Sonuçlar Alanı */
+    .search-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 28px 116px;
+    }
+
+    /* GENİŞ DÜZEN (>= 1150px): Solda %41 Katalog (Sanatçı/Albüm/Liste), Sağda %59 En İyi Sonuç + Şarkılar */
+    .results-grid {
+      display: grid;
+      grid-template-columns: 41% 1fr;
+      gap: 28px;
+      align-items: start;
+    }
+    .col-catalog { order: 1; display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+    .col-tracks  { order: 2; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+    /* DAR DÜZEN (< 1150px): Tek sütun, ŞARKILAR EN ÜSTTE! */
+    .app-window.narrow .results-grid {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+    .app-window.narrow .col-tracks  { order: 1; }
+    .app-window.narrow .col-catalog { order: 2; }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .section-count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* En İyi Sonuç Kartı */
+    .top-result-card {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 16px;
+      border-radius: var(--r-lg);
+      background: linear-gradient(125deg, var(--cover-accent-soft) 0%, var(--surface-1) 70%);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: border-color 140ms var(--ease), transform 140ms var(--ease);
+    }
+    .top-result-card:hover { border-color: var(--cover-accent); transform: translateY(-1px); }
+    .top-art {
+      width: 68px;
+      height: 68px;
+      border-radius: var(--r-md);
+      background: linear-gradient(135deg, #1E3A8A, #3B82F6, #0F172A);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 20px;
+      color: #DBEAFE;
+    }
+    .top-meta { flex: 1; min-width: 0; }
+    .top-kicker {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--cover-accent);
+    }
+    .top-title {
+      font-family: var(--font-display);
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-top: 2px;
+    }
+    .top-sub { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+    .top-play {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: none;
+      background: var(--cover-accent);
+      color: #090A0D;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* Şarkı Satırları */
+    .track-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .track-row {
+      height: 54px;
+      padding: 0 10px;
+      border-radius: var(--r-sm);
+      display: grid;
+      grid-template-columns: 40px 1fr auto auto;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: background 120ms var(--ease);
+    }
+    .track-row:hover { background: var(--surface-2); }
+    .track-row.playing { background: var(--surface-2); }
+    .tr-cover {
+      width: 40px;
+      height: 40px;
+      border-radius: 7px;
+      flex-shrink: 0;
+    }
+    .tr-info { min-width: 0; }
+    .tr-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .track-row.playing .tr-name { color: var(--cover-accent); }
+    .tr-sub {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tr-dur {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .tr-more {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      opacity: 0;
+      cursor: pointer;
+      transition: opacity 120ms var(--ease);
+    }
+    .track-row:hover .tr-more { opacity: 1; }
+
+    /* Sol Katalog: Kompakt 2'li Kart Izgarası */
+    .card-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .app-window.narrow .card-grid-2 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .mini-card {
+      padding: 12px;
+      border-radius: var(--r-md);
+      background: var(--surface-1);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 140ms var(--ease), border-color 140ms var(--ease), transform 140ms var(--ease);
+    }
+    .mini-card:hover {
+      background: var(--surface-2);
+      border-color: var(--border);
+      transform: translateY(-2px);
+    }
+    .card-art {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: var(--r-sm);
+      margin-bottom: 10px;
+    }
+    .card-art.round { border-radius: 50%; }
+    .card-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Yüzen Alt Oynatma Çubuğu */
+    .floating-player {
+      position: absolute;
+      left: 212px;
+      right: 20px;
+      bottom: 16px;
+      height: 72px;
+      border-radius: var(--r-lg);
+      background: var(--surface-floating);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-floating);
+      z-index: 20;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .app-window.narrow .floating-player { left: 200px; }
+
+    /* Prototip Kontrol Çubuğu */
+    .proto-bar {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      background: rgba(16, 18, 24, 0.92);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--r-pill);
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      color: #F5F6F8;
+      font-size: 12px;
+    }
+    .proto-label { padding: 0 8px; color: rgba(245,246,248,0.55); font-weight: 600; }
+    .proto-btn {
+      height: 28px;
+      padding: 0 11px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: rgba(255,255,255,0.06);
+      color: #E4E6EB;
+      font-family: var(--font-sans);
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .proto-btn:hover { background: rgba(255,255,255,0.14); }
+    .proto-btn.active { background: #60A5FA; color: #090A0D; }
+  </style>
+</head>
+<body>
+  <div class="app-window" id="appWindow">
+    <div class="ambient-layer"></div>
+
+    <!-- Sol Bar -->
+    <aside class="sidebar">
+      <div class="sb-brand">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M 3.8 6.5 L 8.8 18.2 L 11.8 11.2 M 12.2 7.2 A 5 5 0 0 1 14.8 16.5 M 12.2 3.5 A 8.7 8.7 0 0 1 11.5 20.5"/>
+        </svg>
+        Vynz
+      </div>
+      <div class="sb-nav">Ana Sayfa</div>
+      <div class="sb-nav active">Arama</div>
+      <div class="sb-nav">Beğendiklerim</div>
+      <div class="sb-section">Listelerim</div>
+      <div class="sb-pl"><span class="sb-thumb" style="background:linear-gradient(135deg,#2563EB,#7C3AED);"></span>Gece Sürüşü</div>
+      <div class="sb-pl"><span class="sb-thumb" style="background:linear-gradient(135deg,#EA580C,#FACC15);"></span>Anadolu Rock</div>
+      <div class="sb-pl"><span class="sb-thumb" style="background:linear-gradient(135deg,#059669,#0F766E);"></span>Odaklanma</div>
+      <div class="sb-footer">
+        <div class="sb-nav">Profil &amp; Ayarlar</div>
+      </div>
+    </aside>
+
+    <!-- Sağ Ana Alan -->
+    <div class="main-area">
+      <header class="search-header">
+        <div class="search-box-row">
+          <div class="search-input-wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="color:var(--text-muted);"><path d="M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0M21 21l-4.3-4.3"/></svg>
+            <input type="text" value="mor ve ötesi" aria-label="Ara" />
+          </div>
+          <span class="width-badge" id="widthBadge">Geniş · 1320px (2 sütun)</span>
+        </div>
+
+        <div class="filter-tabs" id="filterTabs">
+          <button class="tab-pill active" onclick="setTab('all', this)">Tümü</button>
+          <button class="tab-pill" onclick="setTab('tracks', this)">Şarkılar</button>
+          <button class="tab-pill" onclick="setTab('albums', this)">Albümler</button>
+          <button class="tab-pill" onclick="setTab('artists', this)">Sanatçılar</button>
+          <button class="tab-pill" onclick="setTab('playlists', this)">Listeler</button>
+        </div>
+      </header>
+
+      <div class="search-scroll">
+        <div class="results-grid" id="resultsGrid">
+          <!-- SOL SÜTUN (Genişte sol %41, darda şarkıların altı) -->
+          <div class="col-catalog" id="colCatalog">
+            <section data-cat="artists">
+              <div class="section-head">
+                <h2 class="section-title">Sanatçılar</h2>
+                <span class="section-count">2</span>
+              </div>
+              <div class="card-grid-2">
+                <div class="mini-card">
+                  <div class="card-art round" style="background:radial-gradient(circle at 35% 30%,#60A5FA,#1E3A8A 65%,#0F172A);"></div>
+                  <div class="card-title">Mor ve Ötesi</div>
+                  <div class="card-sub">Sanatçı · 2,4 Mn dinleyici</div>
+                </div>
+                <div class="mini-card">
+                  <div class="card-art round" style="background:radial-gradient(circle at 35% 30%,#A78BFA,#4C1D95 65%,#1E1B4B);"></div>
+                  <div class="card-title">Harun Tekin</div>
+                  <div class="card-sub">Sanatçı</div>
+                </div>
+              </div>
+            </section>
+
+            <section data-cat="albums">
+              <div class="section-head">
+                <h2 class="section-title">Albümler</h2>
+                <span class="section-count">4</span>
+              </div>
+              <div class="card-grid-2">
+                <div class="mini-card">
+                  <div class="card-art" style="background:linear-gradient(135deg,#1D4ED8,#0F172A);"></div>
+                  <div class="card-title">Dünya Yalan Söylüyor</div>
+                  <div class="card-sub">Albüm · 2004</div>
+                </div>
+                <div class="mini-card">
+                  <div class="card-art" style="background:linear-gradient(135deg,#7C2D12,#1C1917);"></div>
+                  <div class="card-title">Büyük Düşler</div>
+                  <div class="card-sub">Albüm · 2006</div>
+                </div>
+                <div class="mini-card">
+                  <div class="card-art" style="background:linear-gradient(135deg,#065F46,#064E3B);"></div>
+                  <div class="card-title">Masumiyetin Ziyan Olmaz</div>
+                  <div class="card-sub">Albüm · 2010</div>
+                </div>
+                <div class="mini-card">
+                  <div class="card-art" style="background:linear-gradient(135deg,#6D28D9,#1E1B4B);"></div>
+                  <div class="card-title">Sirenler</div>
+                  <div class="card-sub">Albüm · 2022</div>
+                </div>
+              </div>
+            </section>
+
+            <section data-cat="playlists">
+              <div class="section-head">
+                <h2 class="section-title">Oynatma Listeleri</h2>
+                <span class="section-count">2</span>
+              </div>
+              <div class="card-grid-2">
+                <div class="mini-card">
+                  <div class="card-art" style="background:linear-gradient(135deg,#0284C7,#312E81);"></div>
+                  <div class="card-title">Mor ve Ötesi En İyiler</div>
+                  <div class="card-sub">Topluluk · 42 şarkı</div>
+                </div>
+                <div class="mini-card">
+                  <div class="card-art" style="background:linear-gradient(135deg,#BE123C,#1F2937);"></div>
+                  <div class="card-title">2000'ler Türkçe Rock</div>
+                  <div class="card-sub">Topluluk · 68 şarkı</div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- SAĞ SÜTUN (Genişte sağ %59, darda EN ÜSTTE) -->
+          <div class="col-tracks" id="colTracks">
+            <section data-cat="tracks">
+              <div class="section-head">
+                <h2 class="section-title">En İyi Sonuç</h2>
+              </div>
+              <div class="top-result-card">
+                <div class="top-art">MÖ</div>
+                <div class="top-meta">
+                  <div class="top-kicker">Şarkı · En Çok Eşleşen</div>
+                  <div class="top-title">Cambaz</div>
+                  <div class="top-sub">Mor ve Ötesi · Dünya Yalan Söylüyor · 3:50</div>
+                </div>
+                <button class="top-play" title="Çal">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 3l14 9-14 9z"/></svg>
+                </button>
+              </div>
+            </section>
+
+            <section data-cat="tracks">
+              <div class="section-head">
+                <h2 class="section-title">Şarkılar</h2>
+                <span class="section-count">8 sonuç</span>
+              </div>
+              <div class="track-list">
+                <div class="track-row playing">
+                  <div class="tr-cover" style="background:linear-gradient(135deg,#1D4ED8,#0F172A);"></div>
+                  <div class="tr-info"><div class="tr-name">Cambaz</div><div class="tr-sub">Mor ve Ötesi · Dünya Yalan Söylüyor</div></div>
+                  <div class="tr-dur">3:50</div>
+                  <button class="tr-more">⋯</button>
+                </div>
+                <div class="track-row">
+                  <div class="tr-cover" style="background:linear-gradient(135deg,#7C2D12,#1C1917);"></div>
+                  <div class="tr-info"><div class="tr-name">Bir Derdim Var</div><div class="tr-sub">Mor ve Ötesi · Dünya Yalan Söylüyor</div></div>
+                  <div class="tr-dur">3:34</div>
+                  <button class="tr-more">⋯</button>
+                </div>
+                <div class="track-row">
+                  <div class="tr-cover" style="background:linear-gradient(135deg,#6D28D9,#1E1B4B);"></div>
+                  <div class="tr-info"><div class="tr-name">Oyunbozan</div><div class="tr-sub">Mor ve Ötesi · Başıbozuk</div></div>
+                  <div class="tr-dur">4:38</div>
+                  <button class="tr-more">⋯</button>
+                </div>
+                <div class="track-row">
+                  <div class="tr-cover" style="background:linear-gradient(135deg,#065F46,#064E3B);"></div>
+                  <div class="tr-info"><div class="tr-name">Araf</div><div class="tr-sub">Mor ve Ötesi · Masumiyetin Ziyan Olmaz</div></div>
+                  <div class="tr-dur">4:12</div>
+                  <button class="tr-more">⋯</button>
+                </div>
+                <div class="track-row">
+                  <div class="tr-cover" style="background:linear-gradient(135deg,#991B1B,#1F2937);"></div>
+                  <div class="tr-info"><div class="tr-name">Küçük Sevgilim</div><div class="tr-sub">Mor ve Ötesi · Büyük Düşler</div></div>
+                  <div class="tr-dur">4:13</div>
+                  <button class="tr-more">⋯</button>
+                </div>
+                <div class="track-row">
+                  <div class="tr-cover" style="background:linear-gradient(135deg,#0369A1,#0F172A);"></div>
+                  <div class="tr-info"><div class="tr-name">Deli</div><div class="tr-sub">Mor ve Ötesi · Başıbozuk</div></div>
+                  <div class="tr-dur">3:02</div>
+                  <button class="tr-more">⋯</button>
+                </div>
+                <div class="track-row">
+                  <div class="tr-cover" style="background:linear-gradient(135deg,#B45309,#1C1917);"></div>
+                  <div class="tr-info"><div class="tr-name">Uyan</div><div class="tr-sub">Mor ve Ötesi · Dünya Yalan Söylüyor</div></div>
+                  <div class="tr-dur">5:18</div>
+                  <button class="tr-more">⋯</button>
+                </div>
+                <div class="track-row">
+                  <div class="tr-cover" style="background:linear-gradient(135deg,#4338CA,#111827);"></div>
+                  <div class="tr-info"><div class="tr-name">Forsa</div><div class="tr-sub">Mor ve Ötesi · Sirenler</div></div>
+                  <div class="tr-dur">4:06</div>
+                  <button class="tr-more">⋯</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Yüzen Alt Çubuk -->
+    <div class="floating-player">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#1D4ED8,#0F172A);"></div>
+        <div>
+          <div style="font-weight:700;font-size:13.5px;">Cambaz</div>
+          <div style="font-size:12px;color:var(--text-secondary);">Mor ve Ötesi</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);">⏮  ⏸  ⏭</div>
+      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);">1:12 / 3:50</div>
+    </div>
+  </div>
+
+  <!-- Prototip Kontrol Çubuğu -->
+  <div class="proto-bar">
+    <span class="proto-label">v3 Arama Taslağı</span>
+    <button class="proto-btn active" id="btnWide" onclick="setNarrow(false)">Geniş (1320px · 2 Sütun)</button>
+    <button class="proto-btn" id="btnNarrow" onclick="setNarrow(true)">Dar (960px · Şarkılar Üstte)</button>
+    <button class="proto-btn" onclick="toggleTheme()">Koyu / Açık</button>
+  </div>
+
+  <script>
+    function setNarrow(isNarrow) {
+      document.getElementById('appWindow').classList.toggle('narrow', isNarrow);
+      document.getElementById('btnWide').classList.toggle('active', !isNarrow);
+      document.getElementById('btnNarrow').classList.toggle('active', isNarrow);
+      document.getElementById('widthBadge').textContent = isNarrow
+        ? 'Dar · 960px (Şarkılar üstte)'
+        : 'Geniş · 1320px (2 sütun)';
+    }
+
+    function setTab(cat, el) {
+      document.querySelectorAll('.tab-pill').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+      const sections = document.querySelectorAll('[data-cat]');
+      sections.forEach(s => {
+        s.style.display = (cat === 'all' || s.dataset.cat === cat) ? '' : 'none';
+      });
+      const grid = document.getElementById('resultsGrid');
+      const catalog = document.getElementById('colCatalog');
+      const tracks = document.getElementById('colTracks');
+      if (cat === 'all') {
+        grid.style.gridTemplateColumns = '';
+        catalog.style.display = '';
+        tracks.style.display = '';
+      } else if (cat === 'tracks') {
+        grid.style.gridTemplateColumns = '1fr';
+        catalog.style.display = 'none';
+        tracks.style.display = '';
+      } else {
+        grid.style.gridTemplateColumns = '1fr';
+        catalog.style.display = '';
+        tracks.style.display = 'none';
+      }
+    }
+
+    function toggleTheme() {
+      const cur = document.documentElement.getAttribute('data-theme');
+      document.documentElement.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+    }
+  </script>
+</body>
+</html>

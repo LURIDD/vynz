@@ -9,6 +9,7 @@
 
 mod art;
 mod cache;
+mod discord;
 mod fetcher;
 mod history;
 mod import;
@@ -200,7 +201,7 @@ thread_local! {
 }
 
 const MAX_ARTS_RAM: usize = 96;
-const MAX_BANNERS_RAM: usize = 4;
+const MAX_BANNERS_RAM: usize = 1;
 const MAX_BLURS_RAM: usize = 24;
 const MAX_BIGS_RAM: usize = 12;
 
@@ -790,7 +791,11 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
         if idx != st.lyr_line || st.lyr_force {
             st.lyr_force = false;
             st.lyr_line = idx;
-            st.lyr_seg = seg;
+            // Yeni satırın kelimeleri yeni öğe olarak doğar; Slint ilk değeri canlandırmaz.
+            // Etkin kelime hedef dolumla doğarsa bir anda dolu görünür (ilk kelime hatası).
+            // Bu yüzden şimdiki dolumla, süresiz kur; hedefi bir sonraki tıkta (50 ms) yaz.
+            st.lyr_seg = None;
+            let _ = seg;
             let rows = match (idx, pr) {
                 (Some(i), Some(pr)) => {
                     let line = &l.lines[i];
@@ -800,7 +805,7 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
                     let mut rows: Vec<Vec<LyricWord>> = vec![Vec::new(); row_of.last().map(|r| r + 1).unwrap_or(0)];
                     for (k, w) in ws.iter().enumerate() {
                         let long = spans.get(k).is_some_and(|(a, b)| b - a >= 1.0);
-                        rows[row_of[k]].push(word_at(k, w, long, &pr, hold));
+                        rows[row_of[k]].push(word_at(k, w, long, &pr, true));
                     }
                     rows
                 }
@@ -1578,6 +1583,10 @@ fn menu_action(ui: &AppWindow, action: i32) {
             add_to_queue(ui, t);
         }
         3 => start_radio(ui, t),
+        9 => {
+            let on = with_state(|st| st.history.toggle_boost(&t));
+            toast(ui, if on { "Benzerleri daha sık önerilecek; ana sayfa yenilenince görünür" } else { "Artık öne çıkarılmıyor" });
+        }
         4 => {
             let l = with_state(|st| st.history.toggle_like(&t));
             if ui.get_now().key == t.key().as_str() {
@@ -1667,6 +1676,29 @@ fn refresh_hidden(ui: &AppWindow) {
     });
     ui.set_hidden_artists(ModelRc::new(VecModel::from(artists)));
     ui.set_hidden_tracks(ModelRc::new(VecModel::from(tracks)));
+}
+
+/// Seçicideki "Yeni liste": menü şarkısıyla birlikte oluştur, sayfayı değiştirme.
+fn create_playlist_with_track(ui: &AppWindow, name: String) {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return;
+    }
+    let ok = with_state(|st| {
+        let t = st.menu.take()?;
+        st.playlists.insert(0, library::Playlist { name: name.clone(), origin: String::new(), tracks: vec![t] });
+        // Açık liste indeksi bir kaydı.
+        st.current_pl = st.current_pl.map(|i| i + 1);
+        let _ = library::save(&st.playlists);
+        Some(())
+    });
+    if ok.is_some() {
+        if ui.get_current_playlist() >= 0 {
+            ui.set_current_playlist(ui.get_current_playlist() + 1);
+        }
+        refresh_playlists(ui);
+        toast(ui, &format!("'{name}' oluşturuldu ve şarkı eklendi"));
+    }
 }
 
 fn add_menu_track_to_playlist(ui: &AppWindow, pl_idx: usize) {
@@ -1826,8 +1858,71 @@ fn compose(st: &State, h: &HomeData) -> Vec<Section> {
         out.push(Section { title: "Sana özel".into(), items: Vec::new(), cards: feature_cards, style: 5 });
     }
 
-    // 3. Trend şarkılar veya harici şarkılar (style 6: 3 sütun × 4 satır kompakt liste)
     let ext_tracks: Vec<Section> = h.external.iter().filter(|s| s.style == 0).cloned().collect();
+    let similar: Vec<Section> = p.iter().filter(|s| s.title.ends_with(" ve benzerleri")).cloned().collect();
+    // Geçmiş, öne çıkarılanlar ya da Zevkler varsa sayfa kişisel raflarla başlar; genel
+    // Türkiye vitrini en alta "Keşfet" olarak iner. Hiçbiri yoksa vitrin yedek olarak üstte kalır.
+    let personalized = !st.history.is_empty() || !st.settings.taste_tracks.is_empty() || !st.settings.taste_genres.is_empty();
+
+    let spotlight = |out: &mut Vec<Section>, seen: &mut HashSet<String>, src: Option<Section>| {
+        if let Some(sp) = src {
+            let items = dedup(sp.items, seen, 4);
+            if items.len() >= 4 {
+                let title = if sp.title.ends_with(" ve benzerleri") {
+                    format!("Çünkü {} dinliyorsun", sp.title.trim_end_matches(" ve benzerleri"))
+                } else {
+                    sp.title
+                };
+                out.push(Section { title, items, cards: Vec::new(), style: 7 });
+            }
+        }
+    };
+    let recent = |out: &mut Vec<Section>, seen: &mut HashSet<String>| {
+        if let Some(rec) = find_title(p, "Kaldığın yerden") {
+            let items = dedup(rec.items, seen, 4);
+            if items.len() >= 3 {
+                out.push(Section { title: rec.title, items, cards: Vec::new(), style: 0 });
+            }
+        }
+    };
+
+    if personalized {
+        // 3. Çünkü X dinliyorsun (odak bandı)
+        spotlight(&mut out, &mut seen, similar.first().cloned().or_else(|| mix_sec.clone()));
+        // 4. Zevkine göre çalma listeleri (topluluk listeleri, sanatçılarından ve türlerinden)
+        if let Some(pl) = find_title(p, TASTE_PLAYLISTS) {
+            out.push(pl);
+        }
+        // 5. İkinci sevilen sanatçının benzerleri
+        if let Some(s) = similar.get(1) {
+            let items = dedup(s.items.clone(), &mut seen, 6);
+            if items.len() >= 6 {
+                out.push(Section { title: s.title.clone(), items, cards: Vec::new(), style: 0 });
+            }
+        }
+        // 6. Kaldığın yerden
+        recent(&mut out, &mut seen);
+        // 7. Ruh hâli ve türler
+        if let Some(moods) = find_title(&h.explore, "Ruh hâli ve türler") {
+            out.push(moods);
+        }
+        // 8. Keşfet: Türkiye trendleri en altta, sevmediklerin ayıklanmış ve kısa.
+        if let Some(c) = find_title(&h.explore, "Trend şarkılar") {
+            let items: Vec<TrackInfo> = dedup(c.items, &mut seen, 6).into_iter().take(12).collect();
+            if !items.is_empty() {
+                out.push(Section { title: "Keşfet · Türkiye'de trend".into(), items, cards: Vec::new(), style: 6 });
+            }
+        }
+        if let Some(albums) = find_title(&h.explore, "Yeni albümler") {
+            out.push(albums);
+        }
+        if let Some(artists) = find_title(&h.explore, "Türkiye'de popüler sanatçılar") {
+            out.push(artists);
+        }
+        return out;
+    }
+
+    // Kişisel sinyal yok: genel vitrin (ilk açılış ya da sıfırlama sonrası; Zevkler ekranı da açılır).
     let chart_src = find_title(&h.explore, "Trend şarkılar").or_else(|| ext_tracks.first().cloned());
     if let Some(c) = chart_src {
         let items = dedup(c.items, &mut seen, 6);
@@ -1835,55 +1930,24 @@ fn compose(st: &State, h: &HomeData) -> Vec<Section> {
             out.push(Section { title: c.title, items, cards: Vec::new(), style: 6 });
         }
     }
-
-    // 4. Türkiye'de popüler sanatçılar (style 3: yuvarlak portre şeridi — ortaya taşındı)
     if let Some(artists) = find_title(&h.explore, "Türkiye'de popüler sanatçılar") {
         out.push(artists);
     }
-
-    // 5. Sanatçı / Tema Odak Bandı (style 7: sol büyük kapak + sağ 4 şarkılık mini liste)
-    let spotlight_src = p
-        .iter()
-        .find(|s| s.title.ends_with(" ve benzerleri"))
-        .cloned()
-        .or_else(|| mix_sec.clone())
-        .or_else(|| ext_tracks.get(1).cloned());
-    if let Some(sp) = spotlight_src {
-        let items = dedup(sp.items, &mut seen, 4);
-        if items.len() >= 4 {
-            let title = if sp.title.ends_with(" ve benzerleri") {
-                format!("Çünkü {} dinliyorsun", sp.title.trim_end_matches(" ve benzerleri"))
-            } else {
-                sp.title
-            };
-            out.push(Section { title, items, cards: Vec::new(), style: 7 });
-        }
-    }
-
-    // 6. Ruh hâli ve türler (style 4: renkli blok ızgarası)
+    spotlight(&mut out, &mut seen, similar.first().cloned().or_else(|| mix_sec.clone()).or_else(|| ext_tracks.get(1).cloned()));
     if let Some(moods) = find_title(&h.explore, "Ruh hâli ve türler") {
         out.push(moods);
     }
-
-    // 7. Yeni albümler (style 2)
     if let Some(albums) = find_title(&h.explore, "Yeni albümler") {
         out.push(albums);
     }
-
-    // 8. Kaldığın yerden (style 0 — yukarıda çıkmayanlar)
-    if let Some(rec) = find_title(p, "Kaldığın yerden") {
-        let items = dedup(rec.items, &mut seen, 4);
-        if items.len() >= 3 {
-            out.push(Section { title: rec.title, items, cards: Vec::new(), style: 0 });
-        }
-    }
-
-    // 9. Harici oynatma listeleri (en fazla 2 raf — sonsuz tekrar olmasın)
+    recent(&mut out, &mut seen);
     for s in h.external.iter().filter(|s| s.style != 0).take(2) {
         out.push(s.clone());
     }
     out
 }
+
+const TASTE_PLAYLISTS: &str = "Zevkine göre çalma listeleri";
 
 /// Ana sayfayı göster.
 fn show_home(ui: &AppWindow, data: HomeData) {
@@ -2001,6 +2065,29 @@ fn load_home(ui: &AppWindow) {
             }));
         }
         drop(tx);
+        // Zevkine göre topluluk listeleri: en güçlü 3 tohumun sanatçısı + 2 seçili tür.
+        let (ptx, prx) = mpsc::channel();
+        let mut queries: Vec<String> = Vec::new();
+        if !history_snapshot.is_empty() || !taste_genres.is_empty() || !effective_taste_tracks.is_empty() {
+            for (s, _) in seeds.iter().take(3) {
+                let a = s.artist.split(',').next().unwrap_or("").trim();
+                if !a.is_empty() && !queries.iter().any(|q| q.eq_ignore_ascii_case(a)) {
+                    queries.push(a.to_string());
+                }
+            }
+            for gid in taste_genres.iter().take(2) {
+                if let Some((_, name, _)) = recommend::GENRES.iter().find(|(g, _, _)| g == gid) {
+                    queries.push(format!("{name} karışım"));
+                }
+            }
+        }
+        if !queries.is_empty() {
+            resolver.request(serde_json::json!({"op": "playlists", "queries": queries, "per": 3}), Prio::Soon, Box::new(move |r| {
+                let _ = ptx.send(r);
+            }));
+        } else {
+            drop(ptx);
+        }
         let mut radios = HashMap::new();
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
         while radios.len() < seeds.len() {
@@ -2021,7 +2108,13 @@ fn load_home(ui: &AppWindow) {
             }
             Err(_) => Vec::new(),
         };
-        let personal = recommend::build_with_blocked(&history_snapshot, &seeds, &radios, &blocked_artists);
+        let mut personal = recommend::build_with_blocked(&history_snapshot, &seeds, &radios, &blocked_artists);
+        if let Ok(Ok(d)) = prx.recv_timeout(Duration::from_secs(8)) {
+            let cards = cards_from_json(d.get("cards"));
+            if cards.len() >= 3 {
+                personal.push(Section { title: TASTE_PLAYLISTS.into(), items: Vec::new(), cards, style: 2 });
+            }
+        }
         let data = HomeData { personal, external, explore };
         if !data.personal.is_empty() || !data.external.is_empty() {
             let _ = std::fs::write(home_cache(), serde_json::to_vec(&data).unwrap_or_default());
@@ -2135,7 +2228,7 @@ fn open_artist(ui: &AppWindow, c: Card) {
                 let key = format!("W|{}", with_state(|st| st.banner_key.clone()));
                 let weak = ui.as_weak();
                 thread::spawn(move || {
-                    if let Ok(a) = art::load_wide(&key[2..], &banner, 1440, 600) {
+                    if let Ok(a) = art::load_wide(&key[2..], &banner, 1200, 500) {
                         let _ = weak.upgrade_in_event_loop(move |ui| apply_art(&ui, key, a));
                     }
                 });
@@ -2166,6 +2259,27 @@ fn shuffled(mut v: Vec<TrackInfo>) -> Vec<TrackInfo> {
 fn close_sheets(ui: &AppWindow) {
     with_state(|st| st.sheets.clear());
     ui.set_sheet("".into());
+    drop_banner(ui);
+}
+
+/// Sanatçı sayfası kapanınca afişi (~2.4 MB RGBA) bellekten at.
+fn drop_banner(ui: &AppWindow) {
+    ui.set_has_banner(false);
+    ui.set_artist_banner(Image::default());
+    // Geç gelen afiş iş parçacığı kapanmış sayfaya yazmasın.
+    with_state(|st| st.banner_key.clear());
+    let keys: Vec<String> = BANNER_ORDER.with(|o| o.borrow_mut().drain(..).collect());
+    ARTS.with(|m| {
+        let mut map = m.borrow_mut();
+        for k in &keys {
+            map.remove(k);
+        }
+    });
+    with_state(|st| {
+        for k in keys {
+            st.requested.remove(&k);
+        }
+    });
 }
 
 fn sheet_back(ui: &AppWindow) {
@@ -2176,6 +2290,9 @@ fn sheet_back(ui: &AppWindow) {
     });
     ui.set_coll_loading(false);
     ui.set_artist_loading(false);
+    if !with_state(|st| st.sheets.iter().any(|s| s == "artist")) {
+        drop_banner(ui);
+    }
     ui.set_sheet(top.unwrap_or_default().into());
 }
 
@@ -2619,6 +2736,48 @@ fn import_change(ui: &AppWindow, i: usize) {
     }
 }
 
+/// Kaydetmeden önce istenmeyen satırı çıkar.
+fn import_remove(ui: &AppWindow, i: usize) {
+    let left = with_state(|st| {
+        let f = st.imported.as_mut()?;
+        (i < f.rows.len()).then(|| f.rows.remove(i))?;
+        Some(f.rows.len())
+    });
+    let Some(left) = left else { return };
+    if left == 0 {
+        import_clear(ui);
+        return;
+    }
+    let model = ui.get_import_rows();
+    match model.as_any().downcast_ref::<VecModel<ImportRow>>() {
+        // Yerinde sil: kaydırma konumu korunur.
+        Some(vm) if i < vm.row_count() => {
+            vm.remove(i);
+            let counts = with_state(|st| {
+                let mut c = vec![0; 4];
+                for r in st.imported.as_ref().map(|f| f.rows.as_slice()).unwrap_or(&[]) {
+                    c[r.status as usize] += 1;
+                }
+                c
+            });
+            ui.set_import_counts(ModelRc::new(VecModel::from(counts)));
+            let note = with_state(|st| st.imported.as_ref().map(|f| format!("{} · {} şarkı", f.source_label, f.rows.len())).unwrap_or_default());
+            ui.set_import_note(note.into());
+        }
+        _ => refresh_import(ui),
+    }
+}
+
+/// Yanlış gelen aktarımı tamamen at; ekran boş aktarma formuna döner.
+fn import_clear(ui: &AppWindow) {
+    with_state(|st| st.imported = None);
+    ui.set_import_rows(ModelRc::new(VecModel::from(Vec::<ImportRow>::new())));
+    ui.set_import_counts(ModelRc::new(VecModel::from(vec![0; 4])));
+    ui.set_import_name("".into());
+    ui.set_import_note("".into());
+    ui.set_import_filter(-1);
+}
+
 fn import_save(ui: &AppWindow) {
     let saved = with_state(|st| {
         let f = st.imported.take()?;
@@ -2868,6 +3027,31 @@ fn taste_save(ui: &AppWindow) {
     load_home(ui);
 }
 
+/// Algoritmayı sıfırla. Beğeniler kütüphane sayıldığı için her iki durumda da korunur.
+fn reset_recs(ui: &AppWindow, with_history: bool) {
+    with_state(|st| {
+        st.history.reset_profile();
+        if with_history {
+            st.history.clear_listens();
+        }
+        st.settings.taste_genres.clear();
+        st.settings.blocked_genres.clear();
+        st.settings.taste_tracks.clear();
+        st.settings.tastes_done = false;
+        let _ = st.settings.save();
+    });
+    let _ = std::fs::remove_file(home_cache());
+    refresh_hidden(ui);
+    refresh_taste_summary(ui);
+    if with_history {
+        refresh_profile(ui);
+    }
+    toast(ui, if with_history { "Geçmiş ve öneri profili sıfırlandı" } else { "Öneri profili sıfırlandı" });
+    load_home(ui);
+    // Boş kalmasın: yeni zevkleri seçmeye yönlendir (vitrin yedek olarak arkada dolar).
+    open_tastes(ui);
+}
+
 fn taste_skip(ui: &AppWindow) {
     with_state(|st| {
         if !st.settings.tastes_done {
@@ -2994,6 +3178,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_cache_index(s.cache_index());
     ui.set_prefetch_on(s.prefetch);
     ui.set_normalize_on(s.normalize);
+    ui.set_discord_on(s.discord_rpc);
     ui.set_close_to_tray(s.close_to_tray);
     ui.set_readahead_index(s.readahead_index());
     ui.set_cookies_index(s.cookies_index());
@@ -3020,6 +3205,7 @@ fn apply_settings(ui: &AppWindow) {
         cache_gb: settings::CACHE_GB[ui.get_cache_index().clamp(0, 4) as usize],
         prefetch: ui.get_prefetch_on(),
         normalize: ui.get_normalize_on(),
+        discord_rpc: ui.get_discord_on(),
         close_to_tray: ui.get_close_to_tray(),
         readahead_secs: settings::READAHEAD_SECS[ui.get_readahead_index().clamp(0, 3) as usize],
         cookies_browser: settings::COOKIE_BROWSERS[ui.get_cookies_index().clamp(0, 1) as usize].map(str::to_string),
@@ -3040,6 +3226,7 @@ fn apply_settings(ui: &AppWindow) {
     with_state(|st| {
         st.player.send(Cmd::Readahead(s.readahead_secs));
         st.player.send(Cmd::Normalize(s.normalize));
+        discord::set_enabled(s.discord_rpc);
         st.resolver.set_cookies(s.cookies_browser.clone());
         if !s.prefetch && st.appended.is_some() {
             st.player.send(Cmd::ClearNext);
@@ -3258,6 +3445,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     start_env_monitor(metered.clone(), on_battery.clone());
     let resolver = Resolver::new(settings.cookies_browser.clone());
     runtime::maybe_update_background();
+    discord::start(settings.discord_rpc);
     let mpris_server = {
         let weak = weak.clone();
         mpris::Mpris::start(move |a| {
@@ -3770,12 +3958,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let t = with_state(|st| {
                 let t = menu_target(st, kind, a, b);
                 st.menu = t.clone();
-                t.map(|t| (t.title.clone(), st.history.is_liked(&t.key())))
+                t.map(|t| (t.title.clone(), st.history.is_liked(&t.key()), st.history.is_boosted(&t.key())))
             });
             match t {
-                Some((title, liked)) => {
+                Some((title, liked, boosted)) => {
                     ui.set_menu_title(title.into());
                     ui.set_menu_liked(liked);
+                    ui.set_menu_boosted(boosted);
                 }
                 None => ui.set_menu_open(false),
             }
@@ -3910,6 +4099,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    ui.on_import_remove({
+        let weak = weak.clone();
+        move |i| {
+            if let Some(ui) = weak.upgrade() {
+                import_remove(&ui, i as usize);
+            }
+        }
+    });
+    ui.on_import_clear({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                import_clear(&ui);
+            }
+        }
+    });
     ui.on_delete_playlist({
         let weak = weak.clone();
         move |i| {
@@ -3924,6 +4129,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |name| {
             if let Some(ui) = weak.upgrade() {
                 create_new_playlist(&ui, name.to_string());
+            }
+        }
+    });
+    ui.on_create_playlist_with_track({
+        let weak = weak.clone();
+        move |name| {
+            if let Some(ui) = weak.upgrade() {
+                create_playlist_with_track(&ui, name.to_string());
             }
         }
     });
@@ -3987,6 +4200,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move || {
             if let Some(ui) = weak.upgrade() {
                 open_tastes(&ui);
+            }
+        }
+    });
+    ui.on_reset_recs({
+        let weak = weak.clone();
+        move |with_history| {
+            if let Some(ui) = weak.upgrade() {
+                reset_recs(&ui, with_history);
             }
         }
     });

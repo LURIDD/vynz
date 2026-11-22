@@ -19,7 +19,7 @@ fn cache_dir() -> PathBuf {
 }
 
 /// Liste ve raflardaki kapak boyutu; çalan şarkı için BIG.
-pub const SMALL: u32 = 192;
+pub const SMALL: u32 = 160;
 pub const BIG: u32 = 320;
 
 /// `key` önbellek dosya adı, `size` çözülecek kare boyutu.

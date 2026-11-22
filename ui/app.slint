@@ -372,6 +372,7 @@ export component AppWindow inherits Window {
     in-out property <int> cache-index: 2;
     in-out property <bool> prefetch-on: true;
     in-out property <bool> normalize-on: false;
+    in-out property <bool> discord-on: true;
     in-out property <int> readahead-index: 1;
     in-out property <int> cookies-index: 0;
     in-out property <int> download-index: 1;
@@ -393,6 +394,11 @@ export component AppWindow inherits Window {
     in-out property <string> create-pl-name: "";
     callback create-playlist(string);
     in-out property <bool> menu-pl-open: false;
+    // Görsel "Listeye ekle" seçicisi ve liste silme onayı
+    in-out property <bool> pl-pick-open: false;
+    in-out property <bool> pl-pick-new: false;
+    in-out property <int> del-pl-index: -1;
+    callback create-playlist-with-track(string);
     callback add-to-playlist(int);
     callback remove-from-playlist(int);
 
@@ -405,6 +411,9 @@ export component AppWindow inherits Window {
     in property <bool> taste-samples-loading: false;
     in property <string> taste-summary: "Henüz seçilmedi";
     callback open-tastes();
+    // Algoritma sıfırlama: false = öneri profili, true = dinleme geçmişi de (iki adımlı onay)
+    callback reset-recs(bool);
+    in-out property <int> reset-confirm: 0;
     callback taste-toggle-genre(string);
     callback taste-block-genre(string);
     callback taste-toggle-sample(int);
@@ -434,6 +443,8 @@ export component AppWindow inherits Window {
     callback import-file-list(int);
     callback import-change(int);
     callback import-save();
+    callback import-remove(int);
+    callback import-clear();
 
     // Sözler: state 0 yok, 1 yükleniyor, 2 zamanlı, 3 zamansız, 4 bulunamadı
     in property <int> lyric-state;
@@ -517,6 +528,10 @@ export component AppWindow inherits Window {
     in-out property <length> menu-y;
     in property <string> menu-title;
     in property <bool> menu-liked;
+    in property <bool> menu-boosted;
+    // Menünün açıldığı yer (menu-for kind'ı); kuyruk (3) için satır indeksi
+    in-out property <int> menu-kind: -1;
+    in-out property <int> menu-index: -1;
     callback menu-for(int, int, int);
     callback menu-action(int);
 
@@ -628,6 +643,8 @@ export component AppWindow inherits Window {
         if (e.modifiers.control && (e.text == "k" || e.text == "K")) { search-input.focus(); search-input.select-all(); return accept; }
         if (e.text == Key.Escape) {
             if (create-pl-open) { create-pl-open = false; return accept; }
+            if (pl-pick-open) { pl-pick-open = false; return accept; }
+            if (del-pl-index >= 0) { del-pl-index = -1; return accept; }
             if (tastes-open) { tastes-open = false; return accept; }
             if (menu-open) { menu-open = false; menu-pl-open = false; return accept; }
             if (sidebar-peek) { sidebar-peek = false; return accept; }
@@ -738,13 +755,13 @@ export component AppWindow inherits Window {
                 }
             }
             Rectangle {
-                width: q-row.preferred-width + 28px; height: 34px; y: 13px; x: parent.width - self.width - (is-windows ? 152px : 32px);
+                width: q-row.preferred-width; height: 34px; y: 13px; x: parent.width - self.width - (is-windows ? 152px : 32px);
                 border-radius: 17px;
                 background: drawer-open || q-ta.has-hover ? Theme.surface-2 : Theme.surface-1;
                 animate background { duration: Theme.micro; }
                 q-ta := TouchArea { mouse-cursor: pointer; clicked => { drawer-open = !drawer-open; } }
                 q-row := HorizontalLayout {
-                    x: 14px; spacing: 8px;
+                    padding-left: 14px; padding-right: 14px; spacing: 8px;
                     Text { text: "Kuyruk"; vertical-alignment: center; font-size: 12.5px; font-weight: 600; color: drawer-open ? Theme.text-primary : Theme.text-secondary; }
                     Text { text: queue.length; vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
                 }
@@ -825,7 +842,7 @@ export component AppWindow inherits Window {
                         play(i) => { root.play-shelf(si, i); }
                         open(i) => { root.open-card(si, i); }
                         hover(i, on) => { root.hover-shelf(si, i, on); }
-                        menu(i, x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(0, si, i); }
+                        menu(i, x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 0; root.menu-for(0, si, i); }
                     }
                 }
 
@@ -916,7 +933,7 @@ export component AppWindow inherits Window {
                                     playing: has-now && t.key == now.key; is-running: playing && !buffering;
                                     clicked => { root.play-result(i); }
                                     hovered(on) => { root.hover-result(i, on); }
-                                    menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(1, i, 0); }
+                                    menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 1; root.menu-for(1, i, 0); }
                                 }
                             }
                             if !searching && last-query != "" && results.length == 0 && !sc-searching: Text {
@@ -951,7 +968,7 @@ export component AppWindow inherits Window {
                                 playing: has-now && t.key == now.key; is-running: playing && !buffering;
                                 clicked => { root.play-result(i); }
                                 hovered(on) => { root.hover-result(i, on); }
-                                menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(1, i, 0); }
+                                menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 1; root.menu-for(1, i, 0); }
                             }
                         }
                     }
@@ -1146,7 +1163,11 @@ export component AppWindow inherits Window {
                                 Text { text: import-note; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
                             }
                             PillButton {
-                                y: 4px; text: "Kütüphaneye kaydet (" + (import-counts[0] + import-counts[1] + import-counts[3]) + ")"; primary: true;
+                                y: 4px; text: "Temizle";
+                                clicked => { root.import-clear(); }
+                            }
+                            PillButton {
+                                y: 4px; text: "Kütüphaneye kaydet ("+ (import-counts[0] + import-counts[1] + import-counts[3]) + ")"; primary: true;
                                 clicked => { root.import-save(); }
                             }
                         }
@@ -1166,6 +1187,7 @@ export component AppWindow inherits Window {
                                 ImportLine {
                                     y: 0; height: 64px; line: r;
                                     change => { root.import-change(i); }
+                                    remove => { root.import-remove(i); }
                                 }
                             }
                         }
@@ -1192,7 +1214,7 @@ export component AppWindow inherits Window {
                             HorizontalLayout {
                                 spacing: 10px;
                                 PillButton { text: "Çal"; primary: true; enabled: playlist-tracks.length > 0; clicked => { root.play-playlist(0); } }
-                                PillButton { text: "Sil"; clicked => { root.delete-playlist(current-playlist); view = "home"; } }
+                                PillButton { text: "Sil"; clicked => { del-pl-index = current-playlist; } }
                             }
                         }
                     }
@@ -1202,7 +1224,7 @@ export component AppWindow inherits Window {
                             track: t; index: i;
                             playing: has-now && t.key == now.key; is-running: playing && !buffering;
                             clicked => { root.play-playlist(i); }
-                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(2, i, 0); }
+                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 2; root.menu-for(2, i, 0); }
                         }
                     }
                 }
@@ -1237,7 +1259,7 @@ export component AppWindow inherits Window {
                             track: t; index: i;
                             playing: has-now && t.key == now.key; is-running: playing && !buffering;
                             clicked => { root.play-liked(i); }
-                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-pl-open = false; root.menu-for(6, i, 0); }
+                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-pl-open = false; menu-kind = 6; root.menu-for(6, i, 0); }
                         }
                     }
                 }
@@ -1277,6 +1299,12 @@ export component AppWindow inherits Window {
                             PillButton { pill-height: 30px; text: "Kapalı"; active: !normalize-on; clicked => { normalize-on = false; root.settings-changed(); } }
                         }
                         SettingRow {
+                            title: "Discord'da göster";
+                            note: "Çalan şarkıyı Discord profilinde \"Dinliyor\" olarak gösterir. Discord kapalıysa sessizce bekler.";
+                            PillButton { pill-height: 30px; text: "Açık"; active: discord-on; clicked => { discord-on = true; root.settings-changed(); } }
+                            PillButton { pill-height: 30px; text: "Kapalı"; active: !discord-on; clicked => { discord-on = false; root.settings-changed(); } }
+                        }
+                        SettingRow {
                             title: "Önceden hazırlama";
                             note: "Sıradaki ve üzerine gelinen şarkıları arka planda hazırlar (pilde/kotalıda sınırlı).";
                             PillButton { pill-height: 30px; text: "Açık"; active: prefetch-on; clicked => { prefetch-on = true; root.settings-changed(); } }
@@ -1304,6 +1332,25 @@ export component AppWindow inherits Window {
                             title: "Müzik zevklerin";
                             note: taste-summary + " · Yalnızca Ana Sayfa önerilerini besler; başlattığın radyoları etkilemez.";
                             PillButton { pill-height: 32px; text: "Zevkleri düzenle"; primary: true; clicked => { root.open-tastes(); } }
+                        }
+                        SettingRow {
+                            title: "Öneri profilini sıfırla";
+                            note: "Zevkleri, \"Bunu daha çok öner\" ve \"İlgilenmiyorum\" seçimlerini siler. Dinleme geçmişin ve beğenilerin korunur.";
+                            PillButton { pill-height: 30px; text: "Sıfırla"; clicked => { reset-confirm = 0; root.reset-recs(false); } }
+                        }
+                        SettingRow {
+                            title: "Dinleme geçmişini de temizle";
+                            note: reset-confirm == 2
+                                ? "Emin misin? Geçmiş, istatistikler ve öneri profili silinir; geri alınamaz. Beğendiklerin korunur."
+                                : "Tamamen sıfırdan başla: öneri profiliyle birlikte tüm dinleme geçmişi silinir.";
+                            PillButton {
+                                pill-height: 30px;
+                                text: reset-confirm == 2 ? "Evet, hepsini sil" : "Temizle";
+                                clicked => {
+                                    if (reset-confirm == 2) { reset-confirm = 0; root.reset-recs(true); } else { reset-confirm = 2; }
+                                }
+                            }
+                            if reset-confirm == 2: PillButton { pill-height: 30px; text: "Vazgeç"; clicked => { reset-confirm = 0; } }
                         }
                         if hidden-artists.length > 0: Rectangle {
                             border-radius: Theme.r-md; background: Theme.surface-1;
@@ -1464,7 +1511,7 @@ export component AppWindow inherits Window {
                                     track: t; index: i;
                                     playing: has-now && t.key == now.key; is-running: playing && !buffering;
                                     clicked => { root.play-collection(i); }
-                                    menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(4, i, 0); }
+                                    menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 4; root.menu-for(4, i, 0); }
                                 }
                             }
                         }
@@ -1578,7 +1625,7 @@ export component AppWindow inherits Window {
                                 track: t; index: i;
                                 playing: has-now && t.key == now.key; is-running: playing && !buffering;
                                 clicked => { root.play-artist(i); }
-                                menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; root.menu-for(5, i, 0); }
+                                menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 5; root.menu-for(5, i, 0); }
                             }
                         }
                     }
@@ -1817,7 +1864,7 @@ export component AppWindow inherits Window {
                     }
                     // Manuel kaydırma aktifken alt ortada "Kaldığı yere dön" chip'i
                     if lyric-state == 2 && lview.manual: Rectangle {
-                        width: lr-row.preferred-width + 28px;
+                        width: lr-row.preferred-width;
                         height: 36px;
                         x: (parent.width - self.width) / 2;
                         y: parent.height - self.height - 16px;
@@ -1832,7 +1879,7 @@ export component AppWindow inherits Window {
                             clicked => { lview.manual = false; lview.idle-ticks = 0; }
                         }
                         lr-row := HorizontalLayout {
-                            x: 14px; spacing: 8px; alignment: center;
+                            padding-left: 14px; padding-right: 14px; spacing: 8px; alignment: center;
                             Icon { y: 10px; width: 15px; height: 15px; commands: Icons.refresh; stroke: Theme.accent; }
                             Text { text: "Kaldığı yere dön"; vertical-alignment: center; font-size: 12.5px; font-weight: 700; color: Theme.text-primary; }
                         }
@@ -2222,10 +2269,7 @@ export component AppWindow inherits Window {
                                 background: pld-ta.has-hover ? #FF4E4530 : transparent;
                                 pld-ta := TouchArea {
                                     mouse-cursor: pointer;
-                                    clicked => {
-                                        if (view == "playlist" && current-playlist == i) { view = "home"; }
-                                        root.delete-playlist(i);
-                                    }
+                                    clicked => { del-pl-index = i; }
                                 }
                                 Icon {
                                     width: 13px; height: 13px;
@@ -2284,7 +2328,20 @@ export component AppWindow inherits Window {
                         height: 56px; border-radius: Theme.r-sm;
                         background: i == queue-index ? Theme.surface-2 : qi-ta.has-hover ? Theme.surface-1 : Theme.surface-subtle;
                         animate background { duration: Theme.micro; }
-                        qi-ta := TouchArea { mouse-cursor: pointer; clicked => { root.play-queue(i); } }
+                        qi-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.play-queue(i); }
+                            pointer-event(e) => {
+                                if (e.button == PointerEventButton.right && e.kind == PointerEventKind.down) {
+                                    menu-x = self.absolute-position.x + self.mouse-x;
+                                    menu-y = self.absolute-position.y + self.mouse-y;
+                                    menu-pl-open = false;
+                                    menu-open = true;
+                                    menu-kind = 3; menu-index = i;
+                                    root.menu-for(3, i, 0);
+                                }
+                            }
+                        }
                         HorizontalLayout {
                             padding-left: 10px; padding-right: 8px; spacing: 10px;
                             Cover { width: 38px; height: 38px; y: 9px; radius: 7px; art: t.art; has-art: t.has-art; }
@@ -2457,6 +2514,124 @@ export component AppWindow inherits Window {
             padding-left: 14px; padding-right: 14px; spacing: 8px; alignment: center;
             Icon { y: 9px; width: 16px; height: 16px; commands: Icons.sparkles; stroke: Theme.accent; }
             Text { text: setup-banner; vertical-alignment: center; font-size: 12.5px; font-weight: 600; color: Theme.text-primary; }
+        }
+    }
+
+    // ---------- Liste silme onayı ----------
+    if del-pl-index >= 0 && del-pl-index < playlists.length: Rectangle {
+        x: 0; y: 0; width: root.width; height: root.height;
+        background: #00000088;
+        TouchArea { clicked => { del-pl-index = -1; } }
+        Rectangle {
+            width: 400px; height: dpl-col.preferred-height;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: Theme.r-lg; background: Theme.floating;
+            drop-shadow-blur: 40px; drop-shadow-color: #000000bb;
+            TouchArea { }
+            dpl-col := VerticalLayout {
+                padding: 22px; spacing: 12px;
+                Text { text: "Liste silinsin mi?"; font-family: Theme.display; font-size: 20px; font-weight: 800; color: Theme.text-primary; }
+                Text {
+                    text: "“" + playlists[del-pl-index].name + "” (" + playlists[del-pl-index].count + " şarkı) kütüphaneden kaldırılacak. Bu işlem geri alınamaz.";
+                    font-size: 13px; color: Theme.text-secondary; wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 8px; alignment: end;
+                    PillButton { pill-height: 32px; text: "Vazgeç"; clicked => { del-pl-index = -1; } }
+                    PillButton {
+                        pill-height: 32px; text: "Sil"; primary: true;
+                        clicked => {
+                            if (view == "playlist" && current-playlist == del-pl-index) { view = "home"; }
+                            root.delete-playlist(del-pl-index);
+                            del-pl-index = -1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------- Listeye ekle (görsel seçici) ----------
+    if pl-pick-open: Rectangle {
+        x: 0; y: 0; width: root.width; height: root.height;
+        background: #00000088;
+        TouchArea { clicked => { pl-pick-open = false; } }
+        Rectangle {
+            width: 460px; height: Math.min(ppk-col.preferred-height, root.height - 80px);
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: Theme.r-lg; background: Theme.floating;
+            drop-shadow-blur: 40px; drop-shadow-color: #000000bb;
+            clip: true;
+            TouchArea { }
+            ppk-col := VerticalLayout {
+                padding: 20px; spacing: 12px;
+                Text { text: "Listeye ekle"; font-family: Theme.display; font-size: 20px; font-weight: 800; color: Theme.text-primary; }
+                Text { text: menu-title; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                // Yeni liste: adını yaz, şarkı içine eklenerek oluşsun
+                Rectangle {
+                    height: 52px; border-radius: Theme.r-sm;
+                    background: ppk-new-ta.has-hover && !pl-pick-new ? Theme.surface-2 : Theme.surface-1;
+                    ppk-new-ta := TouchArea { mouse-cursor: pointer; clicked => { pl-pick-new = true; ppk-input.focus(); } }
+                    HorizontalLayout {
+                        padding-left: 8px; padding-right: 10px; spacing: 12px;
+                        Rectangle {
+                            width: 36px; height: 36px; y: 8px; border-radius: 7px; background: Theme.accent.with-alpha(0.16);
+                            Icon { width: 16px; height: 16px; commands: Icons.plus; stroke: Theme.accent; }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            ppk-input := TextInput {
+                                x: 0; y: 0; width: parent.width; height: parent.height;
+                                visible: pl-pick-new;
+                                vertical-alignment: center; font-size: 13.5px; color: Theme.text-primary;
+                                text <=> create-pl-name;
+                                accepted => {
+                                    if (create-pl-name != "") {
+                                        root.create-playlist-with-track(create-pl-name);
+                                        pl-pick-open = false;
+                                    }
+                                }
+                            }
+                            if !pl-pick-new || create-pl-name == "": Text {
+                                x: 0; y: 0; height: parent.height; vertical-alignment: center;
+                                text: pl-pick-new ? "Liste adı, Enter ile oluştur" : "Yeni liste oluştur";
+                                font-size: 13.5px; font-weight: pl-pick-new ? 400 : 600;
+                                color: pl-pick-new ? Theme.text-muted : Theme.text-primary;
+                            }
+                        }
+                        if pl-pick-new: PillButton {
+                            y: 11px; pill-height: 30px; text: "Oluştur"; primary: true; enabled: create-pl-name != "";
+                            clicked => { root.create-playlist-with-track(create-pl-name); pl-pick-open = false; }
+                        }
+                    }
+                }
+                Flickable {
+                    height: Math.min(ppk-list.preferred-height, root.height - 300px);
+                    content-height: ppk-list.preferred-height;
+                    ppk-list := VerticalLayout {
+                        spacing: 4px; alignment: start;
+                        for p[i] in playlists: Rectangle {
+                            height: 52px; border-radius: Theme.r-sm;
+                            background: ppk-ta.has-hover ? Theme.surface-2 : transparent;
+                            animate background { duration: Theme.micro; }
+                            ppk-ta := TouchArea { mouse-cursor: pointer; clicked => { root.add-to-playlist(i); pl-pick-open = false; } }
+                            HorizontalLayout {
+                                padding-left: 8px; padding-right: 10px; spacing: 12px;
+                                Cover { width: 36px; height: 36px; y: 8px; radius: 7px; art: p.art; has-art: p.has-art; }
+                                VerticalLayout {
+                                    alignment: center; horizontal-stretch: 1;
+                                    Text { text: p.name; font-size: 13.5px; font-weight: 600; color: Theme.text-primary; overflow: elide; }
+                                    Text { text: p.count + " şarkı"; font-size: 11.5px; color: Theme.text-muted; }
+                                }
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    PillButton { pill-height: 32px; text: "Kapat"; clicked => { pl-pick-open = false; } }
+                }
+            }
         }
     }
 
@@ -2675,20 +2850,18 @@ export component AppWindow inherits Window {
             MenuItem { icon: Icons.radio; text: "Radyo başlat"; clicked => { root.menu-action(3); } }
             MenuItem { icon: Icons.heart; text: menu-liked ? "Beğenmekten vazgeç" : "Beğen"; clicked => { root.menu-action(4); } }
             MenuItem { icon: Icons.user; text: "Sanatçıya git"; clicked => { root.menu-action(5); } }
+            MenuItem { icon: Icons.sparkles; text: menu-boosted ? "Daha çok önermeyi bırak" : "Bunu daha çok öner"; clicked => { root.menu-action(9); } }
             MenuItem { icon: Icons.ban; text: "İlgilenmiyorum"; clicked => { root.menu-action(7); } }
             MenuItem { icon: Icons.ban; text: "Sanatçıyı önerme"; clicked => { root.menu-action(8); } }
-            if view == "playlist": MenuItem { icon: Icons.trash; text: "Listeden çıkar"; clicked => { root.menu-action(6); } }
-            if playlists.length > 0: MenuItem {
-                icon: Icons.plus;
-                text: menu-pl-open ? "Listeye ekle ▾" : "Listeye ekle ▸";
-                clicked => { menu-pl-open = !menu-pl-open; }
-            }
-            if menu-pl-open: VerticalLayout {
-                padding-left: 12px; spacing: 0px;
-                for p[i] in playlists: MenuItem {
-                    icon: Icons.list-music;
-                    text: p.name;
-                    clicked => { root.add-to-playlist(i); menu-open = false; menu-pl-open = false; }
+            if view == "playlist" && menu-kind != 3: MenuItem { icon: Icons.trash; text: "Listeden çıkar"; clicked => { root.menu-action(6); } }
+            if menu-kind == 3: MenuItem { icon: Icons.x; text: "Kuyruktan çıkar"; clicked => { menu-open = false; root.queue-remove(menu-index); } }
+            MenuItem {
+                icon: Icons.list-plus;
+                text: "Listeye ekle…";
+                clicked => {
+                    menu-open = false; menu-pl-open = false;
+                    create-pl-name = ""; pl-pick-new = playlists.length == 0;
+                    pl-pick-open = true;
                 }
             }
         }

@@ -28,6 +28,8 @@ WARM_COOKIES = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] != "-" else None
 out_lock = threading.Lock()
 jobs = queue.PriorityQueue()   # ön-çözme işleri (öncelik sıralı)
 urgent = queue.Queue()         # "şimdi çal": ayrılmış iş parçacığı, ön-çözme yüzünden beklemez
+meta = queue.PriorityQueue()   # hafif ytmusicapi istekleri: yt-dlp çözmelerini beklemez
+META_OPS = {"search", "collection", "radio", "lyrics", "home", "explore", "playlists"}
 local = threading.local()
 seq = 0
 
@@ -262,6 +264,30 @@ def artist_page(y, key):
     }
 
 
+def community_playlists(queries, per=4):
+    # Kullanıcının sanatçıları ve türleri için topluluk çalma listeleri (TR trend vitrini yerine).
+    y = ytmusic()
+    out, seen = [], set()
+    for q in queries[:6]:
+        try:
+            res = y.search(q, filter="community_playlists", limit=10)
+        except Exception:  # noqa: BLE001 - tek sorgu düşerse diğerleri sürsün
+            continue
+        n = 0
+        for r in res:
+            bid = r.get("browseId") or ""
+            key = bid[2:] if bid.startswith("VL") else bid
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            sub = " · ".join(x for x in [r.get("author") or "", str(r.get("itemCount") or "")] if x)
+            out.append({"kind": "playlist", "key": key, "title": r.get("title") or "", "sub": sub, "thumb": thumb_of(r)})
+            n += 1
+            if n >= per:
+                break
+    return {"cards": out}
+
+
 def search(q, limit=20):
     y = ytmusic()
     res = y.search(q, limit=limit)
@@ -411,6 +437,13 @@ def handle(req):
         except Exception as e:  # noqa: BLE001
             send({"rid": req["rid"], "ok": False, "error": str(e).splitlines()[0][:300] if str(e) else "hata"})
         return
+    if op == "playlists":
+        try:
+            data = community_playlists([str(q) for q in (req.get("queries") or [])], int(req.get("per") or 4))
+            send({"rid": req["rid"], "ok": True, "data": data})
+        except Exception as e:  # noqa: BLE001
+            send({"rid": req["rid"], "ok": False, "error": str(e).splitlines()[0][:300] if str(e) else "hata"})
+        return
     if op in ("explore", "collection"):
         try:
             data = explore() if op == "explore" else collection(req.get("kind"), req.get("key"))
@@ -454,11 +487,20 @@ def urgent_worker():
         handle(urgent.get())
 
 
+def meta_worker():
+    # Yalnız ytmusicapi HTTP çağrıları: yt-dlp örneği kurmaz, çerez yüklemez.
+    while True:
+        _prio, _n, req = meta.get()
+        handle(req)
+
+
 def main():
     global seq
     threading.Thread(target=urgent_worker, daemon=True).start()
     for _ in range(2):
         threading.Thread(target=worker, daemon=True).start()
+    for _ in range(3):
+        threading.Thread(target=meta_worker, daemon=True).start()
     send({"ready": True})
     for line in sys.stdin:
         line = line.strip()
@@ -469,7 +511,9 @@ def main():
         except ValueError:
             continue
         seq += 1
-        if int(req.get("prio", 1)) == 0:
+        if req.get("op") in META_OPS:
+            meta.put((int(req.get("prio", 1)), seq, req))
+        elif int(req.get("prio", 1)) == 0:
             urgent.put(req)
         else:
             jobs.put((int(req.get("prio", 1)), seq, req))

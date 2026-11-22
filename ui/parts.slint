@@ -582,6 +582,8 @@ export global Status {
 export component ImportLine inherits Rectangle {
     in property <ImportRow> line;
     callback change();
+    // Kaydetmeden önce satırı aktarılan listeden çıkar
+    callback remove();
 
     height: 64px;
     border-radius: Theme.r-md;
@@ -635,6 +637,11 @@ export component ImportLine inherits Rectangle {
                 x: 0; y: (root.height - self.height) / 2; pill-height: 30px; text: "Değiştir";
                 clicked => { root.change(); }
             }
+        }
+        IconButton {
+            y: (root.height - self.height) / 2;
+            icon: Icons.trash; tint: Theme.text-muted;
+            clicked => { root.remove(); }
         }
     }
 }

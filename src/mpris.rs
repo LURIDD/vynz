@@ -176,6 +176,7 @@ mod imp {
         }
 
         pub fn send(&self, m: Msg) {
+            crate::discord::feed(&m);
             let _ = self.tx.try_send(m);
         }
     }
@@ -348,6 +349,7 @@ mod imp {
         }
 
         pub fn send(&self, m: Msg) {
+            crate::discord::feed(&m);
             let _ = self.tx.send(m);
         }
     }
@@ -364,7 +366,9 @@ mod imp {
         pub fn start(_on_act: impl Fn(Act) + Clone + Send + 'static) -> Mpris {
             Mpris
         }
-        pub fn send(&self, _m: Msg) {}
+        pub fn send(&self, m: Msg) {
+            crate::discord::feed(&m);
+        }
     }
 }
 

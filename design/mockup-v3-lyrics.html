@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark" data-accent="terracotta">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vynz v3 — Söz Sayfası (Madde 9)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       Vynz v3 Taslak — Madde 9: Söz (Lyrics) Sayfası Düzeni
+       tokens-v2.json + ui/theme.slint ile 1:1 uyumlu.
+       Slint uyarlama notları:
+       - Sol sütun kapağı: 348×348px (pencere yüksekliğine göre 300–360px clamp).
+       - Kapak sol duvara yapışık değil; sol sütun (440px) merkeze dengeli yaslanır.
+       - Söz sayfası açıkken yüzen alt oynatma çubuğu y += 110px + opacity: 0 gizlenir.
+       - Kapağın altında sade progress + ⏮ ▶/⏸ ⏭ + ses/kuyruk/stil mini kontrolleri.
+       - Beğenme kalbi: liked == true iken kapağın sağ üstünde ince rozet hep görünür;
+         liked == false iken kapak hover'da belirir; başlık satırı sağında da sade kalp var.
+       ========================================================================== */
+    :root, [data-theme="dark"] {
+      --outer: #050507;
+      --bg-canvas: #090A0D;
+      --surface-subtle: rgba(255, 255, 255, 0.028);
+      --surface-1: rgba(255, 255, 255, 0.048);
+      --surface-2: rgba(255, 255, 255, 0.08);
+      --surface-3: rgba(255, 255, 255, 0.125);
+      --border: rgba(255, 255, 255, 0.08);
+      --surface-floating: #13151C;
+      --surface-drawer: #101218;
+      --text-primary: #F5F6F8;
+      --text-secondary: rgba(245, 246, 248, 0.64);
+      --text-muted: rgba(245, 246, 248, 0.38);
+      --on-primary: #090A0D;
+      --ui-primary-bg: #F5F6F8;
+      --ui-primary-fg: #090A0D;
+      --cover-accent: #F4A261;
+      --cover-accent-soft: rgba(244, 162, 97, 0.16);
+      --blob-1: rgba(231, 111, 81, 0.24);
+      --blob-2: rgba(120, 53, 15, 0.24);
+      --blob-3: rgba(244, 162, 97, 0.10);
+      --heart-active: #FB7185;
+      --shadow-cover: 0 28px 60px -12px rgba(0, 0, 0, 0.72);
+      --shadow-floating: 0 24px 48px -12px rgba(0, 0, 0, 0.72);
+    }
+
+    [data-theme="light"] {
+      --outer: #E7E5DE;
+      --bg-canvas: #F3F2EE;
+      --surface-subtle: rgba(15, 18, 24, 0.025);
+      --surface-1: rgba(15, 18, 24, 0.045);
+      --surface-2: rgba(15, 18, 24, 0.075);
+      --surface-3: rgba(15, 18, 24, 0.115);
+      --border: rgba(15, 18, 24, 0.08);
+      --surface-floating: #FFFFFF;
+      --surface-drawer: #EAE8E1;
+      --text-primary: #111318;
+      --text-secondary: rgba(17, 19, 24, 0.62);
+      --text-muted: rgba(17, 19, 24, 0.40);
+      --on-primary: #FFFFFF;
+      --ui-primary-bg: #111318;
+      --ui-primary-fg: #FFFFFF;
+      --cover-accent: #C25E3E;
+      --cover-accent-soft: rgba(194, 94, 62, 0.14);
+      --blob-1: rgba(231, 111, 81, 0.16);
+      --blob-2: rgba(244, 162, 97, 0.14);
+      --blob-3: rgba(194, 94, 62, 0.08);
+      --heart-active: #E11D48;
+      --shadow-cover: 0 24px 48px -12px rgba(17, 19, 24, 0.24);
+      --shadow-floating: 0 20px 44px -10px rgba(17, 19, 24, 0.16);
+    }
+
+    [data-theme="dark"][data-accent="cobalt"] {
+      --cover-accent: #60A5FA; --cover-accent-soft: rgba(96, 165, 250, 0.16);
+      --blob-1: rgba(59, 130, 246, 0.24); --blob-2: rgba(30, 58, 138, 0.26); --blob-3: rgba(96, 165, 250, 0.10);
+    }
+    [data-theme="dark"][data-accent="emerald"] {
+      --cover-accent: #34D399; --cover-accent-soft: rgba(52, 211, 153, 0.15);
+      --blob-1: rgba(16, 185, 129, 0.22); --blob-2: rgba(6, 78, 59, 0.24); --blob-3: rgba(52, 211, 153, 0.09);
+    }
+    [data-theme="dark"][data-accent="rose"] {
+      --cover-accent: #FB7185; --cover-accent-soft: rgba(251, 113, 133, 0.15);
+      --blob-1: rgba(244, 63, 94, 0.22); --blob-2: rgba(76, 29, 149, 0.24); --blob-3: rgba(251, 113, 133, 0.09);
+    }
+
+    :root {
+      --font-display: 'Plus Jakarta Sans', 'Manrope', system-ui, sans-serif;
+      --font-sans: 'Manrope', 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+      --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 26px; --r-pill: 9999px;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--outer);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 16px 68px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Uygulama Penceresi */
+    .app-window {
+      position: relative;
+      width: min(1320px, 100%);
+      height: 780px;
+      background: var(--bg-canvas);
+      border-radius: var(--r-xl);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      box-shadow: 0 36px 80px -20px rgba(0,0,0,0.75);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Ön-bulanıklaştırılmış tek ortam katmanı (Slint uyumlu) */
+    .ambient-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(62% 70% at 24% 38%, var(--blob-1), transparent 65%),
+        radial-gradient(58% 65% at 78% 72%, var(--blob-2), transparent 68%),
+        radial-gradient(45% 45% at 50% 12%, var(--blob-3), transparent 70%);
+      transition: background 240ms var(--ease);
+    }
+
+    /* Üst Çubuk (Minimal — sol üstte gizli sidebar açıcı + sağda stil/kapatma) */
+    .lyrics-topbar {
+      position: relative;
+      z-index: 10;
+      height: 60px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .topbar-left, .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--r-sm);
+      border: none;
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 140ms var(--ease), color 140ms var(--ease), transform 140ms var(--ease);
+    }
+    .icon-btn:hover { background: var(--surface-2); color: var(--text-primary); }
+    .icon-btn.active { background: var(--cover-accent-soft); color: var(--cover-accent); }
+
+    .brand-mini {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 6px;
+      color: var(--text-secondary);
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: -0.02em;
+    }
+    .brand-mini svg { color: var(--cover-accent); }
+
+    /* Chip — Madde 3 düzeltmesine uygun simetrik padding */
+    .chip {
+      height: 32px;
+      padding: 0 14px;
+      border-radius: var(--r-pill);
+      border: 1px solid var(--border);
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 12.5px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      transition: background 140ms var(--ease), color 140ms var(--ease), border-color 140ms var(--ease);
+    }
+    .chip:hover { background: var(--surface-2); color: var(--text-primary); }
+    .chip.accent {
+      background: var(--cover-accent-soft);
+      border-color: transparent;
+      color: var(--cover-accent);
+    }
+
+    /* Ana 2 Sütunlu Söz Sahnesi */
+    .lyrics-stage {
+      position: relative;
+      z-index: 5;
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(380px, 46%) 1fr;
+      align-items: center;
+      padding: 8px 48px 28px;
+      gap: 56px;
+      transition: padding-bottom 220ms var(--ease);
+    }
+    .app-window.show-bottom-bar .lyrics-stage {
+      padding-bottom: 108px;
+    }
+
+    /* SOL SÜTUN: Merkeze yakın büyütülmüş kapak + başlık + sade kontroller */
+    .cover-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding-left: 24px; /* Duvara yapışmayı kırıp merkeze dengeli yaslar */
+    }
+
+    .cover-stack {
+      width: 356px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .cover-frame {
+      position: relative;
+      width: 356px;
+      height: 356px;
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-cover);
+      background: #171923;
+      transition: transform 200ms var(--ease);
+    }
+    .cover-frame:hover { transform: translateY(-2px); }
+
+    /* Sanat eseri (harici görsel olmadan zengin SVG kapak) */
+    .cover-art {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Kapak üstü kalp rozeti:
+       - Beğenilmişse (is-liked) her zaman görünür (zarif yarı saydam koyu kapsül)
+       - Beğenilmemişse yalnızca hover'da görünür */
+    .cover-heart {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 40px;
+      height: 40px;
+      border-radius: var(--r-pill);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(11, 13, 18, 0.62);
+      color: #F5F6F8;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transform: scale(0.92);
+      transition: opacity 150ms var(--ease), transform 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease);
+    }
+    .cover-frame:hover .cover-heart,
+    .cover-heart:focus-visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .cover-heart.is-liked {
+      opacity: 1;
+      transform: scale(1);
+      color: var(--heart-active);
+      background: rgba(11, 13, 18, 0.72);
+      border-color: rgba(251, 113, 133, 0.35);
+    }
+    .cover-heart:hover {
+      background: rgba(11, 13, 18, 0.86);
+      transform: scale(1.06);
+    }
+
+    /* Başlık & sanatçı satırı */
+    .track-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .track-meta-text { min-width: 0; }
+    .track-title {
+      font-family: var(--font-display);
+      font-size: 22px;
+      line-height: 28px;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .track-artist {
+      margin-top: 2px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .inline-heart {
+      width: 34px;
+      height: 34px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: color 140ms var(--ease), background 140ms var(--ease);
+    }
+    .inline-heart:hover { background: var(--surface-2); color: var(--text-primary); }
+    .inline-heart.is-liked { color: var(--heart-active); }
+
+    /* Kapağın altındaki sade kontroller (alt bar gizliyken ana kontrol alanı) */
+    .under-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: opacity 180ms var(--ease), transform 180ms var(--ease);
+    }
+    .app-window.show-bottom-bar .under-controls {
+      opacity: 0.25;
+      pointer-events: none;
+    }
+
+    .scrubber-wrap { display: flex; flex-direction: column; gap: 6px; }
+    .scrubber-track {
+      position: relative;
+      height: 5px;
+      border-radius: var(--r-pill);
+      background: var(--surface-2);
+      cursor: pointer;
+    }
+    .scrubber-fill {
+      height: 100%;
+      width: 42%;
+      border-radius: var(--r-pill);
+      background: var(--cover-accent);
+      position: relative;
+    }
+    .scrubber-fill::after {
+      content: "";
+      position: absolute;
+      right: -5px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--text-primary);
+      opacity: 0;
+      transition: opacity 120ms var(--ease);
+    }
+    .scrubber-track:hover .scrubber-fill::after { opacity: 1; }
+    .scrubber-times {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .transport-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .transport-side {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 84px;
+    }
+    .transport-side.right { justify-content: flex-end; }
+    .transport-main {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .play-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: none;
+      background: var(--ui-primary-bg);
+      color: var(--ui-primary-fg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 140ms var(--ease);
+    }
+    .play-btn:hover { transform: scale(1.05); }
+    .skip-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--text-primary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 140ms var(--ease);
+    }
+    .skip-btn:hover { background: var(--surface-2); }
+
+    .mini-vol {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+    }
+    .vol-bar {
+      width: 48px;
+      height: 4px;
+      border-radius: var(--r-pill);
+      background: var(--surface-2);
+      overflow: hidden;
+    }
+    .vol-fill {
+      width: 72%;
+      height: 100%;
+      background: var(--text-secondary);
+      border-radius: var(--r-pill);
+    }
+
+    /* SAĞ SÜTUN: Senkronize Sözler */
+    .lyrics-column {
+      position: relative;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      padding-right: 20px;
+    }
+
+    .lyrics-scroll {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+      mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 84%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 84%, transparent 100%);
+      padding: 36px 0;
+    }
+
+    .lyric-line {
+      font-family: var(--font-display);
+      font-size: 28px;
+      line-height: 38px;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: color 180ms var(--ease), transform 180ms var(--ease), font-size 180ms var(--ease);
+    }
+    .lyric-line:hover { color: var(--text-secondary); }
+    .lyric-line.past { color: rgba(245, 246, 248, 0.28); }
+    [data-theme="light"] .lyric-line.past { color: rgba(17, 19, 24, 0.28); }
+    .lyric-line.active {
+      font-size: 38px;
+      line-height: 48px;
+      font-weight: 800;
+      letter-spacing: -0.032em;
+      color: var(--text-primary);
+    }
+    .lyric-line.active .sung { color: var(--cover-accent); }
+
+    .lyrics-footer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px;
+    }
+    .unison-credit {
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+    .unison-credit strong { color: var(--text-secondary); font-weight: 600; }
+
+    /* Gizli Sol Bar Üst Katmanı (menü düğmesine basınca kayar) */
+    .sidebar-overlay {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 220px;
+      background: var(--surface-drawer);
+      border-right: 1px solid var(--border);
+      z-index: 40;
+      padding: 18px 14px;
+      transform: translateX(-105%);
+      transition: transform 190ms var(--ease);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 24px 0 48px rgba(0,0,0,0.45);
+    }
+    .sidebar-overlay.open { transform: translateX(0); }
+    .sb-item {
+      height: 38px;
+      padding: 0 12px;
+      border-radius: var(--r-sm);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-secondary);
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .sb-item:hover { background: var(--surface-2); color: var(--text-primary); }
+
+    /* Yüzen Alt Oynatma Çubuğu — Yeni tasarımda Söz sayfasında yumuşakça gizlenir */
+    .floating-player {
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      bottom: 16px;
+      height: 76px;
+      border-radius: var(--r-lg);
+      background: var(--surface-floating);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-floating);
+      z-index: 30;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transform: translateY(112px);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 220ms var(--ease), opacity 200ms var(--ease);
+    }
+    .app-window.show-bottom-bar .floating-player {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Prototip Kontrol Çubuğu (en altta, pencere dışında) */
+    .proto-bar {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      background: rgba(16, 18, 24, 0.92);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--r-pill);
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      color: #F5F6F8;
+      font-size: 12px;
+    }
+    .proto-label { padding: 0 8px; color: rgba(245,246,248,0.55); font-weight: 600; }
+    .proto-btn {
+      height: 28px;
+      padding: 0 11px;
+      border-radius: var(--r-pill);
+      border: 1px solid transparent;
+      background: rgba(255,255,255,0.06);
+      color: #E4E6EB;
+      font-family: var(--font-sans);
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .proto-btn:hover { background: rgba(255,255,255,0.13); }
+    .proto-btn.active { background: #F4A261; color: #090A0D; }
+  </style>
+</head>
+<body>
+  <div class="app-window" id="appWindow">
+    <div class="ambient-layer"></div>
+
+    <!-- Üst katman kenar çubuğu -->
+    <aside class="sidebar-overlay" id="sidebarOverlay">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px 14px;">
+        <span class="brand-mini" style="margin:0;color:var(--text-primary);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M 3.8 6.5 L 8.8 18.2 L 11.8 11.2 M 12.2 7.2 A 5 5 0 0 1 14.8 16.5 M 12.2 3.5 A 8.7 8.7 0 0 1 11.5 20.5"/>
+          </svg>
+          Vynz
+        </span>
+        <button class="icon-btn" onclick="toggleSidebar()" title="Kapat" style="width:28px;height:28px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="sb-item">Ana Sayfa</div>
+      <div class="sb-item">Beğendiklerim</div>
+      <div class="sb-item" style="margin-top:8px;font-size:11px;color:var(--text-muted);height:24px;">LİSTELERİM</div>
+      <div class="sb-item">Gece Sürüşü</div>
+      <div class="sb-item">Anadolu Psychedelic</div>
+      <div class="sb-item">Kodlarken</div>
+    </aside>
+
+    <!-- Minimal Üst Bar -->
+    <header class="lyrics-topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" onclick="toggleSidebar()" title="Menü">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="brand-mini">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+            <path d="M 3.8 6.5 L 8.8 18.2 L 11.8 11.2 M 12.2 7.2 A 5 5 0 0 1 14.8 16.5 M 12.2 3.5 A 8.7 8.7 0 0 1 11.5 20.5"/>
+          </svg>
+          <span>Şimdi Çalıyor · Sözler</span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <button class="chip" title="Yazı stili">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+          Karaoke
+        </button>
+        <button class="chip" title="Kuyruk çekmecesi">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M21 15V6M18.5 18a2.5 2.5 0 1 0 0-5a2.5 2.5 0 1 0 0 5zM12 12H3M16 6H3M12 18H3"/></svg>
+          Kuyruk
+        </button>
+        <button class="icon-btn" title="Söz görünümünden çık (Esc)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Ana Sahne -->
+    <main class="lyrics-stage">
+      <!-- Sol: Büyütülmüş Kapak + Altında Sade Kontroller -->
+      <section class="cover-column">
+        <div class="cover-stack">
+          <div class="cover-frame">
+            <svg class="cover-art" viewBox="0 0 360 360" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#2D1610"/>
+                  <stop offset="50%" stop-color="#9A3412"/>
+                  <stop offset="100%" stop-color="#1C1917"/>
+                </linearGradient>
+                <radialGradient id="sun" cx="55%" cy="42%" r="48%">
+                  <stop offset="0%" stop-color="#FDBA74"/>
+                  <stop offset="55%" stop-color="#EA580C" stop-opacity="0.75"/>
+                  <stop offset="100%" stop-color="#7C2D12" stop-opacity="0"/>
+                </radialGradient>
+              </defs>
+              <rect width="360" height="360" fill="url(#bg)"/>
+              <circle cx="195" cy="148" r="130" fill="url(#sun)"/>
+              <circle cx="180" cy="180" r="118" fill="none" stroke="#FED7AA" stroke-opacity="0.22" stroke-width="1.5"/>
+              <circle cx="180" cy="180" r="84" fill="none" stroke="#FED7AA" stroke-opacity="0.18" stroke-width="1.2"/>
+              <path d="M0 265 Q90 215 180 250 T360 238 L360 360 L0 360 Z" fill="#0C0A09" opacity="0.65"/>
+              <text x="24" y="332" fill="#FED7AA" fill-opacity="0.72" font-family="Plus Jakarta Sans, sans-serif" font-size="12" font-weight="700" letter-spacing="2.5">ELEKTRONİK TÜRKÜLER · 1974</text>
+            </svg>
+
+            <!-- Kapak üstü kalp rozeti: beğenilmişse hep görünür, değilse hover'da çıkar -->
+            <button class="cover-heart is-liked" id="coverHeart" onclick="toggleLike()" title="Beğenilenlerden çıkar / Beğen">
+              <svg id="coverHeartSvg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7z"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Başlık & Sanatçı + Sağda sade kalp -->
+          <div class="track-meta-row">
+            <div class="track-meta-text">
+              <div class="track-title">Cemalim</div>
+              <div class="track-artist">Erkin Koray · Elektronik Türküler</div>
+            </div>
+            <button class="inline-heart is-liked" id="inlineHeart" onclick="toggleLike()" title="Beğen">
+              <svg id="inlineHeartSvg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7z"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Kapağın altındaki sade kontroller -->
+          <div class="under-controls">
+            <div class="scrubber-wrap">
+              <div class="scrubber-track"><div class="scrubber-fill"></div></div>
+              <div class="scrubber-times">
+                <span>1:48</span>
+                <span>4:19</span>
+              </div>
+            </div>
+
+            <div class="transport-row">
+              <div class="transport-side">
+                <button class="icon-btn" style="width:32px;height:32px;background:transparent;" title="Karıştır">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22M18 2l4 4-4 4M2 6h1.9c1.5 0 2.9.9 3.6 2.2M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8M18 14l4 4-4 4"/></svg>
+                </button>
+                <button class="icon-btn" style="width:32px;height:32px;background:transparent;" title="Tekrarla">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M17 2l4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+                </button>
+              </div>
+
+              <div class="transport-main">
+                <button class="skip-btn" title="Önceki">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 20L9 12L19 4z"/><rect x="5" y="5" width="2" height="14" rx="1"/></svg>
+                </button>
+                <button class="play-btn" id="playBtn" onclick="togglePlay()" title="Duraklat / Oynat">
+                  <svg id="playIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1.2"/><rect x="14" y="4" width="4" height="16" rx="1.2"/></svg>
+                </button>
+                <button class="skip-btn" title="Sonraki">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4L15 12L5 20z"/><rect x="17" y="5" width="2" height="14" rx="1"/></svg>
+                </button>
+              </div>
+
+              <div class="transport-side right">
+                <div class="mini-vol" title="Ses %72">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298zM16 9a5 5 0 0 1 0 6"/></svg>
+                  <div class="vol-bar"><div class="vol-fill"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sağ: Canlı Senkronize Sözler -->
+      <section class="lyrics-column">
+        <div class="lyrics-scroll">
+          <div class="lyric-line past">Ürgüp'ten de çıktım başım selamet</div>
+          <div class="lyric-line past">Aman aman Cemalim, gül yüzlü yarim</div>
+          <div class="lyric-line active"><span class="sung">Beni benden alan</span> o kara gözler</div>
+          <div class="lyric-line">Dağlar duman olmuş geçit vermiyor</div>
+          <div class="lyric-line">Yollar uzun ama gönlüm yorulmuyor</div>
+          <div class="lyric-line">Bir türkü tutturdum geceye karşı</div>
+          <div class="lyric-line">Eski plak döner, zaman duruyor</div>
+        </div>
+
+        <div class="lyrics-footer-row">
+          <span class="unison-credit"><strong>Lyrics from Unison</strong> · gönderen vynz_community</span>
+          <button class="chip accent">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5"/></svg>
+            Kaldığı yere dön
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Karşılaştırma için gizli tutulan eski yüzen alt çubuk -->
+    <div class="floating-player">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:46px;height:46px;border-radius:8px;background:linear-gradient(135deg,#9A3412,#1C1917);"></div>
+        <div>
+          <div style="font-weight:700;font-size:13.5px;">Cemalim</div>
+          <div style="font-size:12px;color:var(--text-secondary);">Erkin Koray</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);">Yüzen alt çubuk (Söz sayfasında varsayılan olarak gizli)</div>
+      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);">1:48 / 4:19</div>
+    </div>
+  </div>
+
+  <!-- Prototip İnceleme Çubuğu -->
+  <div class="proto-bar">
+    <span class="proto-label">v3 Söz Taslağı</span>
+    <button class="proto-btn active" id="btnHideBar" onclick="setBottomBar(false)">Alt Bar Gizli (Yeni)</button>
+    <button class="proto-btn" id="btnShowBar" onclick="setBottomBar(true)">Alt Bar Açık (Eski)</button>
+    <button class="proto-btn" id="btnLikeState" onclick="toggleLike()">Beğeni: Açık</button>
+    <button class="proto-btn" onclick="cycleAccent()">Vurgu Değiştir</button>
+    <button class="proto-btn" onclick="toggleTheme()">Koyu / Açık</button>
+  </div>
+
+  <script>
+    let liked = true;
+    let playing = true;
+    const accents = ['terracotta', 'cobalt', 'emerald', 'rose'];
+    let accentIdx = 0;
+
+    function toggleLike() {
+      liked = !liked;
+      const ch = document.getElementById('coverHeart');
+      const ih = document.getElementById('inlineHeart');
+      const chSvg = document.getElementById('coverHeartSvg');
+      const ihSvg = document.getElementById('inlineHeartSvg');
+      ch.classList.toggle('is-liked', liked);
+      ih.classList.toggle('is-liked', liked);
+      chSvg.setAttribute('fill', liked ? 'currentColor' : 'none');
+      ihSvg.setAttribute('fill', liked ? 'currentColor' : 'none');
+      document.getElementById('btnLikeState').textContent = liked ? 'Beğeni: Açık' : 'Beğeni: Kapalı (Hover dene)';
+    }
+
+    function togglePlay() {
+      playing = !playing;
+      document.getElementById('playIcon').innerHTML = playing
+        ? '<rect x="6" y="4" width="4" height="16" rx="1.2"/><rect x="14" y="4" width="4" height="16" rx="1.2"/>'
+        : '<path d="M6 3l14 9-14 9z"/>';
+    }
+
+    function setBottomBar(show) {
+      document.getElementById('appWindow').classList.toggle('show-bottom-bar', show);
+      document.getElementById('btnHideBar').classList.toggle('active', !show);
+      document.getElementById('btnShowBar').classList.toggle('active', show);
+    }
+
+    function toggleSidebar() {
+      document.getElementById('sidebarOverlay').classList.toggle('open');
+    }
+
+    function cycleAccent() {
+      accentIdx = (accentIdx + 1) % accents.length;
+      document.documentElement.setAttribute('data-accent', accents[accentIdx]);
+    }
+
+    function toggleTheme() {
+      const cur = document.documentElement.getAttribute('data-theme');
+      document.documentElement.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+    }
+  </script>
+</body>
+</html>

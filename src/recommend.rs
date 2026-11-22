@@ -1,6 +1,7 @@
 // Öneri algoritması: dinleme geçmişinden kişisel ana sayfa rafları.
 //
-// 1. Tohumlar: puanı en yüksek şarkılar (her sanatçıdan en çok bir tane, en çok 5).
+// 1. Tohumlar: puanı en yüksek şarkılar (her sanatçıdan en çok bir tane, en çok 8;
+//    "Bunu daha çok öner" +4 ile en üste çıkar).
 // 2. Her tohum için YouTube Music radyosu (benzer şarkılar).
 // 3. Aday puanı = Σ tohum ağırlığı × radyodaki yakınlık
 //                 + sevilen sanatçı bonusu − sevilmeyen sanatçı cezası
@@ -12,7 +13,8 @@ use std::collections::{HashMap, HashSet};
 use crate::history::{artist_id, History};
 use crate::model::{Section, Source, TrackInfo};
 
-pub const MAX_SEEDS: usize = 5;
+/// Radyoları artık ayrı meta havuzunda paralel geliyor (~1.3 sn/tohum, 3 iş parçacığı).
+pub const MAX_SEEDS: usize = 8;
 
 /// Zevkler ekranındaki müzik türleri: (kimlik, görünen ad, örnek şarkı arama sorgusu).
 pub const GENRES: &[(&str, &str, &str)] = &[
@@ -68,7 +70,7 @@ pub fn seeds_with_tastes(h: &History, taste_tracks: &[TrackInfo]) -> Vec<(TrackI
 
     // Dinleme geçmişi azken Zevkler ağırlıklı, geçmiş büyüdükçe geçmiş ağırlıklı (~%70 geçmiş + %30 zevkler).
     let listen_count = h.listens.len() + h.likes.len() * 2;
-    let max_from_hist = if listen_count < 6 { 1 } else if listen_count < 20 { 3 } else { 4 };
+    let max_from_hist = if listen_count < 6 { 2 } else if listen_count < 20 { 4 } else { 6 };
     let taste_weight = if listen_count < 6 { 0.9 } else if listen_count < 20 { 0.65 } else { 0.45 };
 
     let mut out = Vec::new();
@@ -280,6 +282,23 @@ mod tests {
         assert!(!mix.iter().any(|t| t.id == "bad" || t.id == "seed"));
         assert!(mix.iter().filter(|t| t.artist == "R").count() <= 2);
         assert_eq!(mix.first().map(|t| t.id.as_str()), Some("r1"));
+    }
+
+    #[test]
+    fn boost_makes_track_a_seed() {
+        let mut h = History::default();
+        let rare = tr("rare", "Rare");
+        h.listens.push(listen(rare.clone(), 40.0)); // az dinlendi; son dinlenen de değil
+        for i in 0..10 {
+            for _ in 0..2 {
+                h.listens.push(listen(tr(&format!("h{i}"), &format!("Art{i}")), 200.0));
+            }
+        }
+        assert!(!seeds(&h).iter().any(|(t, _)| t.id == "rare"));
+        h.boosted_tracks.push(rare);
+        let s = seeds(&h);
+        assert!(s.iter().any(|(t, _)| t.id == "rare"));
+        assert!(s.len() <= MAX_SEEDS);
     }
 
     #[test]

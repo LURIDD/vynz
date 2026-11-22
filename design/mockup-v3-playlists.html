@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark" data-accent="emerald">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vynz v3 — Listelerim Sayfası (Madde 12)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       Vynz v3 Taslak — Madde 12: Listelerim Sayfası Görsel Yenilenmesi
+       tokens-v2.json + ui/theme.slint ile 1:1 uyumlu.
+       Slint uyarlama kuralları:
+       - 180×180px kapak alanı (RAM dostu: mevcut SMALL=128 kapaklarından 2×2 grid):
+           • 4+ benzersiz kapak → 2×2 yuvarlatılmış kapak mozaiği (2px ince iç boşluk)
+           • 1–3 şarkı → tek büyük kapak
+           • Boş liste → Vynz degrade + Vinyl-V yer tutucu
+       - Sol bardaki liste küçük resmi de (24×24px) 2×2 mini mozaik destekler.
+       - Üst başlıkta ilk kapaktan türeyen yumuşak @linear-gradient zemin.
+       - Toplam süre ("24 şarkı · 1 sa 18 dk"), Çal / Karıştır / Yeniden adlandır / Sil.
+       - Liste içi anlık arama/filtre kutusu + satırda sıralama (↑/↓) ve tek tıkla çıkarma (×).
+       ========================================================================== */
+    :root, [data-theme="dark"] {
+      --outer: #050507;
+      --bg-canvas: #090A0D;
+      --surface-subtle: rgba(255, 255, 255, 0.028);
+      --surface-1: rgba(255, 255, 255, 0.048);
+      --surface-2: rgba(255, 255, 255, 0.08);
+      --surface-3: rgba(255, 255, 255, 0.125);
+      --border: rgba(255, 255, 255, 0.08);
+      --surface-floating: #13151C;
+      --text-primary: #F5F6F8;
+      --text-secondary: rgba(245, 246, 248, 0.64);
+      --text-muted: rgba(245, 246, 248, 0.38);
+      --on-primary: #090A0D;
+      --cover-accent: #34D399;
+      --cover-accent-soft: rgba(52, 211, 153, 0.16);
+      --hero-tint: rgba(16, 185, 129, 0.24);
+      --danger: #FB7185;
+      --danger-bg: rgba(251, 113, 133, 0.12);
+      --shadow-cover: 0 22px 48px -10px rgba(0, 0, 0, 0.65);
+      --shadow-floating: 0 24px 48px -12px rgba(0, 0, 0, 0.72);
+    }
+
+    [data-theme="light"] {
+      --outer: #E7E5DE;
+      --bg-canvas: #F3F2EE;
+      --surface-subtle: rgba(15, 18, 24, 0.025);
+      --surface-1: rgba(15, 18, 24, 0.045);
+      --surface-2: rgba(15, 18, 24, 0.075);
+      --surface-3: rgba(15, 18, 24, 0.115);
+      --border: rgba(15, 18, 24, 0.08);
+      --surface-floating: #FFFFFF;
+      --text-primary: #111318;
+      --text-secondary: rgba(17, 19, 24, 0.62);
+      --text-muted: rgba(17, 19, 24, 0.40);
+      --on-primary: #FFFFFF;
+      --cover-accent: #047857;
+      --cover-accent-soft: rgba(4, 120, 87, 0.12);
+      --hero-tint: rgba(16, 185, 129, 0.16);
+      --danger: #E11D48;
+      --danger-bg: rgba(225, 29, 72, 0.10);
+      --shadow-cover: 0 18px 36px -8px rgba(17, 19, 24, 0.20);
+      --shadow-floating: 0 20px 44px -10px rgba(17, 19, 24, 0.16);
+    }
+
+    :root {
+      --font-display: 'Plus Jakarta Sans', 'Manrope', system-ui, sans-serif;
+      --font-sans: 'Manrope', 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+      --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 26px; --r-pill: 9999px;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--outer);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 16px 68px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app-window {
+      position: relative;
+      width: min(1320px, 100%);
+      height: 800px;
+      background: var(--bg-canvas);
+      border-radius: var(--r-xl);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 204px 1fr;
+      box-shadow: 0 36px 80px -20px rgba(0,0,0,0.75);
+    }
+
+    /* Sol Bar (Listelerim 2×2 mini mozaikli) */
+    .sidebar {
+      padding: 18px 12px;
+      border-right: 1px solid var(--border);
+      background: var(--surface-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sb-brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 6px 10px 18px;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .sb-brand svg { color: var(--cover-accent); }
+    .sb-nav {
+      height: 38px;
+      padding: 0 11px;
+      border-radius: var(--r-sm);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-secondary);
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .sb-nav:hover { background: var(--surface-1); color: var(--text-primary); }
+    .sb-head-row {
+      margin: 14px 10px 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+    .sb-plus {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      border: none;
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .sb-pl {
+      height: 40px;
+      padding: 0 9px;
+      border-radius: var(--r-sm);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .sb-pl:hover { background: var(--surface-1); color: var(--text-primary); }
+    .sb-pl.active { background: var(--surface-2); color: var(--text-primary); }
+
+    /* Sol bar 24×24 mini 2×2 mozaik */
+    .mini-mosaic {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 1px;
+      background: rgba(0,0,0,0.3);
+      flex-shrink: 0;
+    }
+    .sb-footer {
+      margin-top: auto;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Sağ İçerik */
+    .content-scroll {
+      overflow-y: auto;
+      padding-bottom: 116px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Kapaktan Türeyen Üst Başlık (Hero) */
+    .playlist-hero {
+      position: relative;
+      padding: 32px 32px 28px;
+      background: linear-gradient(180deg, var(--hero-tint) 0%, transparent 100%);
+      display: flex;
+      align-items: flex-end;
+      gap: 28px;
+    }
+
+    /* 180×180 Kapak / 2×2 Mozaik / Boş Yer Tutucu */
+    .hero-cover {
+      width: 180px;
+      height: 180px;
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-cover);
+      flex-shrink: 0;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: var(--surface-2);
+    }
+    .mosaic-2x2 {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 2px;
+      background: rgba(0,0,0,0.35);
+    }
+    .single-cover {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #059669, #064E3B 60%, #090A0D);
+      display: flex;
+      align-items: flex-end;
+      padding: 16px;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 13px;
+      color: rgba(255,255,255,0.85);
+    }
+    .empty-cover {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1E1B4B 0%, #312E81 48%, #0F172A 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #A78BFA;
+    }
+
+    .hero-meta {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .hero-kicker {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--cover-accent);
+    }
+    .hero-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: 38px;
+      line-height: 44px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text-primary);
+    }
+    .rename-input {
+      display: none;
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      color: var(--text-primary);
+      background: var(--surface-2);
+      border: 1px solid var(--cover-accent);
+      border-radius: var(--r-sm);
+      padding: 4px 12px;
+      outline: none;
+      width: min(440px, 100%);
+    }
+    .hero-stats {
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .hero-stats .mono {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+    }
+
+    .hero-actions {
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      height: 38px;
+      padding: 0 20px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: var(--cover-accent);
+      color: #090A0D;
+      font-family: var(--font-sans);
+      font-size: 13.5px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .btn-secondary {
+      height: 38px;
+      padding: 0 16px;
+      border-radius: var(--r-pill);
+      border: 1px solid var(--border);
+      background: var(--surface-1);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+    }
+    .btn-secondary:hover { background: var(--surface-2); }
+    .btn-danger {
+      height: 38px;
+      padding: 0 14px;
+      border-radius: var(--r-pill);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .btn-danger:hover { background: var(--danger-bg); color: var(--danger); }
+
+    /* Liste İçi Araç Çubuğu (Hızlı Filtre) */
+    .list-toolbar {
+      padding: 0 32px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .filter-box {
+      width: 280px;
+      height: 36px;
+      padding: 0 12px;
+      border-radius: var(--r-pill);
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .filter-box:focus-within { border-color: var(--cover-accent); background: var(--surface-2); }
+    .filter-box input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+    }
+    .toolbar-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Şarkı Tablosu */
+    .tracks-wrap {
+      padding: 0 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .track-row {
+      height: 56px;
+      padding: 0 12px;
+      border-radius: var(--r-sm);
+      display: grid;
+      grid-template-columns: 28px 42px 1fr 180px 56px 96px;
+      align-items: center;
+      gap: 12px;
+      transition: background 120ms var(--ease);
+    }
+    .track-row:hover { background: var(--surface-2); }
+    .tr-idx {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .tr-cover {
+      width: 40px;
+      height: 40px;
+      border-radius: 7px;
+    }
+    .tr-info { min-width: 0; }
+    .tr-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tr-artist {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tr-album {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tr-dur {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: right;
+    }
+    .tr-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 120ms var(--ease);
+    }
+    .track-row:hover .tr-actions { opacity: 1; }
+    .row-act-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      border: none;
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+    .row-act-btn:hover { background: var(--surface-3); color: var(--text-primary); }
+    .row-act-btn.del:hover { background: var(--danger-bg); color: var(--danger); }
+
+    .empty-state {
+      display: none;
+      padding: 56px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* Yüzen Alt Oynatma Çubuğu */
+    .floating-player {
+      position: absolute;
+      left: 220px;
+      right: 20px;
+      bottom: 16px;
+      height: 72px;
+      border-radius: var(--r-lg);
+      background: var(--surface-floating);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-floating);
+      z-index: 20;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Prototip Kontrol Çubuğu */
+    /* Onay & "Listeye Ekle" Modal Popup'ları */
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(5, 6, 9, 0.72);
+      z-index: 60;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal-card {
+      width: min(460px, 100%);
+      background: var(--surface-floating);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      box-shadow: 0 28px 64px rgba(0, 0, 0, 0.72);
+      padding: 22px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .modal-card.wide { width: min(560px, 100%); }
+    .modal-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .modal-title {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .modal-sub {
+      margin-top: 3px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 19px;
+    }
+    .modal-close {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      border: none;
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .modal-close:hover { background: var(--surface-2); color: var(--text-primary); }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .btn-danger-solid {
+      height: 36px;
+      padding: 0 18px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: var(--danger);
+      color: #FFFFFF;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* Görsel "Listeye Ekle" Izgarası (kapak üstte, liste adı hemen altında) */
+    .picker-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      max-height: 340px;
+      overflow-y: auto;
+      padding: 2px;
+    }
+    .picker-card {
+      padding: 10px;
+      border-radius: var(--r-md);
+      background: var(--surface-1);
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      text-align: left;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      transition: background 140ms var(--ease), border-color 140ms var(--ease), transform 140ms var(--ease);
+    }
+    .picker-card:hover {
+      background: var(--surface-2);
+      border-color: var(--border);
+      transform: translateY(-2px);
+    }
+    .picker-card.added {
+      border-color: var(--cover-accent);
+      background: var(--cover-accent-soft);
+    }
+    .picker-cover {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: var(--r-sm);
+      overflow: hidden;
+      position: relative;
+      background: var(--surface-2);
+    }
+    .picker-badge {
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      padding: 2px 7px;
+      border-radius: var(--r-pill);
+      background: rgba(9, 10, 13, 0.82);
+      color: var(--cover-accent);
+      font-size: 10.5px;
+      font-weight: 700;
+      display: none;
+    }
+    .picker-card.added .picker-badge { display: inline-block; }
+    .picker-name {
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .picker-count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: -5px;
+    }
+    .picker-new {
+      border: 1px dashed var(--border);
+      background: transparent;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .picker-new-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      color: var(--cover-accent);
+      margin: 14px auto 4px;
+    }
+
+    .proto-bar {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      background: rgba(16, 18, 24, 0.92);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--r-pill);
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      color: #F5F6F8;
+      font-size: 12px;
+    }
+    .proto-label { padding: 0 8px; color: rgba(245,246,248,0.55); font-weight: 600; }
+    .proto-btn {
+      height: 28px;
+      padding: 0 11px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: rgba(255,255,255,0.06);
+      color: #E4E6EB;
+      font-family: var(--font-sans);
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .proto-btn:hover { background: rgba(255,255,255,0.14); }
+    .proto-btn.active { background: #34D399; color: #090A0D; }
+  </style>
+</head>
+<body>
+  <div class="app-window">
+    <!-- Sol Bar -->
+    <aside class="sidebar">
+      <div class="sb-brand">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M 3.8 6.5 L 8.8 18.2 L 11.8 11.2 M 12.2 7.2 A 5 5 0 0 1 14.8 16.5 M 12.2 3.5 A 8.7 8.7 0 0 1 11.5 20.5"/>
+        </svg>
+        Vynz
+      </div>
+      <div class="sb-nav">Ana Sayfa</div>
+      <div class="sb-nav">Beğendiklerim</div>
+
+      <div class="sb-head-row">
+        <span>Listelerim</span>
+        <button class="sb-plus" title="Yeni liste">+</button>
+      </div>
+
+      <div class="sb-pl active">
+        <div class="mini-mosaic">
+          <div style="background:#059669;"></div>
+          <div style="background:#0284C7;"></div>
+          <div style="background:#D97706;"></div>
+          <div style="background:#7C3AED;"></div>
+        </div>
+        <span>Gece Sürüşü</span>
+      </div>
+      <div class="sb-pl">
+        <div class="mini-mosaic">
+          <div style="background:#EA580C;"></div>
+          <div style="background:#B91C1C;"></div>
+          <div style="background:#CA8A04;"></div>
+          <div style="background:#1F2937;"></div>
+        </div>
+        <span>Anadolu Rock</span>
+      </div>
+      <div class="sb-pl">
+        <div class="mini-mosaic">
+          <div style="background:#1D4ED8;"></div>
+          <div style="background:#0F766E;"></div>
+          <div style="background:#4338CA;"></div>
+          <div style="background:#334155;"></div>
+        </div>
+        <span>Kodlarken</span>
+      </div>
+
+      <div class="sb-footer">
+        <div class="sb-nav">Profil &amp; Ayarlar</div>
+      </div>
+    </aside>
+
+    <!-- Ana Liste Görünümü -->
+    <main class="content-scroll">
+      <section class="playlist-hero">
+        <div class="hero-cover" id="heroCover"></div>
+
+        <div class="hero-meta">
+          <div class="hero-kicker">Çalma Listesi</div>
+          <div class="hero-title-row">
+            <h1 class="hero-title" id="plTitle">Gece Sürüşü</h1>
+            <input class="rename-input" id="renameInput" type="text" value="Gece Sürüşü" />
+          </div>
+          <div class="hero-stats" id="plStats">
+            <span>Yerel liste</span> · <span class="mono" id="trackCountText">6 şarkı · 26 dk 48 sn</span>
+          </div>
+
+          <div class="hero-actions">
+            <button class="btn-primary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 3l14 9-14 9z"/></svg>
+              Çal
+            </button>
+            <button class="btn-secondary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22M18 2l4 4-4 4M2 6h1.9c1.5 0 2.9.9 3.6 2.2M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8M18 14l4 4-4 4"/></svg>
+              Karıştır
+            </button>
+            <button class="btn-secondary" id="renameBtn" onclick="toggleRename()">Yeniden adlandır</button>
+            <button class="btn-danger" onclick="openDeleteModal()" title="Listeyi sil">Sil</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Liste içi hızlı filtre -->
+      <div class="list-toolbar">
+        <div class="filter-box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="color:var(--text-muted);"><path d="M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="filterInput" placeholder="Liste içinde ara..." oninput="renderTracks()" />
+        </div>
+        <span class="toolbar-hint">Satır üzerine gel: ↑/↓ sırala · × listeden çıkar</span>
+      </div>
+
+      <!-- Şarkı Listesi -->
+      <div class="tracks-wrap" id="tracksWrap"></div>
+      <div class="empty-state" id="emptyState">Bu listede henüz şarkı yok. Şarkılara sağ tıklayıp "Listeye ekle" diyebilirsin.</div>
+    </main>
+
+    <!-- Yüzen Alt Oynatma Çubuğu -->
+    <div class="floating-player">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#059669,#064E3B);"></div>
+        <div>
+          <div style="font-weight:700;font-size:13.5px;">Time (You and I)</div>
+          <div style="font-size:12px;color:var(--text-secondary);">Khruangbin</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);">⏮  ⏸  ⏭</div>
+      <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);">2:04 / 5:42</div>
+    </div>
+    <!-- Liste Silme Onay Popup'ı -->
+    <div class="modal-backdrop" id="deleteModal" onclick="if(event.target===this)closeModals()">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <div class="modal-title">Listeyi silmek istediğine emin misin?</div>
+            <div class="modal-sub"><strong id="delModalName">Gece Sürüşü</strong> kalıcı olarak kaldırılacak. İçindeki şarkılar Beğendiklerim'de kalmaya devam eder.</div>
+          </div>
+          <button class="modal-close" onclick="closeModals()" title="Kapat">×</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" onclick="closeModals()">Vazgeç</button>
+          <button class="btn-danger-solid" onclick="confirmDelete()">Evet, Sil</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Görsel "Listeye Ekle" Popup'ı (Kapak üstte + Liste adı hemen altında) -->
+    <div class="modal-backdrop" id="pickerModal" onclick="if(event.target===this)closeModals()">
+      <div class="modal-card wide">
+        <div class="modal-head">
+          <div>
+            <div class="modal-title">Listeye ekle</div>
+            <div class="modal-sub" id="pickerTrackLabel">Time (You and I) · Khruangbin</div>
+          </div>
+          <button class="modal-close" onclick="closeModals()" title="Kapat">×</button>
+        </div>
+
+        <div class="picker-grid" id="pickerGrid">
+          <button class="picker-card" onclick="togglePick(this)">
+            <div class="picker-cover">
+              <div class="mosaic-2x2">
+                <div style="background:linear-gradient(135deg,#059669,#064E3B);"></div>
+                <div style="background:linear-gradient(135deg,#0284C7,#1E3A8A);"></div>
+                <div style="background:linear-gradient(135deg,#EA580C,#7C2D12);"></div>
+                <div style="background:linear-gradient(135deg,#7C3AED,#312E81);"></div>
+              </div>
+              <span class="picker-badge">Eklendi ✓</span>
+            </div>
+            <div class="picker-name">Gece Sürüşü</div>
+            <div class="picker-count">6 şarkı</div>
+          </button>
+
+          <button class="picker-card" onclick="togglePick(this)">
+            <div class="picker-cover">
+              <div class="mosaic-2x2">
+                <div style="background:linear-gradient(135deg,#EA580C,#7C2D12);"></div>
+                <div style="background:linear-gradient(135deg,#B91C1C,#450A0A);"></div>
+                <div style="background:linear-gradient(135deg,#CA8A04,#422006);"></div>
+                <div style="background:linear-gradient(135deg,#1F2937,#090A0D);"></div>
+              </div>
+              <span class="picker-badge">Eklendi ✓</span>
+            </div>
+            <div class="picker-name">Anadolu Rock</div>
+            <div class="picker-count">18 şarkı</div>
+          </button>
+
+          <button class="picker-card" onclick="togglePick(this)">
+            <div class="picker-cover">
+              <div class="mosaic-2x2">
+                <div style="background:linear-gradient(135deg,#1D4ED8,#0F172A);"></div>
+                <div style="background:linear-gradient(135deg,#0F766E,#042F2E);"></div>
+                <div style="background:linear-gradient(135deg,#4338CA,#1E1B4B);"></div>
+                <div style="background:linear-gradient(135deg,#334155,#0F172A);"></div>
+              </div>
+              <span class="picker-badge">Eklendi ✓</span>
+            </div>
+            <div class="picker-name">Kodlarken</div>
+            <div class="picker-count">34 şarkı</div>
+          </button>
+
+          <button class="picker-card" onclick="togglePick(this)">
+            <div class="picker-cover">
+              <div class="single-cover" style="background:linear-gradient(135deg,#DB2777,#4C1D95);font-size:11px;padding:10px;">Odyssey</div>
+              <span class="picker-badge">Eklendi ✓</span>
+            </div>
+            <div class="picker-name">Synthwave</div>
+            <div class="picker-count">2 şarkı</div>
+          </button>
+
+          <button class="picker-card" onclick="togglePick(this)">
+            <div class="picker-cover">
+              <div class="empty-cover">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <path d="M 3.8 6.5 L 8.8 18.2 L 11.8 11.2 M 12.2 7.2 A 5 5 0 0 1 14.8 16.5 M 12.2 3.5 A 8.7 8.7 0 0 1 11.5 20.5"/>
+                </svg>
+              </div>
+              <span class="picker-badge">Eklendi ✓</span>
+            </div>
+            <div class="picker-name">Yeni Favoriler</div>
+            <div class="picker-count">0 şarkı</div>
+          </button>
+
+          <button class="picker-card picker-new" onclick="alert('Yeni liste oluşturma penceresi açılır')">
+            <div class="picker-new-icon">+</div>
+            <div class="picker-name">Yeni liste</div>
+            <div class="picker-count">Hemen oluştur</div>
+          </button>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-secondary" onclick="closeModals()">Kapat</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prototip Kontrol Çubuğu -->
+  <div class="proto-bar">
+    <span class="proto-label">v3 Listelerim</span>
+    <button class="proto-btn active" id="modeMosaic" onclick="setCoverMode('mosaic')">4+ Şarkı (2×2)</button>
+    <button class="proto-btn" id="modeSingle" onclick="setCoverMode('single')">1–3 Şarkı</button>
+    <button class="proto-btn" id="modeEmpty" onclick="setCoverMode('empty')">Boş</button>
+    <button class="proto-btn" onclick="openPickerModal('Time (You and I) · Khruangbin')">Listeye Ekle Popup'ı</button>
+    <button class="proto-btn" onclick="openDeleteModal()">Silme Onayı</button>
+    <button class="proto-btn" onclick="toggleTheme()">Koyu / Açık</button>
+  </div>
+
+  <script>
+    const initialTracks = [
+      { title: 'Time (You and I)', artist: 'Khruangbin', album: 'Mordechai', dur: '5:42', sec: 342, bg: 'linear-gradient(135deg,#059669,#064E3B)' },
+      { title: 'Nightcall', artist: 'Kavinsky', album: 'OutRun', dur: '4:18', sec: 258, bg: 'linear-gradient(135deg,#0284C7,#1E3A8A)' },
+      { title: 'Cemalim', artist: 'Erkin Koray', album: 'Elektronik Türküler', dur: '4:19', sec: 259, bg: 'linear-gradient(135deg,#EA580C,#7C2D12)' },
+      { title: 'Instant Crush', artist: 'Daft Punk, Julian Casablancas', album: 'Random Access Memories', dur: '5:37', sec: 337, bg: 'linear-gradient(135deg,#7C3AED,#312E81)' },
+      { title: 'Cambaz', artist: 'Mor ve Ötesi', album: 'Dünya Yalan Söylüyor', dur: '3:50', sec: 230, bg: 'linear-gradient(135deg,#1D4ED8,#0F172A)' },
+      { title: 'Resonance', artist: 'HOME', album: 'Odyssey', dur: '3:32', sec: 212, bg: 'linear-gradient(135deg,#DB2777,#4C1D95)' }
+    ];
+    let tracks = [...initialTracks];
+    let coverMode = 'mosaic';
+    let renaming = false;
+
+    function fmtTotal(list) {
+      const total = list.reduce((a, b) => a + b.sec, 0);
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      const dur = h > 0 ? `${h} sa ${m} dk` : `${m} dk ${s} sn`;
+      return `${list.length} şarkı · ${dur}`;
+    }
+
+    function renderCover() {
+      const el = document.getElementById('heroCover');
+      if (coverMode === 'empty' || tracks.length === 0) {
+        el.innerHTML = `<div class="empty-cover">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M 3.8 6.5 L 8.8 18.2 L 11.8 11.2 M 12.2 7.2 A 5 5 0 0 1 14.8 16.5 M 12.2 3.5 A 8.7 8.7 0 0 1 11.5 20.5"/>
+          </svg>
+        </div>`;
+      } else if (coverMode === 'single' || tracks.length < 4) {
+        el.innerHTML = `<div class="single-cover" style="background:${tracks[0].bg};">${tracks[0].album}</div>`;
+      } else {
+        el.innerHTML = `<div class="mosaic-2x2">
+          <div style="background:${tracks[0].bg};"></div>
+          <div style="background:${tracks[1].bg};"></div>
+          <div style="background:${tracks[2].bg};"></div>
+          <div style="background:${tracks[3].bg};"></div>
+        </div>`;
+      }
+    }
+
+    function renderTracks() {
+      const q = document.getElementById('filterInput').value.trim().toLowerCase();
+      const wrap = document.getElementById('tracksWrap');
+      const empty = document.getElementById('emptyState');
+      const activeList = coverMode === 'empty' ? [] : (coverMode === 'single' ? tracks.slice(0, 2) : tracks);
+
+      document.getElementById('trackCountText').textContent = fmtTotal(activeList);
+
+      const filtered = activeList.filter(t =>
+        !q || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q) || t.album.toLowerCase().includes(q)
+      );
+
+      if (activeList.length === 0) {
+        wrap.innerHTML = '';
+        empty.style.display = 'block';
+        empty.textContent = 'Bu listede henüz şarkı yok. Şarkılara sağ tıklayıp "Listeye ekle" diyebilirsin.';
+        return;
+      }
+      if (filtered.length === 0) {
+        wrap.innerHTML = '';
+        empty.style.display = 'block';
+        empty.textContent = `"${q}" ile eşleşen şarkı bulunamadı.`;
+        return;
+      }
+      empty.style.display = 'none';
+      wrap.innerHTML = filtered.map((t, idx) => {
+        const realIdx = tracks.indexOf(t);
+        return `<div class="track-row">
+          <div class="tr-idx">${idx + 1}</div>
+          <div class="tr-cover" style="background:${t.bg};"></div>
+          <div class="tr-info">
+            <div class="tr-title">${t.title}</div>
+            <div class="tr-artist">${t.artist}</div>
+          </div>
+          <div class="tr-album">${t.album}</div>
+          <div class="tr-dur">${t.dur}</div>
+          <div class="tr-actions">
+            <button class="row-act-btn" onclick="moveTrack(${realIdx}, -1)" title="Yukarı taşı">↑</button>
+            <button class="row-act-btn" onclick="moveTrack(${realIdx}, 1)" title="Aşağı taşı">↓</button>
+            <button class="row-act-btn del" onclick="removeTrack(${realIdx})" title="Listeden çıkar">×</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function moveTrack(i, dir) {
+      const j = i + dir;
+      if (j < 0 || j >= tracks.length) return;
+      [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
+      renderCover();
+      renderTracks();
+    }
+
+    function removeTrack(i) {
+      tracks.splice(i, 1);
+      renderCover();
+      renderTracks();
+    }
+
+    function setCoverMode(mode) {
+      coverMode = mode;
+      if (mode !== 'empty' && tracks.length === 0) tracks = [...initialTracks];
+      document.getElementById('modeMosaic').classList.toggle('active', mode === 'mosaic');
+      document.getElementById('modeSingle').classList.toggle('active', mode === 'single');
+      document.getElementById('modeEmpty').classList.toggle('active', mode === 'empty');
+      renderCover();
+      renderTracks();
+    }
+
+    function toggleRename() {
+      const title = document.getElementById('plTitle');
+      const input = document.getElementById('renameInput');
+      const btn = document.getElementById('renameBtn');
+      renaming = !renaming;
+      if (renaming) {
+        input.value = title.textContent;
+        title.style.display = 'none';
+        input.style.display = 'block';
+        input.focus();
+        input.select();
+        btn.textContent = 'Kaydet';
+      } else {
+        if (input.value.trim()) title.textContent = input.value.trim();
+        title.style.display = '';
+        input.style.display = 'none';
+        btn.textContent = 'Yeniden adlandır';
+      }
+    }
+
+    document.getElementById('renameInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') toggleRename();
+      if (e.key === 'Escape') { renaming = true; toggleRename(); }
+    });
+
+    function toggleTheme() {
+      const cur = document.documentElement.getAttribute('data-theme');
+      document.documentElement.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+    }
+
+    function openDeleteModal() {
+      document.getElementById('delModalName').textContent = document.getElementById('plTitle').textContent;
+      document.getElementById('deleteModal').classList.add('open');
+    }
+
+    function confirmDelete() {
+      closeModals();
+      alert('Liste silindi (taslak önizlemesi).');
+    }
+
+    function openPickerModal(label) {
+      if (label) document.getElementById('pickerTrackLabel').textContent = label;
+      document.getElementById('pickerModal').classList.add('open');
+    }
+
+    function togglePick(card) {
+      card.classList.toggle('added');
+    }
+
+    function closeModals() {
+      document.getElementById('deleteModal').classList.remove('open');
+      document.getElementById('pickerModal').classList.remove('open');
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeModals();
+    });
+
+    renderCover();
+    renderTracks();
+  </script>
+</body>
+</html>
