@@ -392,8 +392,20 @@ export component AppWindow inherits Window {
     // Görünüm
     in-out property <int> theme-accent: 0;
     in-out property <int> theme-backdrop: 0;
-    // Güncelleme
+    // Güncelleme: 0 yok, 1 indiriliyor, 2 yeniden başlatılıyor, 3 hata
     in-out property <bool> auto-update: true;
+    in property <string> app-version;
+    in property <int> update-state: 0;
+    in property <string> update-version;
+    in property <string> update-notes;
+    in property <float> update-progress;
+    in property <string> update-error;
+    in property <bool> update-checking;
+    callback update-later();
+    callback update-skip();
+    callback update-retry();
+    callback update-open-page();
+    callback check-updates();
     in property <string> cache-usage: "…";
     in property <string> runtime-status: "…";
     in property <bool> runtime-updating: false;
@@ -1958,6 +1970,13 @@ export component AppWindow inherits Window {
 
                     if settings-tab == 3: VerticalLayout {
                         spacing: 10px;
+                        SettingRow {
+                            title: "Vynz " + app-version;
+                            note: "Yeni sürüm çıkınca açılışta kendiliğinden indirilip kurulur, uygulama yeniden açılır.";
+                            PillButton { pill-height: 30px; text: update-checking ? "Denetleniyor…" : "Güncellemeleri denetle"; enabled: !update-checking; clicked => { root.check-updates(); } }
+                            PillButton { pill-height: 30px; text: "Otomatik"; active: auto-update; clicked => { auto-update = true; root.settings-changed(); } }
+                            PillButton { pill-height: 30px; text: "Elle"; active: !auto-update; clicked => { auto-update = false; root.settings-changed(); } }
+                        }
                         SettingRow {
                             title: "YouTube Music girişi";
                             note: "Premium hesapta ~260 kbps ses kalitesi için Firefox çerezini kullanır; girişsiz ~140 kbps.";
@@ -3623,6 +3642,68 @@ export component AppWindow inherits Window {
                         PillButton { pill-height: 34px; text: "Şimdilik geç"; clicked => { root.taste-skip(); } }
                         PillButton { pill-height: 34px; text: "Kaydet"; primary: true; clicked => { root.taste-save(); } }
                     }
+                }
+            }
+        }
+    }
+
+    // ---------- Güncelleme penceresi ----------
+    if update-state > 0: Rectangle {
+        x: 0; y: 0; width: root.width; height: root.height;
+        background: #000000a0;
+        TouchArea { }
+        Rectangle {
+            width: 420px; height: ucol.preferred-height;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: Theme.r-lg; background: Theme.floating;
+            border-width: 1px; border-color: Theme.border;
+            drop-shadow-blur: 60px; drop-shadow-offset-y: 20px; drop-shadow-color: #000000c0;
+            ucol := VerticalLayout {
+                padding: 24px; spacing: 14px;
+                HorizontalLayout {
+                    spacing: 14px;
+                    Rectangle {
+                        width: 44px; height: 44px; border-radius: 12px;
+                        background: @linear-gradient(135deg, Theme.accent 0%, Theme.accent.darker(0.6) 100%);
+                        Icon { width: 22px; height: 22px; commands: update-state == 3 ? Icons.x : Icons.download; stroke: #FFFFFF; stroke-width: 2px; }
+                    }
+                    VerticalLayout {
+                        alignment: center; spacing: 2px; horizontal-stretch: 1;
+                        Text {
+                            text: update-state == 2 ? "Yeniden başlatılıyor…" : update-state == 3 ? "Güncelleme kurulamadı" : "Vynz güncelleniyor";
+                            font-family: Theme.display; font-size: 18px; font-weight: 800; color: Theme.text-primary;
+                        }
+                        Text { text: app-version + "  →  " + update-version; font-family: Theme.mono; font-size: 12px; color: Theme.text-secondary; }
+                    }
+                }
+                if update-state == 1 || update-state == 2: Rectangle {
+                    height: 6px; border-radius: 3px; background: Theme.surface-3;
+                    Rectangle {
+                        x: 0; height: 6px; border-radius: 3px; background: Theme.accent;
+                        width: parent.width * (update-state == 2 ? 1 : update-progress);
+                        animate width { duration: 250ms; }
+                    }
+                }
+                if update-state == 1: Text {
+                    text: update-progress < 0.9 ? "İndiriliyor… %" + Math.round(update-progress * 100) : "Doğrulanıyor ve kuruluyor…";
+                    font-size: 12px; color: Theme.text-muted;
+                }
+                if update-state == 3: Text { text: update-error; font-size: 12px; color: #FF8A80; wrap: word-wrap; }
+                if update-notes != "" && update-state != 2: Rectangle {
+                    border-radius: Theme.r-sm; background: Theme.surface-1;
+                    height: Math.min(nt.preferred-height + 20px, 150px);
+                    clip: true;
+                    nt := Text {
+                        x: 12px; y: 10px; width: parent.width - 24px;
+                        text: update-notes; font-size: 11.5px; color: Theme.text-secondary; wrap: word-wrap;
+                    }
+                }
+                if update-state == 1 || update-state == 3: HorizontalLayout {
+                    spacing: 8px; alignment: end;
+                    PillButton { pill-height: 32px; text: "Bu sürümü atla"; clicked => { root.update-skip(); } }
+                    if update-state == 3: PillButton { pill-height: 32px; text: "GitHub'da aç"; clicked => { root.update-open-page(); } }
+                    if update-state == 3: PillButton { pill-height: 32px; text: "Yeniden dene"; primary: true; clicked => { root.update-retry(); } }
+                    PillButton { pill-height: 32px; text: update-state == 3 ? "Kapat" : "Şimdi değil"; clicked => { root.update-later(); } }
                 }
             }
         }

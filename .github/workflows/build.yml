@@ -97,18 +97,30 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
+      - name: Checksums (uygulama içi güncelleyici doğrular)
+        run: |
+          cd artifacts
+          sha256sum vynz-linux-x86_64.tar.gz vynz-windows-x86_64.zip > SHA256SUMS
+          cat SHA256SUMS
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          FLAGS="--generate-notes"
+          if [ -f "notes/${TAG}.md" ]; then
+            FLAGS="--notes-file notes/${TAG}.md"
+          else
+            FLAGS="--generate-notes"
+          fi
+          # Sürüm adı: v0.2.0 → "Vynz 0.2.0"; tire içeren etiketler (v0.3.0-beta.1) ön sürüm sayılır
+          # ve uygulama içi güncelleyiciye görünmez.
           if [[ "$TAG" == *-* ]]; then
             FLAGS="$FLAGS --prerelease"
           fi
-          gh release create "$TAG" artifacts/* -R "${{ github.repository }}" --title "Vynz $TAG" $FLAGS
+          gh release create "$TAG" artifacts/* -R "${{ github.repository }}" --title "Vynz ${TAG#v}" $FLAGS
 

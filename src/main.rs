@@ -28,6 +28,7 @@ mod settings;
 mod sources;
 mod stats;
 mod tray;
+mod updater;
 mod viz;
 
 use std::cell::RefCell;
@@ -118,6 +119,8 @@ struct State {
     menu: Option<TrackInfo>,
     /// Sanatçı seçim menüsü: (adlar, şarkının videoId'si)
     artist_pick: (Vec<String>, String),
+    /// Kurulmakta olan güncelleme (yeniden dene / atla için)
+    pending_update: Option<updater::Update>,
     /// Kişisel karışım ve keşif listesi (ana sayfadaki vitrin kartları)
     mix: Vec<TrackInfo>,
     discover: Vec<TrackInfo>,
@@ -4003,6 +4006,83 @@ fn restore_session(ui: &AppWindow) {
 }
 
 /// MPRIS (medya tuşları, çubuk) komutlarını uygula.
+// ---------- Güncelleme ----------
+
+/// Son sürümü denetle; yenisi varsa (atlanmamışsa) hemen indirip kurmaya başla.
+/// `manual`: Ayarlar'dan istendi (sonuç ne olursa bildir, atlanan sürümü de göster).
+fn check_update(ui: &AppWindow, manual: bool) {
+    if updater::is_dev_build() {
+        if manual {
+            toast(ui, "Geliştirici derlemesi: kendini güncellemez (cargo build ile güncelle)");
+        }
+        return;
+    }
+    if manual {
+        ui.set_update_checking(true);
+    }
+    let skip = with_state(|st| st.settings.skip_version.clone());
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let res = updater::check();
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            ui.set_update_checking(false);
+            match res {
+                Ok(Some(u)) if manual || u.version != skip => start_update(&ui, u),
+                Ok(_) => {
+                    if manual {
+                        toast(&ui, &format!("Vynz güncel ({})", updater::current()));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("güncelleme denetlenemedi: {e}");
+                    if manual {
+                        toast(&ui, "Güncelleme denetlenemedi (bağlantı?)");
+                    }
+                }
+            }
+        });
+    });
+}
+
+fn start_update(ui: &AppWindow, u: updater::Update) {
+    ui.set_update_version(u.version.as_str().into());
+    ui.set_update_notes(u.notes.as_str().into());
+    ui.set_update_progress(0.0);
+    ui.set_update_error("".into());
+    ui.set_update_state(1);
+    updater::CANCEL.store(false, Ordering::Relaxed);
+    with_state(|st| st.pending_update = Some(u.clone()));
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let w = weak.clone();
+        let res = updater::install(&u, &updater::CANCEL, move |p| {
+            let _ = w.upgrade_in_event_loop(move |ui| ui.set_update_progress(p));
+        });
+        let _ = weak.upgrade_in_event_loop(move |ui| match res {
+            Ok(()) => {
+                ui.set_update_state(2);
+                // Kısa bir an "yeniden başlatılıyor" görünsün, sonra kapan ve yenisini aç.
+                let weak = ui.as_weak();
+                Timer::single_shot(Duration::from_millis(1200), move || {
+                    if weak.upgrade().is_some() {
+                        updater::RESTART.store(true, Ordering::Relaxed);
+                        let _ = slint::quit_event_loop();
+                    }
+                });
+            }
+            Err(e) if updater::CANCEL.load(Ordering::Relaxed) => {
+                let _ = e;
+                ui.set_update_state(0);
+            }
+            Err(e) => {
+                eprintln!("güncelleme kurulamadı: {e}");
+                ui.set_update_error(e.into());
+                ui.set_update_state(3);
+            }
+        });
+    });
+}
+
 fn on_mpris(ui: &AppWindow, a: mpris::Act) {
     use mpris::Act;
     match a {
@@ -4092,7 +4172,11 @@ fn show_from_tray(ui: &AppWindow) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Güncellemeden sonra yeniden açıldıysak eski süreç kapanana kadar bekle (MPRIS adı vb.).
+    updater::wait_for_parent();
+    updater::cleanup_old();
     let ui = AppWindow::new()?;
+    ui.set_app_version(updater::current().into());
     if let Ok(t) = std::env::var("VYNZ_TITLE") {
         ui.set_window_title(t.into()); // testte pencereyi ayırt etmek için
     }
@@ -4191,6 +4275,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             radio_busy: false,
             menu: None,
             artist_pick: (Vec::new(), String::new()),
+            pending_update: None,
 
             mix: Vec::new(),
             discover: Vec::new(),
@@ -4637,6 +4722,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move || {
             if let Some(ui) = weak.upgrade() {
                 queue_clear(&ui);
+            }
+        }
+    });
+    ui.on_update_later({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            updater::CANCEL.store(true, Ordering::Relaxed);
+            ui.set_update_state(0);
+        }
+    });
+    ui.on_update_skip({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            updater::CANCEL.store(true, Ordering::Relaxed);
+            ui.set_update_state(0);
+            with_state(|st| {
+                if let Some(u) = &st.pending_update {
+                    st.settings.skip_version = u.version.clone();
+                    let _ = st.settings.save();
+                }
+            });
+            toast(&ui, "Bu sürüm atlanacak; Ayarlar'dan yine kurabilirsin");
+        }
+    });
+    ui.on_update_retry({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(u) = with_state(|st| st.pending_update.clone()) {
+                start_update(&ui, u);
+            }
+        }
+    });
+    ui.on_update_open_page(|| {
+        let _ = open::that_detached(updater::RELEASES_PAGE);
+    });
+    ui.on_check_updates({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                check_update(&ui, true);
             }
         }
     });
@@ -5302,6 +5430,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     refresh_usage(&ui);
     load_home(&ui);
+    if let Ok(v) = std::env::var("VYNZ_UPDATED") {
+        toast(&ui, &format!("Vynz {v} sürümüne güncellendi"));
+    }
+    if ui.get_auto_update() && !updater::is_dev_build() {
+        // Açılışı yavaşlatmasın: biraz sonra, arka planda.
+        let weak = ui.as_weak();
+        Timer::single_shot(Duration::from_secs(3), move || {
+            if let Some(ui) = weak.upgrade() {
+                check_update(&ui, false);
+            }
+        });
+    }
     if with_state(|st| !st.settings.tastes_done && st.history.is_empty()) {
         open_tastes(&ui);
     }
@@ -5317,6 +5457,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     with_state(|st| st.viz = None);
     start_listen(None); // son dinlemeyi kaydet
     resolver.shutdown();
+    if updater::RESTART.load(Ordering::Relaxed) {
+        updater::relaunch();
+    }
     Ok(())
 }
 
