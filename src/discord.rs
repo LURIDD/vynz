@@ -196,6 +196,11 @@ fn apply(ev: Ev, now: &mut Option<Now>, enabled: &mut bool, conn: &mut Option<Co
     }
 }
 
+fn clock(sec: f64) -> String {
+    let s = sec.max(0.0) as u64;
+    format!("{}:{:02}", s / 60, s % 60)
+}
+
 /// Discord alanları 2..128 karakter ister.
 fn field(s: &str) -> String {
     let mut s: String = s.trim().chars().take(128).collect();
@@ -206,12 +211,24 @@ fn field(s: &str) -> String {
 }
 
 fn activity(n: &Now, no_type: bool) -> Value {
+    let artist = if n.artist.trim().is_empty() { "Vynz" } else { n.artist.as_str() };
+    let pos = f64::from_bits(POS.load(Ordering::Relaxed)).max(0.0);
+    // Duraklatılmışken Discord'da işleyen bir sayaç yerine son konum sabit yazı olarak kalır.
+    let state = if n.playing {
+        artist.to_string()
+    } else if n.length > 0.0 {
+        format!("⏸ {} / {} · {artist}", clock(pos), clock(n.length))
+    } else {
+        format!("⏸ {} · {artist}", clock(pos))
+    };
     let mut a = json!({
         "details": field(&n.title),
-        "state": field(if n.artist.trim().is_empty() { "Vynz" } else { &n.artist }),
+        "state": field(&state),
     });
     if !no_type {
         a["type"] = json!(2); // Listening
+        // Üye listesinde "Vynz dinliyor" yerine şarkı adı (details); profil kartı yine "Vynz".
+        a["status_display_type"] = json!(2);
     }
     let mut assets = serde_json::Map::new();
     if n.art.starts_with("https://") && n.art.len() <= 256 {
@@ -226,7 +243,6 @@ fn activity(n: &Now, no_type: bool) -> Value {
         a["assets"] = Value::Object(assets);
     }
     if n.playing {
-        let pos = f64::from_bits(POS.load(Ordering::Relaxed)).max(0.0);
         let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
         let start = now_ms - (pos * 1000.0) as i64;
         let mut ts = json!({ "start": start });
@@ -383,5 +399,25 @@ mod tests {
         let a = activity(&n, true);
         assert!(a.get("type").is_none());
         assert!(a["timestamps"]["end"].as_i64().unwrap() > a["timestamps"]["start"].as_i64().unwrap());
+    }
+}
+
+#[cfg(test)]
+mod rpc_tests {
+    use super::*;
+
+    #[test]
+    fn paused_activity_is_static() {
+        POS.store(83.4f64.to_bits(), Ordering::Relaxed);
+        let mut n = Now { title: "Gidiyorum".into(), artist: "Sezen Aksu".into(), album: String::new(), art: String::new(), length: 225.0, playing: false };
+        let a = activity(&n, false);
+        assert!(a.get("timestamps").is_none());
+        assert_eq!(a["state"], "⏸ 1:23 / 3:45 · Sezen Aksu");
+        assert_eq!(a["status_display_type"], 2);
+        n.playing = true;
+        let a = activity(&n, false);
+        assert_eq!(a["state"], "Sezen Aksu");
+        assert!(a["timestamps"]["end"].as_i64().unwrap() > a["timestamps"]["start"].as_i64().unwrap());
+        assert!(activity(&n, true).get("status_display_type").is_none());
     }
 }
