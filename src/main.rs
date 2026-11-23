@@ -689,7 +689,7 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
             now.has_art = true;
             ui.set_now(now);
         }
-        ui.global::<Theme>().set_accent(color);
+        set_cover_accent(&ui, color);
         ui.set_now_blur(blur);
         ui.set_has_blur(true);
     }
@@ -757,7 +757,7 @@ fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
     ui.set_duration(t.duration);
     ui.set_playing(true);
     let accent = ARTS.with(|a| a.borrow().get(&t.key()).map(|(_, c)| *c)).unwrap_or(NEUTRAL);
-    ui.global::<Theme>().set_accent(accent);
+    set_cover_accent(ui, accent);
     match BLURS.with(|b| b.borrow().get(&t.key()).cloned()) {
         Some(b) => {
             ui.set_now_blur(b);
@@ -3684,17 +3684,60 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_lyrics_motion(s.lyrics_motion);
     ui.set_lyrics_translate(s.lyrics_translate);
     ui.set_keep_index(s.keep_index());
+    ui.set_crossfade_index(s.crossfade_index());
+    ui.set_eq_on(s.eq_on);
+    ui.set_eq_preset(s.eq_preset);
+    ui.set_eq_gains(ModelRc::new(VecModel::from(s.eq_gains.to_vec())));
+    ui.set_theme_accent(s.theme_accent);
+    ui.set_theme_backdrop(s.theme_backdrop);
+    ui.set_auto_update(s.auto_update);
+    apply_theme(ui, s);
+}
+
+/// Ekolayzır değişti: arayüz, çalar ve ayar dosyası.
+fn eq_changed(ui: &AppWindow, gains: [f32; 10]) {
+    let (on, preset) = with_state(|st| (st.settings.eq_on, st.settings.eq_preset));
+    ui.set_eq_on(on);
+    ui.set_eq_preset(preset);
+    ui.set_eq_gains(ModelRc::new(VecModel::from(gains.to_vec())));
+    apply_settings(ui);
+}
+
+fn rgb(c: u32) -> Color {
+    Color::from_rgb_u8((c >> 16) as u8, (c >> 8) as u8, c as u8)
+}
+
+thread_local! {
+    /// Kapaktan türetilen son vurgu (sabit vurgudan otomatiğe dönünce kullanılır)
+    static COVER_ACCENT: std::cell::Cell<Option<Color>> = const { std::cell::Cell::new(None) };
+}
+
+/// Tema: sabit vurgu (0 = kapaktan) ve zemin renkleri.
+fn apply_theme(ui: &AppWindow, s: &Settings) {
+    let th = ui.global::<Theme>();
+    let bd = settings::BACKDROPS[s.theme_backdrop.clamp(0, settings::BACKDROPS.len() as i32 - 1) as usize];
+    th.set_canvas(rgb(bd[0]));
+    th.set_outer(rgb(bd[1]));
+    th.set_floating(rgb(bd[2]));
+    th.set_drawer(rgb(bd[3]));
+    let a = settings::ACCENTS[s.theme_accent.clamp(0, settings::ACCENTS.len() as i32 - 1) as usize];
+    if a != 0 {
+        th.set_accent(rgb(a));
+    } else if let Some(c) = COVER_ACCENT.with(|x| x.get()) {
+        th.set_accent(c);
+    }
+}
+
+/// Kapaktan gelen vurgu: sabit vurgu seçiliyse yalnız saklanır.
+fn set_cover_accent(ui: &AppWindow, c: Color) {
+    COVER_ACCENT.with(|x| x.set(Some(c)));
+    if ui.get_theme_accent() == 0 {
+        ui.global::<Theme>().set_accent(c);
+    }
 }
 
 fn apply_settings(ui: &AppWindow) {
-    let (tastes_done, taste_genres, blocked_genres, taste_tracks) = with_state(|st| {
-        (
-            st.settings.tastes_done,
-            st.settings.taste_genres.clone(),
-            st.settings.blocked_genres.clone(),
-            st.settings.taste_tracks.clone(),
-        )
-    });
+    let prev = with_state(|st| st.settings.clone());
     let s = Settings {
         cache_gb: settings::CACHE_GB[ui.get_cache_index().clamp(0, 4) as usize],
         prefetch: ui.get_prefetch_on(),
@@ -3712,14 +3755,18 @@ fn apply_settings(ui: &AppWindow) {
         lyrics_translate: ui.get_lyrics_translate(),
         keep_days: settings::KEEP_DAYS[ui.get_keep_index().clamp(0, 3) as usize],
         volume: ui.get_volume(),
-        tastes_done,
-        taste_genres,
-        blocked_genres,
-        taste_tracks,
+        crossfade_secs: settings::CROSSFADE_SECS[ui.get_crossfade_index().clamp(0, 4) as usize],
+        eq_on: ui.get_eq_on(),
+        theme_accent: ui.get_theme_accent(),
+        theme_backdrop: ui.get_theme_backdrop(),
+        auto_update: ui.get_auto_update(),
+        ..prev
     };
     with_state(|st| {
         st.player.send(Cmd::Readahead(s.readahead_secs));
         st.player.send(Cmd::Normalize(s.normalize));
+        st.player.send(Cmd::Eq(s.eq_on.then_some(s.eq_gains)));
+        st.player.send(Cmd::Crossfade(s.crossfade_secs as f64));
         discord::set_enabled(s.discord_rpc);
         st.resolver.set_cookies(s.cookies_browser.clone());
         if !s.prefetch && st.appended.is_some() {
@@ -3738,6 +3785,8 @@ fn apply_settings(ui: &AppWindow) {
         }
         st.settings = s;
     });
+    let s = with_state(|st| st.settings.clone());
+    apply_theme(ui, &s);
     refresh_usage(ui);
 }
 
@@ -4007,6 +4056,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             radio_busy: false,
             menu: None,
             artist_pick: (Vec::new(), String::new()),
+
             mix: Vec::new(),
             discover: Vec::new(),
             coll: None,
@@ -4043,7 +4093,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             taste_draft_tracks: Vec::new(),
         })
     });
-    with_state(|st| st.player.send(Cmd::Normalize(st.settings.normalize)));
+    with_state(|st| {
+        st.player.send(Cmd::Normalize(st.settings.normalize));
+        st.player.send(Cmd::Eq(st.settings.eq_on.then_some(st.settings.eq_gains)));
+        st.player.send(Cmd::Crossfade(st.settings.crossfade_secs as f64));
+    });
     refresh_playlists(&ui);
     refresh_liked(&ui);
     refresh_hidden(&ui);
@@ -4448,6 +4502,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(ui) = weak.upgrade() {
                 queue_clear(&ui);
             }
+        }
+    });
+    ui.on_eq_set({
+        let weak = weak.clone();
+        move |band, gain| {
+            let Some(ui) = weak.upgrade() else { return };
+            let gains = with_state(|st| {
+                if let Some(g) = st.settings.eq_gains.get_mut(band as usize) {
+                    *g = gain.clamp(-12.0, 12.0);
+                }
+                st.settings.eq_preset = settings::EQ_PRESETS.iter().position(|(_, p)| *p == st.settings.eq_gains).map(|i| i as i32).unwrap_or(-1);
+                st.settings.eq_on = true;
+                st.settings.eq_gains
+            });
+            eq_changed(&ui, gains);
+        }
+    });
+    ui.on_eq_pick({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some((_, g)) = settings::EQ_PRESETS.get(i as usize) else { return };
+            with_state(|st| {
+                st.settings.eq_gains = *g;
+                st.settings.eq_preset = i;
+                st.settings.eq_on = i != 0 || st.settings.eq_on;
+            });
+            eq_changed(&ui, *g);
         }
     });
     ui.global::<Nav>().on_artist({

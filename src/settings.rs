@@ -12,6 +12,30 @@ pub const COOKIE_BROWSERS: [Option<&str>; 2] = [None, Some("firefox")];
 pub const DOWNLOAD_KBPS: [u32; 4] = [256, 512, 1024, 0];
 /// Dinlenmeyen şarkıların önbellekte kalma süresi (gün; 0 = süresiz).
 pub const KEEP_DAYS: [u32; 4] = [14, 30, 90, 0];
+/// Çapraz geçiş süresi (sn; 0 = kapalı).
+pub const CROSSFADE_SECS: [u32; 5] = [0, 3, 5, 8, 12];
+/// Ekolayzır hazır ayarları (ad, EQ_BANDS sırasıyla dB). Arayüzdeki sırayla aynı.
+pub const EQ_PRESETS: [(&str, [f32; 10]); 9] = [
+    ("Düz", [0.0; 10]),
+    ("Bas", [6.0, 5.0, 4.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    ("Tiz", [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 4.0, 5.0, 6.0]),
+    ("Vokal", [-2.0, -2.0, -1.0, 0.0, 2.0, 4.0, 4.0, 2.0, 0.0, -1.0]),
+    ("Rap", [5.0, 4.0, 2.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 2.0]),
+    ("Elektronik", [4.0, 3.0, 1.0, 0.0, -2.0, 0.0, 1.0, 2.0, 3.0, 4.0]),
+    ("Akustik", [3.0, 2.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 2.0, 1.0]),
+    ("Rock", [4.0, 3.0, 2.0, 0.0, -1.0, -1.0, 1.0, 3.0, 4.0, 4.0]),
+    ("Gece", [-1.0, 0.0, 1.0, 1.0, 0.0, -1.0, -2.0, -3.0, -4.0, -5.0]),
+];
+/// Vurgu renkleri (0 = kapaktan otomatik).
+pub const ACCENTS: [u32; 9] = [0, 0xA78BFA, 0x60A5FA, 0x34D399, 0xFB7185, 0xFBBF24, 0xF97316, 0x22D3EE, 0xE4E6EB];
+/// Zeminler: (canvas, outer, floating, drawer)
+pub const BACKDROPS: [[u32; 4]; 5] = [
+    [0x090A0D, 0x050507, 0x13151C, 0x101218], // Gece
+    [0x000000, 0x000000, 0x0C0C0E, 0x08080A], // OLED
+    [0x0A0F1C, 0x060914, 0x131B2D, 0x0F1626], // Lacivert
+    [0x0F0B16, 0x09060E, 0x1B1526, 0x151020], // Mor
+    [0x141518, 0x0E0F11, 0x1E2025, 0x191B1F], // Grafit
+];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -51,6 +75,21 @@ pub struct Settings {
     pub blocked_genres: Vec<String>,
     /// Zevkler ekranında beğenilen örnek şarkılar (ana sayfa tohumları)
     pub taste_tracks: Vec<crate::model::TrackInfo>,
+    /// Çapraz geçiş (sn; 0 = kapalı)
+    pub crossfade_secs: u32,
+    pub eq_on: bool,
+    /// EQ_BANDS sırasıyla dB
+    pub eq_gains: [f32; 10],
+    /// Seçili hazır ayar; -1 = özel
+    pub eq_preset: i32,
+    /// ACCENTS indeksi (0 = kapaktan)
+    pub theme_accent: i32,
+    /// BACKDROPS indeksi
+    pub theme_backdrop: i32,
+    /// Açılışta güncelleme denetimi
+    pub auto_update: bool,
+    /// "Bu sürümü atla" denen sürüm
+    pub skip_version: String,
 }
 
 impl Default for Settings {
@@ -76,6 +115,14 @@ impl Default for Settings {
             taste_genres: Vec::new(),
             blocked_genres: Vec::new(),
             taste_tracks: Vec::new(),
+            crossfade_secs: 0,
+            eq_on: false,
+            eq_gains: [0.0; 10],
+            eq_preset: 0,
+            theme_accent: 0,
+            theme_backdrop: 0,
+            auto_update: true,
+            skip_version: String::new(),
         }
     }
 }
@@ -110,6 +157,10 @@ impl Settings {
 
     pub fn cache_bytes(&self) -> u64 {
         (self.cache_gb as f64 * 1024.0 * 1024.0 * 1024.0) as u64
+    }
+
+    pub fn crossfade_index(&self) -> i32 {
+        CROSSFADE_SECS.iter().position(|k| *k == self.crossfade_secs).unwrap_or(0) as i32
     }
 
     pub fn cache_index(&self) -> i32 {

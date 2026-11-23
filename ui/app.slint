@@ -5,7 +5,7 @@ import "fonts/InstrumentSerif-Regular.ttf";
 import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider } from "parts.slint";
 export { Nav }
 
 export { Theme, Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
@@ -381,6 +381,19 @@ export component AppWindow inherits Window {
     in-out property <int> cookies-index: 0;
     in-out property <int> download-index: 1;
     in-out property <int> keep-index: 1;
+    // Ses: çapraz geçiş ve ekolayzır
+    in-out property <int> crossfade-index: 0;
+    in-out property <bool> eq-on;
+    in property <int> eq-preset: 0;
+    in property <[float]> eq-gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    callback eq-set(int, float);
+    callback eq-pick(int);
+    property <bool> eq-grab;
+    // Görünüm
+    in-out property <int> theme-accent: 0;
+    in-out property <int> theme-backdrop: 0;
+    // Güncelleme
+    in-out property <bool> auto-update: true;
     in property <string> cache-usage: "…";
     in property <string> runtime-status: "…";
     in property <bool> runtime-updating: false;
@@ -801,6 +814,7 @@ export component AppWindow inherits Window {
             animate opacity { duration: 140ms; }
             content-width: self.width;
             content-height: content.preferred-height;
+            interactive: !eq-grab;
 
             content := VerticalLayout {
                 width: flick.width;
@@ -1657,6 +1671,7 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         spacing: 8px; alignment: start;
                         PillButton { pill-height: 32px; text: "Çalma & Ses"; active: settings-tab == 0; clicked => { settings-tab = 0; } }
+                        PillButton { pill-height: 32px; text: "Görünüm"; active: settings-tab == 4; clicked => { settings-tab = 4; } }
                         PillButton { pill-height: 32px; text: "Zevkler"; active: settings-tab == 1; clicked => { settings-tab = 1; } }
                         PillButton { pill-height: 32px; text: "Önbellek & Ağ"; active: settings-tab == 2; clicked => { settings-tab = 2; } }
                         PillButton { pill-height: 32px; text: "Kaynaklar & Hakkında"; active: settings-tab == 3; clicked => { settings-tab = 3; } }
@@ -1675,6 +1690,49 @@ export component AppWindow inherits Window {
                             note: "Farklı şarkılar arasındaki ani ses yüksekliği farklarını yumuşatır (dynaudnorm).";
                             PillButton { pill-height: 30px; text: "Açık"; active: normalize-on; clicked => { normalize-on = true; root.settings-changed(); } }
                             PillButton { pill-height: 30px; text: "Kapalı"; active: !normalize-on; clicked => { normalize-on = false; root.settings-changed(); } }
+                        }
+                        SettingRow {
+                            title: "Çapraz geçiş";
+                            note: "Şarkı biterken sıradakiyle üst üste binerek yumuşakça geçer. Kapalıyken boşluksuz geçiş.";
+                            for label[i] in ["Kapalı", "3 sn", "5 sn", "8 sn", "12 sn"]: PillButton {
+                                pill-height: 30px; text: label; active: crossfade-index == i;
+                                clicked => { crossfade-index = i; root.settings-changed(); }
+                            }
+                        }
+                        // Ekolayzır
+                        Rectangle {
+                            border-radius: Theme.r-md; background: Theme.surface-1;
+                            VerticalLayout {
+                                padding: 16px; spacing: 12px;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    VerticalLayout {
+                                        horizontal-stretch: 1; spacing: 2px;
+                                        Text { text: "Ekolayzır"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; }
+                                        Text { text: "10 bant. Sürgüyü sürükle, çift tıkla sıfırla."; font-size: 11.5px; color: Theme.text-muted; }
+                                    }
+                                    PillButton { pill-height: 30px; text: "Açık"; active: eq-on; clicked => { eq-on = true; root.settings-changed(); } }
+                                    PillButton { pill-height: 30px; text: "Kapalı"; active: !eq-on; clicked => { eq-on = false; root.settings-changed(); } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px; alignment: start;
+                                    for name[i] in ["Düz", "Bas", "Tiz", "Vokal", "Rap", "Elektronik", "Akustik", "Rock", "Gece"]: PillButton {
+                                        pill-height: 28px; text: name; active: eq-preset == i;
+                                        clicked => { root.eq-pick(i); }
+                                    }
+                                    if eq-preset < 0: Text { text: "Özel"; font-size: 11.5px; font-weight: 700; color: Theme.accent; vertical-alignment: center; }
+                                }
+                                HorizontalLayout {
+                                    alignment: space-around;
+                                    opacity: eq-on ? 1 : 0.45;
+                                    for g[i] in eq-gains: EqSlider {
+                                        changed grabbing => { root.eq-grab = self.grabbing; }
+                                        value: g;
+                                        label: ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"][i];
+                                        changed(v) => { root.eq-set(i, v); }
+                                    }
+                                }
+                            }
                         }
                         SettingRow {
                             title: "Discord'da göster";
@@ -1701,6 +1759,56 @@ export component AppWindow inherits Window {
                             note: "Çarpıya basınca müzik çalmaya devam eder; sistem tepsisinden geri açabilirsin.";
                             PillButton { pill-height: 30px; text: "Açık"; active: close-to-tray; clicked => { close-to-tray = true; root.settings-changed(); } }
                             PillButton { pill-height: 30px; text: "Kapalı"; active: !close-to-tray; clicked => { close-to-tray = false; root.settings-changed(); } }
+                        }
+                    }
+
+                    if settings-tab == 4: VerticalLayout {
+                        spacing: 10px;
+                        Rectangle {
+                            border-radius: Theme.r-md; background: Theme.surface-1;
+                            VerticalLayout {
+                                padding: 16px; spacing: 12px;
+                                Text { text: "Vurgu rengi"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; }
+                                Text { text: "Otomatik: çalan şarkının kapağından alınır. Ya da sabit bir renk seç."; font-size: 11.5px; color: Theme.text-muted; }
+                                HorizontalLayout {
+                                    spacing: 10px; alignment: start;
+                                    for c[i] in [#00000000, #A78BFA, #60A5FA, #34D399, #FB7185, #FBBF24, #F97316, #22D3EE, #E4E6EB]: Rectangle {
+                                        width: i == 0 ? 92px : 34px; height: 34px; border-radius: 17px;
+                                        background: i == 0 ? Theme.surface-2 : c;
+                                        border-width: theme-accent == i ? 2px : 1px;
+                                        border-color: theme-accent == i ? Theme.text-primary : Theme.border;
+                                        if i == 0: Text { text: "Otomatik"; font-size: 12px; font-weight: 600; color: Theme.text-primary; }
+                                        if theme-accent == i && i != 0: Icon { width: 16px; height: 16px; commands: Icons.check; stroke: #0A0A0C; stroke-width: 2.4px; }
+                                        TouchArea { mouse-cursor: pointer; clicked => { theme-accent = i; root.settings-changed(); } }
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle {
+                            border-radius: Theme.r-md; background: Theme.surface-1;
+                            VerticalLayout {
+                                padding: 16px; spacing: 12px;
+                                Text { text: "Zemin"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; }
+                                HorizontalLayout {
+                                    spacing: 12px; alignment: start;
+                                    for name[i] in ["Gece", "OLED siyah", "Lacivert", "Mor", "Grafit"]: VerticalLayout {
+                                        spacing: 6px;
+                                        Rectangle {
+                                            width: 96px; height: 60px; border-radius: Theme.r-sm;
+                                            background: [#090A0D, #000000, #0A0F1C, #0F0B16, #141518][i];
+                                            border-width: theme-backdrop == i ? 2px : 1px;
+                                            border-color: theme-backdrop == i ? Theme.accent : Theme.border;
+                                            Rectangle {
+                                                x: 10px; y: 30px; width: parent.width - 20px; height: 18px; border-radius: 6px;
+                                                background: [#13151C, #0C0C0E, #131B2D, #1B1526, #1E2025][i];
+                                            }
+                                            Rectangle { x: 10px; y: 12px; width: 36px; height: 6px; border-radius: 3px; background: Theme.accent; }
+                                            TouchArea { mouse-cursor: pointer; clicked => { theme-backdrop = i; root.settings-changed(); } }
+                                        }
+                                        Text { text: name; font-size: 12px; horizontal-alignment: center; color: theme-backdrop == i ? Theme.text-primary : Theme.text-secondary; }
+                                    }
+                                }
+                            }
                         }
                     }
 
