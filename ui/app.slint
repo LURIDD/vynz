@@ -5,7 +5,8 @@ import "fonts/InstrumentSerif-Regular.ttf";
 import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav } from "parts.slint";
+export { Nav }
 
 export { Theme, Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
 
@@ -137,7 +138,7 @@ component ShelfRow inherits VerticalLayout {
                                 color: (root.now-key != "" && t.key == root.now-key) ? Theme.accent : Theme.text-primary;
                                 overflow: elide;
                             }
-                            Text { text: t.artist; font-size: 12px; color: Theme.text-secondary; overflow: elide; }
+                            ArtistLink { text: t.artist; key: t.key; font-size: 12px; secondary(x, y) => { root.menu(i, x, y); } }
                         }
                         Text { text: Fmt.time(t.duration); vertical-alignment: center; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
                     }
@@ -237,7 +238,7 @@ component ShelfRow inherits VerticalLayout {
                                     color: (root.now-key != "" && t.key == root.now-key) ? Theme.accent : Theme.text-primary;
                                     overflow: elide;
                                 }
-                                Text { text: t.artist; font-size: 11.5px; color: Theme.text-secondary; overflow: elide; }
+                                ArtistLink { text: t.artist; key: t.key; font-size: 11.5px; secondary(x, y) => { root.menu(i, x, y); } }
                             }
                             if t.duration > 0: Text { text: Fmt.time(t.duration); vertical-alignment: center; font-family: Theme.mono; font-size: 10.5px; color: Theme.text-muted; }
                         }
@@ -548,6 +549,13 @@ export component AppWindow inherits Window {
     callback menu-for(int, int, int);
     callback menu-action(int);
 
+    // Birden çok sanatçılı şarkıda sanatçı seçimi (Nav.artist)
+    in-out property <bool> artist-pick-open;
+    in property <[string]> artist-pick-names;
+    in-out property <length> artist-pick-x;
+    in-out property <length> artist-pick-y;
+    callback artist-pick(int);
+
     // Kaydırma isteği (test ve ileride "başa dön" için)
     in property <length> scroll-request;
     changed scroll-request => {
@@ -809,7 +817,16 @@ export component AppWindow inherits Window {
                         radius: Theme.r-lg;
                         art: hero.art; has-art: hero.has-art && (has-now || has-mix);
                         drop-shadow-blur: 56px; drop-shadow-offset-y: 28px; drop-shadow-color: #000000ad;
-                        TouchArea { mouse-cursor: pointer; clicked => { if (!has-now && has-mix) { root.play-mix(); } } }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { if (!has-now && has-mix) { root.play-mix(); } }
+                            pointer-event(e) => {
+                                if (has-now && e.button == PointerEventButton.right && e.kind == PointerEventKind.down) {
+                                    menu-x = self.absolute-position.x + self.mouse-x; menu-y = self.absolute-position.y + self.mouse-y;
+                                    menu-pl-open = false; menu-open = true; menu-kind = 7; root.menu-for(7, 0, 0);
+                                }
+                            }
+                        }
                     }
                     VerticalLayout {
                         alignment: end; spacing: 10px;
@@ -829,7 +846,7 @@ export component AppWindow inherits Window {
                         }
                         HorizontalLayout {
                             spacing: 8px; alignment: start;
-                            if has-now: Text { text: now.artist; font-size: 15px; font-weight: 700; color: Theme.text-primary; }
+                            if has-now: ArtistLink { text: now.artist; key: now.key; font-size: 15px; font-weight: 700; text-color: Theme.text-primary; hover-color: Theme.accent; }
                             if has-now && now.album != "": Text { text: "·"; font-size: 15px; color: Theme.text-secondary; }
                             if has-now: Text { text: now.album; font-size: 15px; font-weight: 500; color: Theme.text-secondary; overflow: elide; }
                             if !has-now: Text {
@@ -1517,7 +1534,7 @@ export component AppWindow inherits Window {
                                         font-weight: (has-now && t.key == now.key) ? 700 : 600;
                                         color: (has-now && t.key == now.key) ? Theme.accent : Theme.text-primary;
                                     }
-                                    Text { text: t.artist; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                                    ArtistLink { text: t.artist; key: t.key; font-size: 12.5px; secondary(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-kind = 2; root.menu-for(2, i, 0); } }
                                 }
                                 Text {
                                     horizontal-stretch: 1; text: t.album; overflow: elide;
@@ -2092,7 +2109,7 @@ export component AppWindow inherits Window {
                         VerticalLayout {
                             horizontal-stretch: 1; spacing: 2px;
                             Text { text: has-now ? now.title : "Çalan yok"; font-family: Theme.display; font-size: 22px; font-weight: 800; letter-spacing: -0.6px; color: Theme.text-primary; overflow: elide; }
-                            Text { text: has-now ? now.artist : ""; font-size: 13.5px; color: Theme.text-secondary; overflow: elide; }
+                            ArtistLink { text: has-now ? now.artist : ""; key: now.key; font-size: 13.5px; }
                         }
                         if has-now: IconButton {
                             y: 4px; icon: Icons.heart;
@@ -2397,7 +2414,7 @@ export component AppWindow inherits Window {
                                         alignment: center;
                                         Text { text: "Sırada"; font-size: 11px; font-weight: 700; color: Theme.accent; }
                                         Text { text: queue[queue-index + 1].title; font-size: 14px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
-                                        Text { text: queue[queue-index + 1].artist; font-size: 12px; color: Theme.text-secondary; overflow: elide; }
+                                        ArtistLink { text: queue[queue-index + 1].artist; key: queue[queue-index + 1].key; font-size: 12px; }
                                     }
                                 }
                             }
@@ -2449,7 +2466,7 @@ export component AppWindow inherits Window {
                     Rectangle { height: 8px; }
                     HorizontalLayout {
                         alignment: center; spacing: 8px;
-                        if has-now: Text { text: now.artist; font-size: 15px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
+                        if has-now: ArtistLink { text: now.artist; key: now.key; font-size: 15px; font-weight: 700; text-color: Theme.text-primary; hover-color: Theme.accent; }
                         if has-now && now.album != "": Text { text: "·"; font-size: 15px; color: Theme.text-secondary; }
                         if has-now && now.album != "": Text { text: now.album; font-size: 15px; color: Theme.text-secondary; overflow: elide; }
                         if has-now: SourceBadge { y: 0px; source: now.source; }
@@ -2780,7 +2797,7 @@ export component AppWindow inherits Window {
                             VerticalLayout {
                                 alignment: center; horizontal-stretch: 1;
                                 Text { text: t.title; font-size: 13.5px; font-weight: 600; color: i == queue-index ? Theme.accent : Theme.text-primary; overflow: elide; }
-                                Text { text: t.artist; font-size: 12px; color: Theme.text-secondary; overflow: elide; }
+                                ArtistLink { text: t.artist; key: t.key; font-size: 12px; secondary(x, y) => { menu-x = x; menu-y = y; menu-pl-open = false; menu-open = true; menu-kind = 3; menu-index = i; root.menu-for(3, i, 0); } }
                             }
                             IconButton { y: 11px; icon: Icons.chevron-up; tint: Theme.text-muted; enabled: i > 0; clicked => { root.queue-move(i, -1); } }
                             IconButton { y: 11px; icon: Icons.chevron-down; tint: Theme.text-muted; enabled: i < queue.length - 1; clicked => { root.queue-move(i, 1); } }
@@ -2837,7 +2854,7 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 alignment: center;
                 Text { text: has-now ? now.title : "Çalan yok"; font-size: 14px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
-                Text { text: has-now ? now.artist : "—"; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                ArtistLink { text: has-now ? now.artist : "—"; key: now.key; font-size: 12.5px; }
             }
             IconButton {
                 y: (Theme.player-height - self.height) / 2;
@@ -3272,6 +3289,27 @@ export component AppWindow inherits Window {
         }
     }
 
+    // ---------- Sanatçı seçimi ----------
+    if artist-pick-open: TouchArea {
+        clicked => { artist-pick-open = false; }
+        pointer-event(e) => { if (e.button == PointerEventButton.right && e.kind == PointerEventKind.down) { artist-pick-open = false; } }
+    }
+    if artist-pick-open: Rectangle {
+        width: 240px;
+        height: apcol.preferred-height;
+        x: Math.max(8px, Math.min(artist-pick-x - 12px, root.width - self.width - 8px));
+        y: artist-pick-y + self.height + 8px > root.height ? Math.max(8px, artist-pick-y - self.height - 20px) : artist-pick-y;
+        border-radius: Theme.r-md;
+        background: Theme.floating;
+        drop-shadow-blur: 30px; drop-shadow-offset-y: 12px; drop-shadow-color: #000000b0;
+        TouchArea { }
+        apcol := VerticalLayout {
+            padding: 6px; spacing: 0px;
+            Text { text: "Sanatçıya git"; font-size: 11.5px; font-weight: 700; color: Theme.text-muted; height: 26px; vertical-alignment: center; x: 10px; width: 220px; }
+            for name[i] in artist-pick-names: MenuItem { icon: Icons.user; text: name; clicked => { artist-pick-open = false; root.artist-pick(i); } }
+        }
+    }
+
     // ---------- Sağ tık menüsü ----------
     if menu-open: TouchArea {
         // dışarı tıklayınca kapan
@@ -3294,7 +3332,6 @@ export component AppWindow inherits Window {
             MenuItem { icon: Icons.list-start; text: "Sıradaki çal"; clicked => { root.menu-action(1); } }
             MenuItem { icon: Icons.list-plus; text: "Kuyruğa ekle"; clicked => { root.menu-action(2); } }
             MenuItem { icon: Icons.radio; text: "Radyo başlat"; clicked => { root.menu-action(3); } }
-            MenuItem { icon: Icons.user; text: "Sanatçıya git"; clicked => { root.menu-action(5); } }
             MenuItem { icon: Icons.sparkles; text: menu-boosted ? "Daha çok önermeyi bırak" : "Bunu daha çok öner"; clicked => { root.menu-action(9); } }
             MenuItem { icon: Icons.ban; text: "İlgilenmiyorum"; clicked => { root.menu-action(7); } }
             MenuItem { icon: Icons.ban; text: "Sanatçıyı önerme"; clicked => { root.menu-action(8); } }

@@ -212,7 +212,39 @@ def collection(kind, key):
     return {"title": p.get("title") or "", "sub": (p.get("author") or {}).get("name") if isinstance(p.get("author"), dict) else "", "tracks": [x for x in (track_of(t) for t in p.get("tracks") or []) if x]}
 
 
+def _norm(s):
+    return "".join(ch for ch in (s or "").casefold() if ch.isalnum())
+
+
+def find_artist(y, name, vid):
+    """Sanatçı adından (ve varsa şarkının videoId'sinden) YTM kanal kimliği."""
+    want = _norm(name)
+    if vid:
+        try:
+            wp = y.get_watch_playlist(videoId=vid, limit=1)
+            for t in (wp.get("tracks") or [])[:1]:
+                arts = [a for a in (t.get("artists") or []) if a.get("id")]
+                for a in arts:
+                    if _norm(a.get("name")) == want:
+                        return a["id"]
+                if len(arts) == 1 and (want in _norm(arts[0].get("name")) or _norm(arts[0].get("name")) in want):
+                    return arts[0]["id"]
+        except Exception:  # noqa: BLE001
+            pass
+    res = y.search(name, filter="artists", limit=5) or []
+    for r in res:
+        if r.get("browseId") and _norm(r.get("artist")) == want:
+            return r["browseId"]
+    for r in res:
+        if r.get("browseId"):
+            return r["browseId"]
+    raise ValueError("sanatçı bulunamadı")
+
+
 def artist_page(y, key):
+    if key.startswith("find:"):
+        name, _, vid = key[5:].partition("\t")
+        key = find_artist(y, name, vid)
     a = y.get_artist(key)
     songs = a.get("songs") or {}
     res = []

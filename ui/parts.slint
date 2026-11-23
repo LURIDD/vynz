@@ -84,6 +84,47 @@ export struct LyricLine {
 }
 
 // Söz stili: 0 Modern, 1 Klasik (serif), 2 Sade
+// Sanatçı adına tıklayınca sanatçı sayfası (Rust: Nav.artist). Birden çok sanatçıda seçim menüsü açılır.
+export global Nav {
+    callback artist(string, string, length, length);
+}
+
+// Tıklanabilir sanatçı adı: yalnız yazının kendisi tıklanır, üzerine gelince parlar.
+// Sağ tık alttaki satıra iletilemediği için `secondary` ile dışarı verilir.
+export component ArtistLink inherits Rectangle {
+    in property <string> text;
+    in property <string> key;
+    in property <length> font-size: 12px;
+    in property <int> font-weight: 400;
+    in property <brush> text-color: Theme.text-secondary;
+    in property <brush> hover-color: Theme.text-primary;
+    in property <bool> elide: true;
+    callback secondary(length, length);
+    height: t.preferred-height;
+    preferred-width: t.preferred-width;
+    min-width: Math.min(t.preferred-width, 24px);
+    horizontal-stretch: 0;
+    t := Text {
+        x: 0;
+        width: Math.min(self.preferred-width, root.width);
+        text: root.text; font-size: root.font-size; font-weight: root.font-weight;
+        color: ta.has-hover && root.text != "" ? root.hover-color : root.text-color;
+        overflow: root.elide ? TextOverflow.elide : TextOverflow.clip;
+        animate color { duration: 120ms; }
+    }
+    ta := TouchArea {
+        x: 0; width: t.width; height: root.height;
+        enabled: root.text != "" && root.text != "—";
+        mouse-cursor: pointer;
+        clicked => { Nav.artist(root.text, root.key, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y + 8px); }
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.right && e.kind == PointerEventKind.down) {
+                root.secondary(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+    }
+}
+
 export global LyricStyle {
     out property <[string]> families: ["Plus Jakarta Sans", "Instrument Serif", "Manrope"];
     out property <[int]> weights: [800, 400, 600];
@@ -555,9 +596,9 @@ export component TrackCard inherits Rectangle {
                     font-size: 14.5px; font-weight: 700;
                     color: root.active ? Theme.accent : Theme.text-primary;
                 }
-                Text {
-                    text: root.track.artist; overflow: elide;
-                    font-size: 13px; color: Theme.text-secondary;
+                ArtistLink {
+                    text: root.track.artist; key: root.track.key; font-size: 13px;
+                    secondary(x, y) => { root.menu(x, y); }
                 }
             }
         }
@@ -614,7 +655,7 @@ export component TrackRow inherits Rectangle {
                 font-size: 14px; font-weight: root.playing ? 700 : 600;
                 color: root.playing ? Theme.accent : Theme.text-primary;
             }
-            Text { text: root.track.artist; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+            ArtistLink { text: root.track.artist; key: root.track.key; font-size: 12.5px; secondary(x, y) => { root.menu(x, y); } }
         }
         Text {
             horizontal-stretch: 1;
@@ -735,7 +776,7 @@ export component Tile inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Text { text: root.track.title; font-size: 13.5px; font-weight: 700; color: root.active ? Theme.accent : Theme.text-primary; overflow: elide; }
-            Text { text: root.track.artist; font-size: 12px; color: Theme.text-secondary; overflow: elide; }
+            ArtistLink { text: root.track.artist; key: root.track.key; font-size: 12px; secondary(x, y) => { root.menu(x, y); } }
         }
         if root.active: EqBars { y: 23px; running: true; }
     }

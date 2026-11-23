@@ -111,6 +111,8 @@ struct State {
     radio_busy: bool,
     /// Sağ tık menüsünün hedefi
     menu: Option<TrackInfo>,
+    /// Sanatçı seçim menüsü: (adlar, şarkının videoId'si)
+    artist_pick: (Vec<String>, String),
     /// Kişisel karışım ve keşif listesi (ana sayfadaki vitrin kartları)
     mix: Vec<TrackInfo>,
     discover: Vec<TrackInfo>,
@@ -1758,6 +1760,7 @@ fn menu_target(st: &State, kind: i32, a: i32, b: i32) -> Option<TrackInfo> {
         4 => st.coll.as_ref().and_then(|c| c.1.get(a)).cloned(),
         5 => st.artist.as_ref().and_then(|c| c.1.get(a)).cloned(),
         6 => st.history.likes.get(a).cloned(),
+        7 => st.index.and_then(|i| st.queue.get(i)).cloned(),
         _ => None,
     }
 }
@@ -2344,6 +2347,28 @@ fn open_sheet(ui: &AppWindow, kind: &str) {
     ui.set_lyrics_open(false);
     ui.set_sheet(kind.into());
     ui.set_sheet_gen(ui.get_sheet_gen() + 1);
+}
+
+/// "A, B & C feat. D" → ["A", "B", "C", "D"] (sırayla, tekrarsız).
+fn split_artists(s: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut t = s.to_string();
+    for sep in [" & ", " feat. ", " ft. ", " Feat. ", " x ", " X ", " ve "] {
+        t = t.replace(sep, ",");
+    }
+    for p in t.split(',') {
+        let p = p.trim();
+        if !p.is_empty() && p != "—" && !out.iter().any(|x| x == p) {
+            out.push(p.to_string());
+        }
+    }
+    out
+}
+
+/// Sanatçı adından sanatçı sayfası (kanal kimliğini çözücü bulur).
+fn open_artist_by_name(ui: &AppWindow, name: &str, vid: &str) {
+    let c = Card { kind: "artist".into(), key: format!("find:{name}\t{vid}"), title: name.to_string(), sub: String::new(), thumb: String::new() };
+    open_artist(ui, c);
 }
 
 /// Sanatçı sayfası: afiş, popüler şarkılar, albümler, single'lar, benzer sanatçılar, hakkında.
@@ -3966,6 +3991,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             repeat: 0,
             radio_busy: false,
             menu: None,
+            artist_pick: (Vec::new(), String::new()),
             mix: Vec::new(),
             discover: Vec::new(),
             coll: None,
@@ -4406,6 +4432,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move || {
             if let Some(ui) = weak.upgrade() {
                 queue_clear(&ui);
+            }
+        }
+    });
+    ui.global::<Nav>().on_artist({
+        let weak = weak.clone();
+        move |artists, key, x, y| {
+            let Some(ui) = weak.upgrade() else { return };
+            let names = split_artists(&artists);
+            // Yalnız YouTube Music anahtarında videoId ipucu var ("0-<id>")
+            let vid = key.strip_prefix("0-").unwrap_or("").to_string();
+            match names.len() {
+                0 => {}
+                1 => open_artist_by_name(&ui, &names[0], &vid),
+                _ => {
+                    ui.set_artist_pick_names(ModelRc::new(VecModel::from(names.iter().map(|n| slint::SharedString::from(n.as_str())).collect::<Vec<_>>())));
+                    ui.set_artist_pick_x(x);
+                    ui.set_artist_pick_y(y);
+                    ui.set_menu_open(false);
+                    ui.set_artist_pick_open(true);
+                    with_state(|st| st.artist_pick = (names, vid));
+                }
+            }
+        }
+    });
+    ui.on_artist_pick({
+        let weak = weak.clone();
+        move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let pick = with_state(|st| st.artist_pick.0.get(i as usize).cloned().map(|n| (n, st.artist_pick.1.clone())));
+            if let Some((name, vid)) = pick {
+                open_artist_by_name(&ui, &name, &vid);
             }
         }
     });
