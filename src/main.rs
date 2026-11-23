@@ -95,6 +95,8 @@ struct State {
     lyr_spoken: usize,
     /// Son yazılan dolum bölümü: (kelime, hedef‰, duraklatılmış mı)
     lyr_seg: Option<(usize, i32, bool)>,
+    /// Sözlerde kullanılan son konum: ses saatinin küçük geri sıçramaları dolumu geri sarmasın.
+    lyr_hi: f32,
     /// Etkin satır yeniden kurulsun (yeni söz, genişlik değişti)
     lyr_force: bool,
     /// Şarkıya özel söz kaydırma (sn).
@@ -850,9 +852,17 @@ fn request_translation(ui: &AppWindow) {
     });
 }
 
+/// Söz kelimeleri arasındaki boşluk. Modern stilde (Jakarta, eksi harf aralığı) düz boşluk
+/// ~0.14em kalıyor ve kelimeler birbirine yapışık görünüyor; ince boşluk (U+2009) eklenince ~0.3em.
+/// Pasif satır metni ve etkin satırın kelime aralığı aynı dizgeden hesaplanır (satır zıplamasın).
+fn lyric_joiner(style: i32) -> &'static str {
+    if style == 0 { "\u{2009} " } else { " " }
+}
+
 /// Çalan şarkının söz durumunu baştan kur.
 fn render_lyrics(ui: &AppWindow) {
     let key = ui.get_now().key.to_string();
+    let style = ui.get_lyrics_style();
     let mode = ui.get_lyrics_translate();
     let credit = with_state(|st| st.lyrics.get(&key).and_then(|l| l.as_ref()).and_then(|l| l.credit.clone()));
     ui.set_lyric_credit_user(credit.as_ref().map(|c| c.user.as_str()).unwrap_or("").into());
@@ -861,6 +871,7 @@ fn render_lyrics(ui: &AppWindow) {
         st.lyr_line = None;
         st.lyr_spoken = usize::MAX;
         st.lyr_seg = None;
+        st.lyr_hi = 0.0;
         st.lyr_force = true;
         let offset = st.lyr_offsets.get(&key).copied().unwrap_or(0.0);
         // Çeviri satırları ve not
@@ -874,9 +885,10 @@ fn render_lyrics(ui: &AppWindow) {
                 None => (Vec::new(), "Çevriliyor…".into()),
             }
         };
+        let join = lyric_joiner(style);
         let mk = |l: &lyrics::Lyrics| -> Vec<LyricLine> {
             l.lines.iter().enumerate().map(|(i, x)| LyricLine {
-                text: x.text.as_str().into(),
+                text: x.text.split_whitespace().collect::<Vec<_>>().join(join).into(),
                 tr: trs.get(i).filter(|t| !t.is_empty() && **t != x.text).map(|t| t.as_str().into()).unwrap_or_default(),
                 t: x.t,
                 state: 1,
@@ -927,7 +939,7 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
     // Satır genişliği: Slint'in pasif satırları kaydırdığı genişlikle aynı (1 px pay);
     // kelime arası yazı tipinin gerçek boşluk genişliği, böylece satır etkin olunca zıplamaz.
     let max = (ui.get_lyric_area() - 1.0).max(160.0);
-    let word_gap = measure::width(style, " ", px);
+    let word_gap = measure::width(style, lyric_joiner(style), px);
     ui.set_lyric_word_gap(word_gap);
     enum Change {
         None,
@@ -937,6 +949,11 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
     let (change, gap) = with_state(|st| {
         let offset = st.lyr_offsets.get(&key).copied().unwrap_or(0.0);
         let Some(Some(l)) = st.lyrics.get(&key) else { return (Change::None, None) };
+        // Ses saati (mpv time-pos) ve olay sırası yüzünden konum birkaç on ms geri gelebilir;
+        // bu, etkin kelimeyi "sırada"ya düşürüp dolumu baştan başlatıyordu. Küçük geri
+        // sıçramalar yok sayılır, gerçek geri sarma (≥ 0.4 sn) kabul edilir.
+        let pos = if pos < st.lyr_hi && st.lyr_hi - pos < 0.4 { st.lyr_hi } else { pos };
+        st.lyr_hi = pos;
         let p = pos + offset;
         let gap = lyrics::gap(l, p);
         let pr = lyrics::progress(l, p + LINE_LEAD, p + WORD_LEAD);
@@ -965,6 +982,9 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
                 }
                 _ => Vec::new(),
             };
+            if std::env::var_os("VYNZ_LYRDBG").is_some() {
+                eprintln!("LYR LINE pos={pos:.3} idx={idx:?}");
+            }
             return (Change::Line { idx, rows }, gap);
         }
         if seg != st.lyr_seg {
@@ -1009,6 +1029,9 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
                     if let Some(w) = m.row_data(j) {
                         let nw = word_at(k, &w.text, w.long, &pr, hold);
                         if w.state != nw.state || (w.fill - nw.fill).abs() > 0.001 || w.dur != nw.dur {
+                            if std::env::var_os("VYNZ_LYRDBG").is_some() {
+                                eprintln!("LYR {:.3} pos={pos:.3} k={k} '{}' st={} fill={:.3} dur={}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() % 1000.0, w.text, nw.state, nw.fill, nw.dur);
+                            }
                             m.set_row_data(j, nw);
                         }
                     }
@@ -1289,6 +1312,9 @@ fn on_player_event(ui: &AppWindow, ev: Ev) {
                 }
             });
             ui.set_position(t as f32);
+            if std::env::var_os("VYNZ_LYRDBG").is_some() {
+                eprintln!("LYR TIME t={t:.3}");
+            }
             with_state(|st| st.last_pos = (t as f32, std::time::Instant::now()));
             update_lyrics(ui, t as f32);
             if t >= 20.0 {
@@ -3931,6 +3957,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             lyr_line: None,
             lyr_spoken: 0,
             lyr_seg: None,
+            lyr_hi: 0.0,
             lyr_force: false,
             lyr_offsets: load_offsets(),
             history: history::History::load(),
