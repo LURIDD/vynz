@@ -2636,12 +2636,6 @@ export component AppWindow inherits Window {
             Rectangle { height: 14px; }
 
             NavButton { icon: Icons.home; label: "Ana Sayfa"; compact: compact; active: view == "home"; clicked => { root.go("home"); } }
-            NavButton {
-                icon: Icons.heart; label: "Beğendiklerim";
-                badge: liked-count > 0 ? "" + liked-count : "";
-                compact: compact; active: view == "liked";
-                clicked => { root.go("liked"); }
-            }
 
             Rectangle { height: 10px; }
             Rectangle { height: 1px; background: Theme.border; }
@@ -2674,6 +2668,39 @@ export component AppWindow inherits Window {
                 pl-col := VerticalLayout {
                     width: parent.width;
                     spacing: 2px; alignment: start;
+                    // Beğendiklerim: listelerin başında sabit, silinemez (çöp kutusu yok)
+                    Rectangle {
+                        height: compact ? 36px : 44px;
+                        border-radius: Theme.r-sm;
+                        background: view == "liked" ? Theme.surface-2 : lk-ta.has-hover ? Theme.surface-1 : transparent;
+                        animate background { duration: Theme.micro; }
+                        lk-ta := TouchArea { mouse-cursor: pointer; clicked => { root.go("liked"); } }
+                        HorizontalLayout {
+                            padding-left: 8px; padding-right: 6px; spacing: 10px;
+                            alignment: compact ? center : stretch;
+                            Rectangle {
+                                width: compact ? 24px : 28px; height: self.width;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: @linear-gradient(135deg, #FB7185 0%, #A855F7 55%, #4338CA 100%);
+                                Icon { width: parent.width * 0.5; height: self.width; commands: Icons.heart; stroke: #FFFFFF; fill: #FFFFFF; stroke-width: 1.2px; }
+                            }
+                            if !compact: VerticalLayout {
+                                alignment: center; horizontal-stretch: 1; spacing: 1px;
+                                Text {
+                                    text: "Beğendiklerim"; font-size: 13px;
+                                    font-weight: view == "liked" ? 700 : 600;
+                                    color: view == "liked" ? Theme.accent : Theme.text-primary;
+                                    overflow: elide;
+                                }
+                                Text { text: liked-count + " şarkı"; font-size: 10.5px; color: Theme.text-muted; overflow: elide; }
+                            }
+                            if !compact: Icon {
+                                width: 13px; height: 13px; y: (parent.height - self.height) / 2;
+                                commands: Icons.pin; stroke: Theme.text-muted.with-alpha(0.6);
+                            }
+                        }
+                    }
                     if !compact && playlists.length == 0: Text {
                         text: "+ ile oluştur ya da aktar"; font-size: 11.5px; color: Theme.text-muted; x: 10px; height: 26px; vertical-alignment: center;
                     }
@@ -3154,6 +3181,26 @@ export component AppWindow inherits Window {
                     content-height: ppk-list.preferred-height;
                     ppk-list := VerticalLayout {
                         spacing: 4px; alignment: start;
+                        // Beğendiklerim her zaman başta; eklemek = beğenmek
+                        Rectangle {
+                            height: 52px; border-radius: Theme.r-sm;
+                            background: pklk-ta.has-hover && !menu-liked ? Theme.surface-2 : transparent;
+                            animate background { duration: Theme.micro; }
+                            pklk-ta := TouchArea { mouse-cursor: menu-liked ? MouseCursor.default : MouseCursor.pointer; clicked => { if (!menu-liked) { pl-pick-open = false; root.menu-action(4); } } }
+                            HorizontalLayout {
+                                padding-left: 8px; padding-right: 10px; spacing: 12px;
+                                Rectangle {
+                                    width: 36px; height: 36px; y: 8px; border-radius: 7px;
+                                    background: @linear-gradient(135deg, #FB7185 0%, #A855F7 55%, #4338CA 100%);
+                                    Icon { width: 17px; height: 17px; commands: Icons.heart; stroke: #FFFFFF; fill: #FFFFFF; stroke-width: 1.2px; }
+                                }
+                                VerticalLayout {
+                                    alignment: center; horizontal-stretch: 1;
+                                    Text { text: "Beğendiklerim"; font-size: 13.5px; font-weight: 600; color: Theme.text-primary; overflow: elide; }
+                                    Text { text: menu-liked ? "Bu şarkı zaten burada" : liked-count + " şarkı"; font-size: 11.5px; color: Theme.text-muted; }
+                                }
+                            }
+                        }
                         for p[i] in playlists: Rectangle {
                             height: 52px; border-radius: Theme.r-sm;
                             background: ppk-ta.has-hover ? Theme.surface-2 : transparent;
