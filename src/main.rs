@@ -4185,6 +4185,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     updater::wait_for_parent();
     updater::cleanup_old();
     let ui = AppWindow::new()?;
+    // Wayland app_id. Needs the platform (so after AppWindow::new) but must come before
+    // the native window is created on first show. Without it the window has an empty
+    // class and docks cannot match it to vynz.desktop.
+    let _ = slint::set_xdg_app_id("vynz");
     ui.set_app_version(updater::current().into());
     if let Ok(t) = std::env::var("VYNZ_TITLE") {
         ui.set_window_title(t.into()); // testte pencereyi ayırt etmek için
