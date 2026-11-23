@@ -22,6 +22,14 @@ playlists, and shows time-synced karaoke lyrics. The UI is in Turkish.*
   büyük kapaklı "Şimdi Çalıyor" sahnesi.
 - **Liste aktarma:** Spotify (bağlantı, veri dışa aktarımı JSON'u), YouTube Music,
   SoundCloud, CSV (yerleşik sistem dosya seçicisi ile).
+- **Ses:** 10 bantlı ekolayzır (hazır ayarlar), şarkılar arası çapraz geçiş,
+  ses seviyesi dengeleme.
+- **İndirilenler:** Şarkıları ya da listelerin tamamını indirip internet
+  olmadan dinleme.
+- **Görünüm:** Kapaktan otomatik ya da sabit vurgu rengi, beş koyu zemin.
+- **Kendini güncelleme:** Yeni sürüm çıkınca açılışta küçük bir pencerede
+  indirilir, doğrulanır ve uygulama yeniden açılır; GitHub'dan elle indirmek
+  gerekmez.
 - **Masaüstü uyumu:** Linux'ta MPRIS (medya tuşları, `playerctl`), Windows'ta
   SMTC (medya tuşları ve sistem medya paneli), kaldığı yerden devam, kotalı
   bağlantı ve pil farkındalığı.
@@ -37,6 +45,12 @@ paylaşılır:
 - **Linux (x86_64):** `vynz-linux-x86_64.tar.gz` arşivini açıp `vynz` ikilisini
   çalıştırın. Sistemde `libmpv` kurulu olmalıdır (Arch: `mpv`, Debian/Ubuntu:
   `libmpv2`).
+
+### Sürümler
+
+Sürümler `0.MINOR.PATCH` biçimindedir: yeni özellikler `MINOR`'ı (0.3.0),
+yalnız düzeltmeler `PATCH`'i (0.2.1) artırır. Tire içeren etiketler
+(`v0.3.0-beta.1`) ön sürümdür ve uygulama içi güncelleyiciye görünmez.
 
 ## Kaynaktan derleme
 
