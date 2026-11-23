@@ -1777,7 +1777,7 @@ export component AppWindow inherits Window {
                         }
                         SettingRow {
                             title: "Çapraz geçiş";
-                            note: "Şarkı biterken sıradakiyle üst üste binerek yumuşakça geçer. Kapalıyken boşluksuz geçiş.";
+                            note: "Şarkı biterken sıradakiyle üst üste binerek yumuşakça geçer (Önceden hazırlama açık olmalı). Kapalıyken boşluksuz geçiş.";
                             for label[i] in ["Kapalı", "3 sn", "5 sn", "8 sn", "12 sn"]: PillButton {
                                 pill-height: 30px; text: label; active: crossfade-index == i;
                                 clicked => { crossfade-index = i; root.settings-changed(); }
@@ -3045,7 +3045,7 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 TouchArea {
                     scroll-event(e) => {
-                        qflick.content-y = Math.clamp(qflick.content-y + e.delta-y, -qflick.max-scroll, 0px);
+                        qflick.content-y = Math.clamp(Math.clamp(qflick.content-y, -qflick.max-scroll, 0px) + e.delta-y, -qflick.max-scroll, 0px);
                         return accept;
                     }
                 }
@@ -3060,7 +3060,7 @@ export component AppWindow inherits Window {
                         opacity: self.dragged ? 0.35 : 1;
                         animate background { duration: Theme.micro; }
                         qi-ta := TouchArea {
-                            mouse-cursor: queue-drawer.drag-moved ? MouseCursor.grabbing : MouseCursor.pointer;
+                            mouse-cursor: queue-drawer.drag-moved && queue-drawer.drag-from >= 0 ? MouseCursor.grabbing : MouseCursor.pointer;
                             clicked => { if (!queue-drawer.drag-moved) { root.play-queue(i); } }
                             moved => {
                                 if (self.pressed && queue-drawer.drag-from == i) {
@@ -3086,6 +3086,11 @@ export component AppWindow inherits Window {
                                     queue-drawer.drag-to = i;
                                     queue-drawer.drag-moved = false;
                                     queue-drawer.drag-press-y = self.mouse-y;
+                                }
+                                if (e.kind == PointerEventKind.cancel) {
+                                    queue-drawer.drag-from = -1;
+                                    queue-drawer.drag-to = -1;
+                                    queue-drawer.drag-moved = false;
                                 }
                                 if (e.button == PointerEventButton.left && e.kind == PointerEventKind.up) {
                                     if (queue-drawer.drag-moved && queue-drawer.drag-from >= 0 && queue-drawer.drag-to != queue-drawer.drag-from) {

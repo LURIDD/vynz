@@ -172,6 +172,8 @@ fn fetch(job: &Job, progress: impl Fn(f32)) -> Result<(), String> {
             .header("Range", &format!("bytes={offset}-{end}"))
             .call()
             .map_err(|e| e.to_string())?;
+        // Sunucu aralığı yok sayıp tüm dosyayı (200) gönderdiyse bu tek yanıt dosyanın tamamıdır.
+        let whole = resp.status().as_u16() == 200;
         if total.is_none() {
             total = resp
                 .headers()
@@ -199,6 +201,10 @@ fn fetch(job: &Job, progress: impl Fn(f32)) -> Result<(), String> {
                 last_report = offset;
                 progress((offset as f32 / t as f32).min(1.0));
             }
+        }
+        if whole {
+            total = Some(offset);
+            break;
         }
         if total.is_none() && got < CHUNK {
             break;

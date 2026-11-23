@@ -1795,11 +1795,11 @@ fn download_tracks(ui: &AppWindow, tracks: Vec<TrackInfo>) {
             sc += 1; // HLS parça listesi; şimdilik indirilemiyor
             continue;
         }
+        let Some(page) = with_state(|st| page_url(st, &t)) else { continue };
         added += 1;
         let weak = ui.as_weak();
         with_state(|st| {
             st.dl_pending.push((t.clone(), 0.0));
-            let Some(page) = page_url(st, &t) else { return };
             let tt = t.clone();
             st.resolver.resolve(
                 &key,
@@ -4045,6 +4045,9 @@ fn check_update(ui: &AppWindow, manual: bool) {
 }
 
 fn start_update(ui: &AppWindow, u: updater::Update) {
+    if updater::BUSY.swap(true, Ordering::SeqCst) {
+        return; // önceki kurulum (iptal edilmiş olsa da) henüz bitmedi
+    }
     ui.set_update_version(u.version.as_str().into());
     ui.set_update_notes(u.notes.as_str().into());
     ui.set_update_progress(0.0);
@@ -4058,7 +4061,13 @@ fn start_update(ui: &AppWindow, u: updater::Update) {
         let res = updater::install(&u, &updater::CANCEL, move |p| {
             let _ = w.upgrade_in_event_loop(move |ui| ui.set_update_progress(p));
         });
+        updater::BUSY.store(false, Ordering::SeqCst);
         let _ = weak.upgrade_in_event_loop(move |ui| match res {
+            // Kurulum bitti ama kullanıcı bu arada vazgeçtiyse yeniden başlatma; yeni sürüm sonraki açılışta.
+            Ok(()) if updater::CANCEL.load(Ordering::Relaxed) => {
+                ui.set_update_state(0);
+                toast(&ui, "Güncelleme kuruldu; bir sonraki açılışta geçerli olur");
+            }
             Ok(()) => {
                 ui.set_update_state(2);
                 // Kısa bir an "yeniden başlatılıyor" görünsün, sonra kapan ve yenisini aç.
@@ -5430,8 +5439,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     refresh_usage(&ui);
     load_home(&ui);
-    if let Ok(v) = std::env::var("VYNZ_UPDATED") {
-        toast(&ui, &format!("Vynz {v} sürümüne güncellendi"));
+    if std::env::var_os("VYNZ_UPDATED").is_some() {
+        toast(&ui, &format!("Vynz {} sürümüne güncellendi", updater::current()));
     }
     if ui.get_auto_update() && !updater::is_dev_build() {
         // Açılışı yavaşlatmasın: biraz sonra, arka planda.

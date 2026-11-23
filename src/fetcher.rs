@@ -114,6 +114,8 @@ impl Fetcher {
                 .header("Range", &format!("bytes={offset}-{end}"))
                 .call()
                 .map_err(|e| e.to_string())?;
+            // Sunucu aralığı yok sayıp tüm dosyayı (200) gönderdiyse bu tek yanıt dosyanın tamamıdır.
+            let whole = resp.status().as_u16() == 200;
             if total.is_none() {
                 total = resp
                     .headers()
@@ -149,6 +151,10 @@ impl Fetcher {
             // Başka bir program interneti yoğun kullanıyorsa geri çekil.
             while rx.others_busy() {
                 thread::sleep(Duration::from_secs(3));
+            }
+            if whole {
+                total = Some(offset);
+                break;
             }
             if total.is_none() && got < CHUNK {
                 break; // sunucu aralık bilgisi vermedi; parça kısa geldiyse son

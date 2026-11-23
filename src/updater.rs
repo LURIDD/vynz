@@ -63,6 +63,15 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
     }
 }
 
+/// Büyük paket indirmesi: toplam süre sınırı yok, yalnız bağlantı ve yanıt bekleme sınırı.
+fn download_agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_connect(Some(std::time::Duration::from_secs(15)))
+        .timeout_recv_response(Some(std::time::Duration::from_secs(30)))
+        .build()
+        .into()
+}
+
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(std::time::Duration::from_secs(20)))
@@ -136,7 +145,7 @@ pub fn install(u: &Update, cancel: &AtomicBool, progress: impl Fn(f32)) -> Resul
     let archive = dir.join(&u.asset_name);
 
     // 1) indir
-    let mut resp = agent().get(&u.asset_url).header("User-Agent", "vynz-updater").call().map_err(|e| e.to_string())?;
+    let mut resp = download_agent().get(&u.asset_url).header("User-Agent", "vynz-updater").call().map_err(|e| e.to_string())?;
     let total: u64 = resp
         .headers()
         .get("content-length")
@@ -193,7 +202,10 @@ pub fn install(u: &Update, cancel: &AtomicBool, progress: impl Fn(f32)) -> Resul
     }
     progress(0.95);
 
-    // 4) kur
+    // 4) kur (bundan sonra iptal yok: yarım kurulum bırakılmaz)
+    if cancel.load(Ordering::Relaxed) {
+        return Err("iptal edildi".into());
+    }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = exe.canonicalize().unwrap_or(exe);
     let target_dir = exe.parent().ok_or("uygulama klasörü bulunamadı")?.to_path_buf();
@@ -296,7 +308,7 @@ pub fn relaunch() {
     let _ = std::process::Command::new(exe)
         .args(args)
         .arg(format!("--wait-pid={}", std::process::id()))
-        .env("VYNZ_UPDATED", current())
+        .env("VYNZ_UPDATED", "1")
         .spawn();
 }
 
@@ -325,6 +337,8 @@ fn alive(pid: u32) -> bool {
 
 /// Güncelleme denetimi ve kurulum sırasında arayüzden iptal.
 pub static CANCEL: AtomicBool = AtomicBool::new(false);
+/// Bir kurulum sürüyor (aynı anda ikincisi başlamasın).
+pub static BUSY: AtomicBool = AtomicBool::new(false);
 /// Kapanışta yeniden başlat.
 pub static RESTART: AtomicBool = AtomicBool::new(false);
 

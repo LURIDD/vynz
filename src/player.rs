@@ -180,6 +180,8 @@ struct Engine {
     /// Etkin örneğe eklenmiş sıradaki (çapraz geçişte öbür örnekte açılır)
     next: Option<(String, String)>,
     fade: Fade,
+    /// Kullanıcı duraklattı: geçiş hazırlanmaz/başlamaz.
+    paused: bool,
 }
 
 impl Engine {
@@ -240,11 +242,15 @@ impl Engine {
                     self.finish_fade();
                 }
             }
+            Fade::Armed if self.paused => {}
             Fade::Armed => {
                 let a = &self.inst[self.cur];
                 let left = a.duration - a.last_time;
                 if a.duration > 0.0 && a.last_time >= 0.0 && left <= self.crossfade {
                     let o = self.other();
+                    // Hazırlık sırasında biriken olaylar (StartFile, pause=true) yeni etkin
+                    // örnekten dışarı sızmasın.
+                    while let Some(Ok(_)) = self.inst[o].ev.wait_event(0.0) {}
                     let _ = self.inst[o].mpv.set_property("pause", false);
                     // Eski örnek listesindeki sıradakine kendisi geçmesin.
                     let _ = self.inst[self.cur].mpv.command("playlist-clear", &[]);
@@ -262,7 +268,7 @@ impl Engine {
                 }
             }
             Fade::None => {
-                if self.crossfade <= 0.0 || self.looping {
+                if self.crossfade <= 0.0 || self.looping || self.paused {
                     return;
                 }
                 let Some((url, title)) = self.next.clone() else { return };
@@ -312,6 +318,7 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
         ao,
         next: None,
         fade: Fade::None,
+        paused: false,
     };
     let mut normalize = false;
     let mut eq: Option<[f32; 10]> = None;
@@ -333,6 +340,7 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
                     a.duration = 0.0;
                     let _ = a.mpv.command("playlist-clear", &[]);
                     let _ = a.mpv.set_property("pause", false);
+                    en.paused = false;
                     en.set_vol(c, en.volume);
                     if let Err(e) = loadfile(&en.inst[c].mpv, &url, "replace", &title, start) {
                         on_event(Ev::Error(e.to_string()));
@@ -359,6 +367,7 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
                     let _ = en.inst[c].mpv.command("playlist-clear", &[]);
                 }
                 Cmd::SetPause(p) => {
+                    en.paused = p;
                     if p {
                         en.finish_fade();
                     }
@@ -366,6 +375,8 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
                 }
                 Cmd::Seek(s) => {
                     en.finish_fade();
+                    // mpv yeni konumu bildirene kadar eski konumla geçiş tetiklenmesin
+                    en.inst[en.cur].last_time = -1.0;
                     let _ = en.inst[en.cur].mpv.command("seek", &[&format!("{s:.2}"), "absolute"]);
                 }
                 Cmd::Volume(v) => {
@@ -413,61 +424,122 @@ fn run(rx: Receiver<Cmd>, readahead: u32, on_event: impl Fn(Ev), ready: Sender<R
         en.tick(&on_event);
 
         // Olaylar: etkin örneğinkiler dışarı verilir; öbür örnek yalnız boşaltılır.
+        // Her örneğin kuyruğu beklemeden tamamen boşaltılır; hiç olay yoksa etkin örnekte kısa beklenir.
         let n = en.inst.len();
-        let wait = if n == 2 { 0.025 } else { 0.05 };
+        let mut any = false;
         for k in 0..n {
-            let active = k == en.cur;
-            let ev = match en.inst[k].ev.wait_event(wait) {
-                Some(Ok(e)) => e,
-                Some(Err(_)) | None => continue,
+            loop {
+                let active = k == en.cur;
+                let ev = match en.inst[k].ev.wait_event(0.0) {
+                    Some(Ok(e)) => raw(e),
+                    Some(Err(_)) => continue,
+                    None => break,
+                };
+                any = true;
+                if handle(&mut en, k, active, ev, &on_event) {
+                    return;
+                }
+            }
+        }
+        if !any {
+            let c = en.cur;
+            let ev = match en.inst[c].ev.wait_event(0.04) {
+                Some(Ok(e)) => Some(raw(e)),
+                _ => None,
             };
-            match ev {
-                Event::PropertyChange { name, change, .. } => match (name, change) {
-                    ("time-pos", PropertyData::Double(t)) => {
-                        let i = &mut en.inst[k];
-                        if active && (t - i.last_time).abs() >= 0.2 {
-                            i.last_time = t;
-                            on_event(Ev::Time(t));
-                        }
-                    }
-                    ("duration", PropertyData::Double(d)) => {
-                        en.inst[k].duration = d;
-                        if active {
-                            on_event(Ev::Duration(d));
-                        }
-                    }
-                    ("pause", PropertyData::Flag(p)) if active => on_event(Ev::Paused(p)),
-                    ("paused-for-cache", PropertyData::Flag(b)) if active => on_event(Ev::Buffering(b)),
-                    _ => {}
-                },
-                Event::StartFile if active => {
-                    en.inst[k].last_time = -1.0;
-                    en.inst[k].duration = 0.0;
-                    let pos = en.inst[k].mpv.get_property::<i64>("playlist-pos").unwrap_or(0);
-                    if pos >= 1 {
-                        en.next = None; // mpv sıradakine kendisi geçti
-                    }
-                    on_event(Ev::Started(pos));
+            if let Some(ev) = ev {
+                if handle(&mut en, c, true, ev, &on_event) {
+                    return;
                 }
-                Event::Seek if active => on_event(Ev::Seeked),
-                Event::PlaybackRestart if active => on_event(Ev::Buffering(false)),
-                Event::EndFile(r) if active => {
-                    if r == mpv_end_file_reason::Eof {
-                        on_event(Ev::Ended);
-                    } else if r == mpv_end_file_reason::Error {
-                        on_event(Ev::Error("parça açılamadı".into()));
-                    }
-                }
-                Event::EndFile(r) if !active && r == mpv_end_file_reason::Error && matches!(en.fade, Fade::Armed) => {
-                    // Hazırlanan sıradaki açılamadı: geçişsiz devam (etkin örnek listesindeki ön-tampon)
-                    en.fade = Fade::None;
-                    en.next = None;
-                }
-                Event::Shutdown => return,
-                _ => {}
             }
         }
     }
+}
+
+/// mpv olayının sahip olunan kopyası (olay, istemciyi ödünç alır).
+enum Raw {
+    Time(f64),
+    Duration(f64),
+    Pause(bool),
+    Cache(bool),
+    Start,
+    Seek,
+    Restart,
+    /// (dosya sonu mu, hata mı)
+    End(bool, bool),
+    Shutdown,
+    Other,
+}
+
+fn raw(ev: Event) -> Raw {
+    match ev {
+        Event::PropertyChange { name, change, .. } => match (name, change) {
+            ("time-pos", PropertyData::Double(t)) => Raw::Time(t),
+            ("duration", PropertyData::Double(d)) => Raw::Duration(d),
+            ("pause", PropertyData::Flag(p)) => Raw::Pause(p),
+            ("paused-for-cache", PropertyData::Flag(b)) => Raw::Cache(b),
+            _ => Raw::Other,
+        },
+        Event::StartFile => Raw::Start,
+        Event::Seek => Raw::Seek,
+        Event::PlaybackRestart => Raw::Restart,
+        Event::EndFile(r) => Raw::End(r == mpv_end_file_reason::Eof, r == mpv_end_file_reason::Error),
+        Event::Shutdown => Raw::Shutdown,
+        _ => Raw::Other,
+    }
+}
+
+/// Tek mpv olayını işle; true = kapanış.
+fn handle(en: &mut Engine, k: usize, active: bool, ev: Raw, on_event: &impl Fn(Ev)) -> bool {
+    match ev {
+        Raw::Time(t) => {
+            let i = &mut en.inst[k];
+            if active && (t - i.last_time).abs() >= 0.2 {
+                i.last_time = t;
+                on_event(Ev::Time(t));
+            }
+        }
+        Raw::Duration(d) => {
+            en.inst[k].duration = d;
+            if active {
+                on_event(Ev::Duration(d));
+            }
+        }
+        Raw::Pause(p) if active => on_event(Ev::Paused(p)),
+        Raw::Cache(b) if active => on_event(Ev::Buffering(b)),
+        Raw::Start if active => {
+            if matches!(en.fade, Fade::Armed) {
+                en.finish_fade();
+            }
+            en.inst[k].last_time = -1.0;
+            en.inst[k].duration = 0.0;
+            let pos = en.inst[k].mpv.get_property::<i64>("playlist-pos").unwrap_or(0);
+            if pos >= 1 {
+                en.next = None; // mpv sıradakine kendisi geçti
+            }
+            on_event(Ev::Started(pos));
+        }
+        Raw::Seek if active => on_event(Ev::Seeked),
+        Raw::Restart if active => on_event(Ev::Buffering(false)),
+        Raw::End(eof, err) if active => {
+            if matches!(en.fade, Fade::Armed) {
+                en.finish_fade();
+            }
+            if eof {
+                on_event(Ev::Ended);
+            } else if err {
+                on_event(Ev::Error("parça açılamadı".into()));
+            }
+        }
+        Raw::End(_, true) if !active && matches!(en.fade, Fade::Armed) => {
+            // Hazırlanan sıradaki açılamadı: geçişsiz devam (etkin örnek listesindeki ön-tampon)
+            en.fade = Fade::None;
+            en.next = None;
+        }
+        Raw::Shutdown => return true,
+        _ => {}
+    }
+    false
 }
 
 #[cfg(test)]
