@@ -1618,15 +1618,30 @@ fn queue_remove(ui: &AppWindow, i: usize) {
     }
 }
 
+/// `from`daki şarkıyı `to` konumuna taşıdıktan sonra çalan şarkının yeni indeksi.
+fn moved_index(cur: usize, from: usize, to: usize) -> usize {
+    if cur == from {
+        to
+    } else if from < cur && cur <= to {
+        cur - 1
+    } else if to <= cur && cur < from {
+        cur + 1
+    } else {
+        cur
+    }
+}
+
+/// Kuyrukta `i`deki şarkıyı `delta` kadar öteye taşı (sürükle-bırak: araya girer, takas değil).
 fn queue_move(ui: &AppWindow, i: usize, delta: i32) {
     let ok = with_state(|st| {
         let j = i as i64 + delta as i64;
-        if j < 0 || j as usize >= st.queue.len() || i >= st.queue.len() {
+        if delta == 0 || j < 0 || j as usize >= st.queue.len() || i >= st.queue.len() {
             return false;
         }
         let j = j as usize;
-        st.queue.swap(i, j);
-        st.index = st.index.map(|c| if c == i { j } else if c == j { i } else { c });
+        let t = st.queue.remove(i);
+        st.queue.insert(j, t);
+        st.index = st.index.map(|c| moved_index(c, i, j));
         true
     });
     if ok {
@@ -5048,4 +5063,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     start_listen(None); // son dinlemeyi kaydet
     resolver.shutdown();
     Ok(())
+}
+
+#[cfg(test)]
+mod queue_tests {
+    use super::moved_index;
+
+    #[test]
+    fn moving_keeps_current_track() {
+        // kuyruk: a b C d e (çalan 2)
+        assert_eq!(moved_index(2, 2, 4), 4); // çalanı sona taşı
+        assert_eq!(moved_index(2, 0, 3), 1); // a, C'nin arkasına
+        assert_eq!(moved_index(2, 4, 0), 3); // e başa
+        assert_eq!(moved_index(2, 3, 4), 2); // çalandan sonrası kendi arasında
+        assert_eq!(moved_index(2, 0, 1), 2);
+        assert_eq!(moved_index(2, 1, 2), 1);
+    }
 }

@@ -2742,8 +2742,16 @@ export component AppWindow inherits Window {
     }
 
     // ---------- Kuyruk çekmecesi ----------
-    Rectangle {
-        width: 340px;
+    // Sıralama sürükle-bırak ile: satırı tut, 6 px'ten fazla kaydırınca sürükleme başlar,
+    // bırakınca araya girer. Tıklama (sürüklemeden) çalar; × kuyruktan çıkarır.
+    queue-drawer := Rectangle {
+        property <int> drag-from: -1;
+        property <int> drag-to: -1;
+        property <bool> drag-moved;
+        property <length> drag-press-y;
+        property <length> drag-ghost-y;
+        property <length> row-step: 62px;
+        width: 400px;
         y: 72px;
         height: root.height - 72px - Theme.player-clearance + 12px;
         x: drawer-open ? root.width - self.width - 16px : root.width + 24px;
@@ -2767,20 +2775,68 @@ export component AppWindow inherits Window {
                 spacing: 6px; alignment: start;
                 PillButton { pill-height: 30px; text: radio-busy ? "Radyo…" : "Radyo başlat"; enabled: has-now && !radio-busy; clicked => { root.radio-from-current(); } }
                 ConfirmPill { pill-height: 30px; text: "Temizle"; confirm-text: "Kuyruk silinsin mi?"; enabled: queue.length > 1; confirmed => { root.queue-clear(); } }
+                Rectangle { horizontal-stretch: 1; }
+                if queue.length > 1: Text { text: "Sıralamak için sürükle"; font-size: 11px; color: Theme.text-muted; vertical-alignment: center; }
             }
             if queue.length == 0: Text { text: "Kuyruk boş."; font-size: 13px; color: Theme.text-secondary; }
-            Flickable {
-                content-height: qlist.preferred-height;
+            // Flickable değil: Flickable basılı sürüklemeyi kendine alıp satır sürüklemesini bozuyor.
+            // Kaydırma tekerlekle (ve sürüklerken kenara yaklaşınca) elle yapılır.
+            qflick := Rectangle {
+                property <length> content-y: 0px;
+                property <length> max-scroll: Math.max(0px, qlist.preferred-height - self.height);
+                clip: true;
+                vertical-stretch: 1;
+                TouchArea {
+                    scroll-event(e) => {
+                        qflick.content-y = Math.clamp(qflick.content-y + e.delta-y, -qflick.max-scroll, 0px);
+                        return accept;
+                    }
+                }
                 qlist := VerticalLayout {
+                    y: Math.clamp(qflick.content-y, -qflick.max-scroll, 0px);
+                    height: self.preferred-height;
                     spacing: 6px; alignment: start;
-                    for t[i] in queue: Rectangle {
+                    for t[i] in queue: qrow := Rectangle {
+                        property <bool> dragged: queue-drawer.drag-moved && queue-drawer.drag-from == i;
                         height: 56px; border-radius: Theme.r-sm;
-                        background: i == queue-index ? Theme.surface-2 : qi-ta.has-hover ? Theme.surface-1 : Theme.surface-subtle;
+                        background: i == queue-index ? Theme.surface-2 : qi-ta.has-hover && queue-drawer.drag-from < 0 ? Theme.surface-1 : Theme.surface-subtle;
+                        opacity: self.dragged ? 0.35 : 1;
                         animate background { duration: Theme.micro; }
                         qi-ta := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.play-queue(i); }
+                            mouse-cursor: queue-drawer.drag-moved ? MouseCursor.grabbing : MouseCursor.pointer;
+                            clicked => { if (!queue-drawer.drag-moved) { root.play-queue(i); } }
+                            moved => {
+                                if (self.pressed && queue-drawer.drag-from == i) {
+                                    if (!queue-drawer.drag-moved && Math.abs(self.mouse-y - queue-drawer.drag-press-y) > 6px) {
+                                        queue-drawer.drag-moved = true;
+                                    }
+                                    if (queue-drawer.drag-moved) {
+                                        // içerik koordinatında imlecin altındaki satır
+                                        queue-drawer.drag-to = Math.clamp(Math.floor((qrow.y + self.mouse-y + 3px) / queue-drawer.row-step), 0, queue.length - 1);
+                                        queue-drawer.drag-ghost-y = self.absolute-position.y + self.mouse-y - queue-drawer.absolute-position.y - 28px;
+                                        // kenara yaklaşınca kaydır
+                                        if (qrow.y + self.mouse-y + qflick.content-y < 30px) {
+                                            qflick.content-y = Math.min(0px, qflick.content-y + 12px);
+                                        } else if (qrow.y + self.mouse-y + qflick.content-y > qflick.height - 30px) {
+                                            qflick.content-y = Math.max(-qflick.max-scroll, qflick.content-y - 12px);
+                                        }
+                                    }
+                                }
+                            }
                             pointer-event(e) => {
+                                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                                    queue-drawer.drag-from = i;
+                                    queue-drawer.drag-to = i;
+                                    queue-drawer.drag-moved = false;
+                                    queue-drawer.drag-press-y = self.mouse-y;
+                                }
+                                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.up) {
+                                    if (queue-drawer.drag-moved && queue-drawer.drag-from >= 0 && queue-drawer.drag-to != queue-drawer.drag-from) {
+                                        root.queue-move(queue-drawer.drag-from, queue-drawer.drag-to - queue-drawer.drag-from);
+                                    }
+                                    queue-drawer.drag-from = -1;
+                                    queue-drawer.drag-to = -1;
+                                }
                                 if (e.button == PointerEventButton.right && e.kind == PointerEventKind.down) {
                                     menu-x = self.absolute-position.x + self.mouse-x;
                                     menu-y = self.absolute-position.y + self.mouse-y;
@@ -2791,19 +2847,44 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
+                        // Bırakılacak yer çizgisi
+                        if queue-drawer.drag-moved && queue-drawer.drag-to == i && queue-drawer.drag-from != i: Rectangle {
+                            x: 6px; width: parent.width - 12px; height: 3px; border-radius: 1.5px;
+                            y: queue-drawer.drag-from > i ? -4.5px : parent.height + 1.5px;
+                            background: Theme.accent;
+                        }
                         HorizontalLayout {
-                            padding-left: 10px; padding-right: 8px; spacing: 10px;
+                            padding-left: 6px; padding-right: 8px; spacing: 10px;
+                            // Tutamak (yalnız görsel ipucu; satırın tamamı sürüklenebilir)
+                            Icon { y: 20px; width: 16px; height: 16px; stroke-width: 2.8px; commands: Icons.grip; stroke: qi-ta.has-hover ? Theme.text-secondary : Theme.text-muted.with-alpha(0.5); }
                             Cover { width: 38px; height: 38px; y: 9px; radius: 7px; art: t.art; has-art: t.has-art; }
                             VerticalLayout {
                                 alignment: center; horizontal-stretch: 1;
                                 Text { text: t.title; font-size: 13.5px; font-weight: 600; color: i == queue-index ? Theme.accent : Theme.text-primary; overflow: elide; }
                                 ArtistLink { text: t.artist; key: t.key; font-size: 12px; secondary(x, y) => { menu-x = x; menu-y = y; menu-pl-open = false; menu-open = true; menu-kind = 3; menu-index = i; root.menu-for(3, i, 0); } }
                             }
-                            IconButton { y: 11px; icon: Icons.chevron-up; tint: Theme.text-muted; enabled: i > 0; clicked => { root.queue-move(i, -1); } }
-                            IconButton { y: 11px; icon: Icons.chevron-down; tint: Theme.text-muted; enabled: i < queue.length - 1; clicked => { root.queue-move(i, 1); } }
+                            if t.duration > 0: Text { text: Fmt.time(t.duration); font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; vertical-alignment: center; }
                             IconButton { y: 11px; icon: Icons.x; tint: Theme.text-muted; clicked => { root.queue-remove(i); } }
                         }
                     }
+                }
+            }
+        }
+        // Sürüklenen satırın imleci izleyen kopyası
+        if drag-moved && drag-from >= 0 && drag-from < queue.length: Rectangle {
+            x: 20px; width: parent.width - 40px; height: 56px;
+            y: Math.clamp(drag-ghost-y, 60px, parent.height - 60px);
+            border-radius: Theme.r-sm;
+            background: Theme.surface-3;
+            border-width: 1px; border-color: Theme.accent.with-alpha(0.5);
+            drop-shadow-blur: 24px; drop-shadow-offset-y: 8px; drop-shadow-color: #000000a0;
+            HorizontalLayout {
+                padding-left: 12px; padding-right: 12px; spacing: 10px;
+                Cover { width: 38px; height: 38px; y: 9px; radius: 7px; art: queue[drag-from].art; has-art: queue[drag-from].has-art; }
+                VerticalLayout {
+                    alignment: center; horizontal-stretch: 1;
+                    Text { text: queue[drag-from].title; font-size: 13.5px; font-weight: 600; color: Theme.text-primary; overflow: elide; }
+                    Text { text: queue[drag-from].artist; font-size: 12px; color: Theme.text-secondary; overflow: elide; }
                 }
             }
         }
