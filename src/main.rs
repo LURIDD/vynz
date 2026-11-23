@@ -10,6 +10,7 @@
 mod art;
 mod cache;
 mod discord;
+mod downloads;
 mod fetcher;
 mod history;
 mod import;
@@ -66,6 +67,10 @@ struct State {
     /// mpv listesine sıradaki olarak eklenen kuyruk indeksi.
     appended: Option<usize>,
     fetcher: fetcher::Fetcher,
+    /// İndirilenler (kalıcı, çevrimdışı) ve süren indirmeler (anahtar -> 0..1)
+    dl_list: Vec<TrackInfo>,
+    dl_pending: Vec<(TrackInfo, f32)>,
+    downloader: downloads::Downloader,
     /// Çalan parça önbelleğe alma sırasına kondu mu (play_seq ile).
     cache_queued: u64,
     play_seq: u64,
@@ -1747,6 +1752,119 @@ fn refresh_liked(ui: &AppWindow) {
     ui.set_liked_tracks(model_of(&likes));
 }
 
+// ---------- İndirilenler ----------
+
+fn refresh_downloads(ui: &AppWindow) {
+    let (list, pending) = with_state(|st| {
+        let list = st.dl_list.clone();
+        for t in list.iter().take(40) {
+            request_art(st, t);
+        }
+        (list, st.dl_pending.clone())
+    });
+    ui.set_dl_count(list.len() as i32);
+    ui.set_dl_tracks(model_of(&list));
+    let active: Vec<DlItem> = pending
+        .iter()
+        .map(|(t, p)| DlItem { title: format!("{} — {}", t.artist, t.title).into(), progress: *p })
+        .collect();
+    ui.set_dl_active(ModelRc::new(VecModel::from(active)));
+    let weak = ui.as_weak();
+    thread::spawn(move || {
+        let used = downloads::usage();
+        let _ = weak.upgrade_in_event_loop(move |ui| ui.set_dl_size(human_bytes(used).into()));
+    });
+}
+
+/// Şarkıları indir: önce akış adresi çözülür, sonra indirici sırasına girer.
+fn download_tracks(ui: &AppWindow, tracks: Vec<TrackInfo>) {
+    let mut added = 0;
+    let mut sc = 0;
+    for t in tracks {
+        let key = t.key();
+        let skip = with_state(|st| {
+            downloads::path(&key).is_some() || st.dl_pending.iter().any(|(x, _)| x.key() == key)
+        });
+        if skip {
+            continue;
+        }
+        if t.source == Source::SoundCloud {
+            sc += 1; // HLS parça listesi; şimdilik indirilemiyor
+            continue;
+        }
+        added += 1;
+        let weak = ui.as_weak();
+        with_state(|st| {
+            st.dl_pending.push((t.clone(), 0.0));
+            let Some(page) = page_url(st, &t) else { return };
+            let tt = t.clone();
+            st.resolver.resolve(
+                &key,
+                &page,
+                Prio::Soon,
+                Some(Box::new(move |res| {
+                    let _ = weak.upgrade_in_event_loop(move |ui| match res {
+                        Ok(r) if !r.stream.contains(".m3u8") => with_state(|st| st.downloader.enqueue(tt, r.stream)),
+                        Ok(_) => on_download_event(&ui, downloads::Event::Failed(tt, "akış indirilemez".into())),
+                        Err(e) => on_download_event(&ui, downloads::Event::Failed(tt, e)),
+                    });
+                })),
+            );
+        });
+    }
+    if added > 0 {
+        toast(ui, &if added == 1 { "İndiriliyor…".to_string() } else { format!("{added} şarkı indiriliyor…") });
+    } else if sc > 0 {
+        toast(ui, "SoundCloud şarkıları şimdilik indirilemiyor");
+    } else {
+        toast(ui, "Zaten indirilmiş");
+    }
+    refresh_downloads(ui);
+}
+
+fn on_download_event(ui: &AppWindow, ev: downloads::Event) {
+    match ev {
+        downloads::Event::Progress(key, p) => {
+            with_state(|st| {
+                if let Some(x) = st.dl_pending.iter_mut().find(|(t, _)| t.key() == key) {
+                    x.1 = p;
+                }
+            });
+            // Yalnız ilerleme çubuklarını tazele (liste aynı)
+            let pending = with_state(|st| st.dl_pending.clone());
+            let active: Vec<DlItem> = pending.iter().map(|(t, p)| DlItem { title: format!("{} — {}", t.artist, t.title).into(), progress: *p }).collect();
+            ui.set_dl_active(ModelRc::new(VecModel::from(active)));
+            return;
+        }
+        downloads::Event::Done(t) => {
+            with_state(|st| {
+                let key = t.key();
+                st.dl_pending.retain(|(x, _)| x.key() != key);
+                if !st.dl_list.iter().any(|x| x.key() == key) {
+                    st.dl_list.insert(0, t);
+                }
+                downloads::save(&st.dl_list);
+            });
+        }
+        downloads::Event::Failed(t, e) => {
+            eprintln!("indirilemedi {}: {e}", t.key());
+            with_state(|st| st.dl_pending.retain(|(x, _)| x.key() != t.key()));
+            toast(ui, &format!("İndirilemedi: {}", t.title));
+        }
+    }
+    refresh_downloads(ui);
+}
+
+fn remove_download(ui: &AppWindow, key: &str) {
+    with_state(|st| {
+        st.dl_list.retain(|x| x.key() != key);
+        downloads::save(&st.dl_list);
+    });
+    downloads::remove_files(key);
+    toast(ui, "İndirilenlerden kaldırıldı");
+    refresh_downloads(ui);
+}
+
 fn toggle_like_current(ui: &AppWindow) {
     let liked = with_state(|st| {
         let t = st.index.and_then(|i| st.queue.get(i).cloned())?;
@@ -1776,6 +1894,7 @@ fn menu_target(st: &State, kind: i32, a: i32, b: i32) -> Option<TrackInfo> {
         5 => st.artist.as_ref().and_then(|c| c.1.get(a)).cloned(),
         6 => st.history.likes.get(a).cloned(),
         7 => st.index.and_then(|i| st.queue.get(i)).cloned(),
+        8 => st.dl_list.get(a).cloned(),
         _ => None,
     }
 }
@@ -1793,6 +1912,13 @@ fn menu_action(ui: &AppWindow, action: i32) {
             add_to_queue(ui, t);
         }
         3 => start_radio(ui, t),
+        10 => {
+            if downloads::path(&t.key()).is_some() {
+                remove_download(ui, &t.key());
+            } else {
+                download_tracks(ui, vec![t]);
+            }
+        }
         9 => {
             let on = with_state(|st| st.history.toggle_boost(&t));
             toast(ui, if on { "Benzerleri daha sık önerilecek; ana sayfa yenilenince görünür" } else { "Artık öne çıkarılmıyor" });
@@ -4009,6 +4135,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    let downloader = {
+        let w = weak.clone();
+        downloads::Downloader::new(move |ev| {
+            let _ = w.upgrade_in_event_loop(move |ui| on_download_event(&ui, ev));
+        })
+    };
     let pool = start_art_pool(weak.clone());
     STATE.with(|s| {
         *s.borrow_mut() = Some(State {
@@ -4024,6 +4156,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             index: None,
             appended: None,
             fetcher: fetcher.clone(),
+            dl_list: downloads::load(),
+            dl_pending: Vec::new(),
+            downloader: downloader.clone(),
             cache_queued: 0,
             play_seq: 0,
             loaded: false,
@@ -4100,6 +4235,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     refresh_playlists(&ui);
     refresh_liked(&ui);
+    refresh_downloads(&ui);
     refresh_hidden(&ui);
     refresh_taste_summary(&ui);
     ui.set_runtime_status(runtime::status_text().into());
@@ -4574,6 +4710,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
             match t {
                 Some((title, liked, boosted)) => {
+                    let downloaded = with_state(|st| st.menu.as_ref().is_some_and(|t| downloads::path(&t.key()).is_some()));
+                    ui.set_menu_downloaded(downloaded);
                     ui.set_menu_title(title.into());
                     ui.set_menu_liked(liked);
                     ui.set_menu_boosted(boosted);
@@ -4827,6 +4965,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |pl_idx| {
             if let Some(ui) = weak.upgrade() {
                 add_menu_track_to_playlist(&ui, pl_idx as usize);
+            }
+        }
+    });
+    ui.on_play_downloads({
+        let weak = weak.clone();
+        move |i, shuffle| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut list = with_state(|st| st.dl_list.clone());
+            if list.is_empty() {
+                return;
+            }
+            let mut start = i.max(0) as usize;
+            if shuffle {
+                let mut seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1);
+                for k in (1..list.len()).rev() {
+                    seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                    list.swap(k, (seed as usize) % (k + 1));
+                }
+                start = 0;
+            }
+            play_list(&ui, list, start);
+        }
+    });
+    ui.on_download_view({
+        let weak = weak.clone();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let view = ui.get_view().to_string();
+            let tracks = with_state(|st| match view.as_str() {
+                "liked" => st.history.likes.clone(),
+                "playlist" => st.current_pl.and_then(|p| st.playlists.get(p)).map(|p| p.tracks.clone()).unwrap_or_default(),
+                _ => Vec::new(),
+            });
+            if !tracks.is_empty() {
+                download_tracks(&ui, tracks);
             }
         }
     });

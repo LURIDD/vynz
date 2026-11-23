@@ -53,6 +53,10 @@ fn fetch(key: &str, url: &str) -> Result<Vec<u8>, String> {
             }
             b
         }
+        Err(_) if std::fs::metadata(crate::downloads::cover_path(key)).is_ok() => {
+            // İndirilmiş şarkının yanına kaydedilen kapak (çevrimdışı da görünsün)
+            std::fs::read(crate::downloads::cover_path(key)).map_err(|e| e.to_string())?
+        }
         Err(_) => {
             let mut resp = ureq::get(url).call().map_err(|e| e.to_string())?;
             let b = resp

@@ -5,7 +5,7 @@ import "fonts/InstrumentSerif-Regular.ttf";
 import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider, DlItem } from "parts.slint";
 export { Nav }
 
 export { Theme, Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
@@ -404,6 +404,14 @@ export component AppWindow inherits Window {
 
     // Beğendiklerim & Yeni liste
     in property <[Track]> liked-tracks;
+    // İndirilenler
+    in property <[Track]> dl-tracks;
+    in property <int> dl-count: 0;
+    in property <string> dl-size;
+    in property <[DlItem]> dl-active;
+    in property <bool> menu-downloaded;
+    callback play-downloads(int, bool);
+    callback download-view();
     in property <int> liked-count: 0;
     in property <string> liked-duration;
     callback play-liked(int);
@@ -1453,6 +1461,7 @@ export component AppWindow inherits Window {
                                     spacing: 10px; alignment: start;
                                     PillButton { pill-height: 38px; text: "Çal"; primary: true; enabled: playlist-tracks.length > 0; clicked => { root.play-playlist(0); } }
                                     PillButton { pill-height: 38px; text: "Karıştır"; enabled: playlists[current-playlist].count > 1; clicked => { root.shuffle-playlist(); } }
+                                    PillButton { pill-height: 38px; text: "İndir"; enabled: playlists[current-playlist].count > 0; clicked => { root.download-view(); } }
                                     PillButton {
                                         pill-height: 38px; text: "Yeniden adlandır";
                                         clicked => {
@@ -1600,6 +1609,68 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                // ===== İndirilenler =====
+                if view == "downloads": VerticalLayout {
+                    spacing: 20px;
+                    Rectangle {
+                        border-radius: Theme.r-xl;
+                        background: @linear-gradient(180deg, #34D39930 0%, Theme.surface-1 100%);
+                        border-width: 1px; border-color: Theme.border;
+                        HorizontalLayout {
+                            padding: 24px; spacing: 26px;
+                            Rectangle {
+                                width: 180px; height: 180px; border-radius: Theme.r-lg;
+                                background: @linear-gradient(135deg, #34D399 0%, #0EA5E9 60%, #4338CA 100%);
+                                drop-shadow-blur: 40px; drop-shadow-offset-y: 16px; drop-shadow-color: #00000099;
+                                Icon { width: 64px; height: 64px; commands: Icons.download; stroke: #FFFFFF; stroke-width: 1.8px; }
+                            }
+                            VerticalLayout {
+                                horizontal-stretch: 1; alignment: end; spacing: 8px;
+                                Text { text: "ÇEVRİMDIŞI"; font-size: 11px; font-weight: 800; letter-spacing: 0.8px; color: Theme.accent; }
+                                Text { text: "İndirilenler"; font-family: Theme.display; font-size: 38px; font-weight: 800; letter-spacing: -1.4px; color: Theme.text-primary; }
+                                Text { text: dl-count + " şarkı" + (dl-size != "" ? " · " + dl-size : "") + " · internet olmadan da çalar"; font-family: Theme.mono; font-size: 12.5px; color: Theme.text-secondary; }
+                                Rectangle { height: 4px; }
+                                HorizontalLayout {
+                                    spacing: 10px; alignment: start;
+                                    PillButton { pill-height: 38px; text: "Çal"; primary: true; enabled: dl-tracks.length > 0; clicked => { root.play-downloads(0, false); } }
+                                    PillButton { pill-height: 38px; text: "Karıştır"; enabled: dl-tracks.length > 1; clicked => { root.play-downloads(0, true); } }
+                                }
+                            }
+                        }
+                    }
+                    if dl-active.length > 0: Rectangle {
+                        border-radius: Theme.r-md; background: Theme.surface-1;
+                        VerticalLayout {
+                            padding: 16px; spacing: 10px;
+                            Text { text: "İndiriliyor (" + dl-active.length + ")"; font-size: 13px; font-weight: 700; color: Theme.text-primary; }
+                            for d in dl-active: VerticalLayout {
+                                spacing: 5px;
+                                HorizontalLayout {
+                                    Text { text: d.title; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; horizontal-stretch: 1; }
+                                    Text { text: Math.round(d.progress * 100) + "%"; font-family: Theme.mono; font-size: 11px; color: Theme.text-muted; }
+                                }
+                                Rectangle {
+                                    height: 4px; border-radius: 2px; background: Theme.surface-3;
+                                    Rectangle { x: 0; width: parent.width * d.progress; height: 4px; border-radius: 2px; background: Theme.accent; animate width { duration: 300ms; } }
+                                }
+                            }
+                        }
+                    }
+                    if dl-tracks.length == 0 && dl-active.length == 0: Text {
+                        text: "Henüz indirdiğin şarkı yok. Bir şarkıya sağ tıklayıp \"İndir\" de, ya da bir listede \"İndir\" düğmesini kullan.";
+                        font-size: 13.5px; color: Theme.text-muted; wrap: word-wrap;
+                    }
+                    VerticalLayout {
+                        spacing: 0px;
+                        for t[i] in dl-tracks: TrackRow {
+                            track: t; index: i;
+                            playing: has-now && t.key == now.key; is-running: playing && !buffering;
+                            clicked => { root.play-downloads(i, false); }
+                            menu(x, y) => { menu-x = x; menu-y = y; menu-open = true; menu-pl-open = false; menu-kind = 8; root.menu-for(8, i, 0); }
+                        }
+                    }
+                }
+
                 // ===== Beğendiklerim =====
                 if view == "liked": VerticalLayout {
                     spacing: 20px;
@@ -1637,6 +1708,7 @@ export component AppWindow inherits Window {
                                     spacing: 10px; alignment: start;
                                     PillButton { pill-height: 38px; text: "Çal"; primary: true; enabled: liked-tracks.length > 0; clicked => { root.play-liked(0); } }
                                     PillButton { pill-height: 38px; text: "Karıştır"; enabled: liked-tracks.length > 1; clicked => { root.shuffle-liked(); } }
+                                    PillButton { pill-height: 38px; text: "Tümünü indir"; enabled: liked-tracks.length > 0; clicked => { root.download-view(); } }
                                 }
                             }
                         }
@@ -1928,7 +2000,7 @@ export component AppWindow inherits Window {
                 }
 
                 // ===== Henüz yapılmayan ekranlar =====
-                if view != "home" && view != "search" && view != "settings" && view != "import" && view != "playlist" && view != "liked" && view != "lyrics" && view != "collection" && view != "browse" && view != "profile": Rectangle {
+                if view != "home" && view != "search" && view != "settings" && view != "import" && view != "playlist" && view != "liked" && view != "downloads" && view != "lyrics" && view != "collection" && view != "browse" && view != "profile": Rectangle {
                     height: 420px;
                     VerticalLayout {
                         alignment: center; spacing: 8px;
@@ -2809,6 +2881,37 @@ export component AppWindow inherits Window {
                             }
                         }
                     }
+                    // İndirilenler: indirme varsa ya da sürüyorsa görünür
+                    if dl-count > 0 || dl-active.length > 0: Rectangle {
+                        height: compact ? 36px : 44px;
+                        border-radius: Theme.r-sm;
+                        background: view == "downloads" ? Theme.surface-2 : dlr-ta.has-hover ? Theme.surface-1 : transparent;
+                        animate background { duration: Theme.micro; }
+                        dlr-ta := TouchArea { mouse-cursor: pointer; clicked => { root.go("downloads"); } }
+                        HorizontalLayout {
+                            padding-left: 8px; padding-right: 6px; spacing: 10px;
+                            alignment: compact ? center : stretch;
+                            Rectangle {
+                                width: compact ? 24px : 28px; height: self.width;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 6px;
+                                background: @linear-gradient(135deg, #34D399 0%, #0EA5E9 100%);
+                                Icon { width: parent.width * 0.55; height: self.width; commands: Icons.download; stroke: #FFFFFF; stroke-width: 2px; }
+                            }
+                            if !compact: VerticalLayout {
+                                alignment: center; horizontal-stretch: 1; spacing: 1px;
+                                Text {
+                                    text: "İndirilenler"; font-size: 13px;
+                                    font-weight: view == "downloads" ? 700 : 600;
+                                    color: view == "downloads" ? Theme.accent : Theme.text-primary;
+                                }
+                                Text {
+                                    text: dl-active.length > 0 ? dl-active.length + " indiriliyor…" : dl-count + " şarkı · çevrimdışı";
+                                    font-size: 10.5px; color: dl-active.length > 0 ? Theme.accent : Theme.text-muted; overflow: elide;
+                                }
+                            }
+                        }
+                    }
                     if !compact && playlists.length == 0: Text {
                         text: "+ ile oluştur ya da aktar"; font-size: 11.5px; color: Theme.text-muted; x: 10px; height: 26px; vertical-alignment: center;
                     }
@@ -3568,6 +3671,7 @@ export component AppWindow inherits Window {
             MenuItem { icon: Icons.list-start; text: "Sıradaki çal"; clicked => { root.menu-action(1); } }
             MenuItem { icon: Icons.list-plus; text: "Kuyruğa ekle"; clicked => { root.menu-action(2); } }
             MenuItem { icon: Icons.radio; text: "Radyo başlat"; clicked => { root.menu-action(3); } }
+            MenuItem { icon: menu-downloaded ? Icons.trash : Icons.download; text: menu-downloaded ? "İndirilenlerden kaldır" : "İndir"; clicked => { root.menu-action(10); } }
             MenuItem { icon: Icons.sparkles; text: menu-boosted ? "Daha çok önermeyi bırak" : "Bunu daha çok öner"; clicked => { root.menu-action(9); } }
             MenuItem { icon: Icons.ban; text: "İlgilenmiyorum"; clicked => { root.menu-action(7); } }
             MenuItem { icon: Icons.ban; text: "Sanatçıyı önerme"; clicked => { root.menu-action(8); } }

@@ -25,14 +25,23 @@ pub fn part_path(key: &str) -> PathBuf {
     dir().join(format!("{}.part.mka", safe(key)))
 }
 
-/// Kayıt var mı (süreye dokunmaz; ön-hazırlık kontrolleri için).
+/// Kayıt var mı (süreye dokunmaz; ön-hazırlık kontrolleri için). İndirilenler önce gelir.
 pub fn exists(key: &str) -> Option<PathBuf> {
+    crate::downloads::path(key).or_else(|| exists_in_cache(key))
+}
+
+/// Yalnız önbellekte (indirilenler hariç).
+pub fn exists_in_cache(key: &str) -> Option<PathBuf> {
     let p = final_path(key);
     (std::fs::metadata(&p).ok()?.len() >= MIN_BYTES).then_some(p)
 }
 
 /// Tamamlanmış kayıt varsa yolunu döner ve "son kullanım" zamanını tazeler (çalarken kullan).
+/// İndirilmiş şarkı önce gelir (çevrimdışı da çalar).
 pub fn lookup(key: &str) -> Option<PathBuf> {
+    if let Some(p) = crate::downloads::path(key) {
+        return Some(p);
+    }
     let p = final_path(key);
     let len = std::fs::metadata(&p).ok()?.len();
     if len < MIN_BYTES {
