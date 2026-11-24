@@ -392,6 +392,8 @@ export component AppWindow inherits Window {
     callback eq-set(int, float);
     callback eq-pick(int);
     property <bool> eq-grab;
+    // Alt çubuktaki hızlı ekolayzır paneli
+    in-out property <bool> eq-pop: false;
     // Görünüm
     in-out property <int> theme-accent: 0;
     in-out property <int> theme-backdrop: 0;
@@ -732,6 +734,7 @@ export component AppWindow inherits Window {
             if (tastes-open) { tastes-open = false; return accept; }
             if (menu-open) { menu-open = false; menu-pl-open = false; return accept; }
             if (sidebar-peek) { sidebar-peek = false; return accept; }
+            if (eq-pop) { eq-pop = false; return accept; }
             if (search-input.has-focus || pl-input-focus) { keys.focus(); return accept; }
             if (fullscreen) { root.toggle-fullscreen(); return accept; }
             if (lyrics-open) { lyrics-open = false; return accept; }
@@ -3310,6 +3313,12 @@ export component AppWindow inherits Window {
             alignment: end; spacing: 6px;
             IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.mic; tint: lyrics-open && lyrics-mode ? Theme.accent : Theme.text-secondary; clicked => { root.show-now(true); } }
             IconButton { y: (Theme.player-height - self.height) / 2; icon: Icons.list-music; tint: drawer-open ? Theme.accent : Theme.text-secondary; clicked => { drawer-open = !drawer-open; } }
+            // Ekolayzır: açıkken vurgu renginde; tıklayınca hızlı panel
+            Rectangle {
+                width: 34px; height: 34px; y: (Theme.player-height - self.height) / 2;
+                IconButton { icon: Icons.sliders; tint: (eq-on || eq-pop) ? Theme.accent : Theme.text-secondary; clicked => { eq-pop = !eq-pop; } }
+                if eq-on: Rectangle { x: 24px; y: 5px; width: 6px; height: 6px; border-radius: 3px; background: Theme.accent; }
+            }
             // Hoparlör: tıkla = sessize al / geri aç; tekerlek = ses
             Rectangle {
                 width: 30px; height: 30px; y: (Theme.player-height - self.height) / 2;
@@ -3335,6 +3344,57 @@ export component AppWindow inherits Window {
                 live: true; wheel: true;
                 value: volume;
                 seek(f) => { volume = f; root.set-volume(f); }
+            }
+        }
+    }
+
+    // ---------- Hızlı ekolayzır paneli (alt çubuğun üstünde) ----------
+    if eq-pop: TouchArea { clicked => { eq-pop = false; } }
+    if eq-pop: Rectangle {
+        width: 540px;
+        height: eqp.preferred-height;
+        x: Math.max(16px, root.width - self.width - 28px);
+        y: root.height - Theme.player-offset - Theme.player-height - self.height - 10px;
+        border-radius: Theme.r-lg;
+        background: Theme.floating;
+        border-width: 1px; border-color: Theme.border;
+        drop-shadow-blur: 40px; drop-shadow-offset-y: 12px; drop-shadow-color: #000000aa;
+        TouchArea { }
+        eqp := VerticalLayout {
+            padding: 16px; spacing: 12px;
+            HorizontalLayout {
+                spacing: 8px;
+                VerticalLayout {
+                    horizontal-stretch: 1; spacing: 2px;
+                    Text { text: "Ekolayzır"; font-family: Theme.display; font-size: 15px; font-weight: 700; color: Theme.text-primary; }
+                    Text { text: "Sürgüyü sürükle, çift tıkla sıfırla."; font-size: 11px; color: Theme.text-muted; }
+                }
+                PillButton { pill-height: 30px; text: "Açık"; active: eq-on; clicked => { eq-on = true; root.settings-changed(); } }
+                PillButton { pill-height: 30px; text: "Kapalı"; active: !eq-on; clicked => { eq-on = false; root.settings-changed(); } }
+            }
+            HorizontalLayout {
+                spacing: 6px; alignment: start;
+                for name[i] in ["Düz", "Bas", "Tiz", "Vokal", "Rap"]: PillButton {
+                    pill-height: 28px; text: name; active: eq-preset == i;
+                    clicked => { root.eq-pick(i); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 6px; alignment: start;
+                for name[i] in ["Elektronik", "Akustik", "Rock", "Gece"]: PillButton {
+                    pill-height: 28px; text: name; active: eq-preset == i + 5;
+                    clicked => { root.eq-pick(i + 5); }
+                }
+                if eq-preset < 0: Text { text: "Özel"; font-size: 11.5px; font-weight: 700; color: Theme.accent; vertical-alignment: center; }
+            }
+            HorizontalLayout {
+                alignment: space-around;
+                opacity: eq-on ? 1 : 0.45;
+                for g[i] in eq-gains: EqSlider {
+                    value: g;
+                    label: ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"][i];
+                    changed(v) => { root.eq-set(i, v); }
+                }
             }
         }
     }
