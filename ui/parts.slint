@@ -963,3 +963,58 @@ export component PagerArrow inherits Rectangle {
         stroke: ta.has-hover ? Theme.on-primary : Theme.text-primary; stroke-width: 2px;
     }
 }
+
+// Ortam zemini: kapak renklerine boyanmış yumuşak ışık lekeleri yavaşça süzülür, üstte ince
+// kumlanma koyu degradelerdeki basamaklanmayı dağıtır. Görseller Rust'ta bir kez üretilir
+// (src/ambience.rs); burada yalnız konum/ölçek canlandırılır, hareket kapalıyken çizim durur.
+export component Ambience inherits Rectangle {
+    in property <image> disc;
+    in property <image> grain;
+    in property <color> c1;
+    in property <color> c2;
+    in property <color> c3;
+    // 0..1 genel parlaklık
+    in property <float> level: 0.5;
+    in property <bool> moving: false;
+    // müziğe tepki: 0..1 bas enerjisi (kapalıyken 0)
+    in property <float> beat: 0;
+    in property <bool> show-grain: true;
+    in property <duration> step: 9s;
+    property <int> phase: 0;
+    property <float> pulse: root.beat;
+    animate pulse { duration: 110ms; easing: ease-out; }
+    clip: true;
+
+    Timer {
+        interval: root.step;
+        running: root.moving;
+        triggered => { root.phase += 1; }
+    }
+
+    // Her leke kendi frekans ve genliğiyle dolanır; sin/cos fazları çakışmasın diye asal katsayılar
+    for b[i] in [
+        { c: 0, bx: 0.22, by: 0.20, ax: 0.10, ay: 0.08, k: 37, o: 0,   size: 1.05, a: 0.95 },
+        { c: 1, bx: 0.78, by: 0.35, ax: 0.09, ay: 0.11, k: 53, o: 120, size: 1.15, a: 0.85 },
+        { c: 2, bx: 0.45, by: 0.85, ax: 0.13, ay: 0.07, k: 29, o: 240, size: 0.95, a: 0.75 },
+        { c: 0, bx: 0.85, by: 0.90, ax: 0.07, ay: 0.06, k: 61, o: 60,  size: 0.70, a: 0.55 },
+    ]: Image {
+        property <float> t: root.phase * b.k;
+        property <length> d: Math.max(root.width, root.height) * b.size * (1 + root.pulse * 0.10);
+        source: root.disc;
+        colorize: b.c == 0 ? root.c1 : b.c == 1 ? root.c2 : root.c3;
+        width: self.d; height: self.d;
+        x: root.width * (b.bx + b.ax * Math.sin((self.t + b.o) * 1deg)) - self.d / 2;
+        y: root.height * (b.by + b.ay * Math.cos((self.t * 1.3 + b.o) * 1deg)) - self.d / 2;
+        opacity: Math.min(1, root.level * b.a * (1 + root.pulse * 0.35));
+        animate x, y { duration: root.step; easing: ease-in-out; }
+        animate width, height { duration: 110ms; easing: ease-out; }
+        animate colorize { duration: 900ms; }
+    }
+
+    if root.show-grain: Image {
+        width: root.width; height: root.height;
+        source: root.grain;
+        horizontal-tiling: repeat;
+        vertical-tiling: repeat;
+    }
+}

@@ -90,6 +90,12 @@ pub struct Settings {
     pub auto_update: bool,
     /// "Bu sürümü atla" denen sürüm
     pub skip_version: String,
+    /// Ortam zemini parlaklığı: 0 sade, 1 orta, 2 canlı
+    pub bg_level: i32,
+    /// Ortam zemini çalarken süzülsün
+    pub bg_motion: bool,
+    /// Ortam zemini basla nabız atsın (Linux: cava)
+    pub bg_reactive: bool,
 }
 
 impl Default for Settings {
@@ -123,6 +129,9 @@ impl Default for Settings {
             theme_backdrop: 0,
             auto_update: true,
             skip_version: String::new(),
+            bg_level: 1,
+            bg_motion: true,
+            bg_reactive: false,
         }
     }
 }

@@ -5,7 +5,7 @@ import "fonts/InstrumentSerif-Regular.ttf";
 import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider, DlItem } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, Ambience, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider, DlItem } from "parts.slint";
 export { Nav }
 
 export { Theme, Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
@@ -508,6 +508,28 @@ export component AppWindow inherits Window {
     in-out property <int> lyrics-size: 1;
     in-out property <int> lyrics-align: 0;
     in-out property <bool> lyrics-motion: true;
+    // Ortam zemini (ana sayfa + söz ekranı): kapak paleti, hareket, müziğe tepki
+    in property <image> fx-disc;
+    in property <image> fx-grain;
+    in property <bool> has-amb: false;
+    in property <color> amb-c1;
+    in property <color> amb-c2;
+    in property <color> amb-c3;
+    in property <float> beat: 0;
+    // 0 sade, 1 orta, 2 canlı
+    in-out property <int> bg-level: 1;
+    in-out property <bool> bg-motion: true;
+    in-out property <bool> bg-reactive: false;
+    // Linux'ta cava ile; diğer sistemlerde ayar gizli
+    in property <bool> can-react: false;
+    callback viz-check();
+    changed lyrics-open => { root.viz-check(); }
+    changed bg-reactive => { root.viz-check(); }
+    changed window-hidden => { root.viz-check(); }
+    // Palet yoksa vurgu renginden türet
+    out property <color> amb1: has-amb ? amb-c1 : Theme.accent;
+    out property <color> amb2: has-amb ? amb-c2 : Theme.accent.darker(0.5);
+    out property <color> amb3: has-amb ? amb-c3 : Theme.accent.brighter(0.2);
     in-out property <bool> sidebar-peek: false;
     // Şimdi Çalıyor sahnesi: true = sözler, false = büyük kapak
     in-out property <bool> lyrics-mode: true;
@@ -738,26 +760,15 @@ export component AppWindow inherits Window {
         return reject;
     }
 
-    // Kapaktan türeyen ortam ışığı
-    Rectangle {
-        Rectangle {
-            width: root.width * 1.1; height: self.width;
-            x: root.width * 0.28 - self.width / 2; y: root.height * 0.18 - self.height / 2;
-            background: @radial-gradient(circle, Theme.blob1 0%, transparent 58%);
-            animate background { duration: 500ms; }
-        }
-        Rectangle {
-            width: root.width * 1.2; height: self.width;
-            x: root.width * 0.76 - self.width / 2; y: root.height * 0.42 - self.height / 2;
-            background: @radial-gradient(circle, Theme.blob2 0%, transparent 62%);
-            animate background { duration: 500ms; }
-        }
-        Rectangle {
-            width: root.width * 0.9; height: self.width;
-            x: root.width * 0.45 - self.width / 2; y: root.height * 0.88 - self.height / 2;
-            background: @radial-gradient(circle, Theme.blob3 0%, transparent 55%);
-            animate background { duration: 500ms; }
-        }
+    // Kapaktan türeyen ortam ışığı (ana sayfa); söz ekranı açıkken görünmez, çizilmez
+    Ambience {
+        visible: !lyrics-open || lyr.y > 40px;
+        disc: fx-disc; grain: fx-grain;
+        c1: amb1; c2: amb2; c3: amb3;
+        level: [0.13, 0.22, 0.34][bg-level];
+        moving: bg-motion && playing && !window-hidden && !lyrics-open;
+        beat: bg-reactive ? beat : 0;
+        step: 11s;
     }
 
     // ---------- Ana alan ----------
@@ -1899,6 +1910,32 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
+                        Rectangle {
+                            border-radius: Theme.r-md; background: Theme.surface-1;
+                            VerticalLayout {
+                                padding: 16px; spacing: 12px;
+                                Text { text: "Arka plan ışığı"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; }
+                                Text { text: "Ana sayfada ve sözlerde, çalan şarkının kapak renklerinden süzülen yumuşak ışık."; font-size: 11.5px; color: Theme.text-muted; wrap: word-wrap; }
+                                HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    Text { text: "Yoğunluk"; width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
+                                    for name[i] in ["Sade", "Orta", "Canlı"]: PillButton { pill-height: 30px; text: name; active: bg-level == i; clicked => { bg-level = i; root.settings-changed(); } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    Text { text: "Hareket"; width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
+                                    PillButton { pill-height: 30px; text: "Süzülsün"; active: bg-motion; clicked => { bg-motion = true; root.settings-changed(); } }
+                                    PillButton { pill-height: 30px; text: "Durgun"; active: !bg-motion; clicked => { bg-motion = false; root.settings-changed(); } }
+                                }
+                                if can-react: HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    Text { text: "Müziğe tepki"; width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
+                                    PillButton { pill-height: 30px; text: "Açık"; active: bg-reactive; clicked => { bg-reactive = true; root.settings-changed(); } }
+                                    PillButton { pill-height: 30px; text: "Kapalı"; active: !bg-reactive; clicked => { bg-reactive = false; root.settings-changed(); } }
+                                    Text { text: "Baslarda ışık nabız atar (cava gerekir)"; vertical-alignment: center; font-size: 11px; color: Theme.text-muted; }
+                                }
+                            }
+                        }
                     }
 
                     if settings-tab == 1: VerticalLayout {
@@ -2271,7 +2308,7 @@ export component AppWindow inherits Window {
             if has-blur && has-now: Image {
                 width: parent.width * 1.5; height: self.width;
                 x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
-                source: now-blur; image-fit: cover; opacity: 0.85;
+                source: now-blur; image-fit: cover; opacity: 0.7;
                 transform-rotation: lyr.spin;
                 animate transform-rotation { duration: 8s; easing: linear; }
             }
@@ -2282,9 +2319,20 @@ export component AppWindow inherits Window {
                 transform-rotation: -lyr.spin * 1.6;
                 animate transform-rotation { duration: 8s; easing: linear; }
             }
+            // Kapak renklerinde süzülen ışık lekeleri (kumlanma en üstte ayrı)
+            Ambience {
+                disc: fx-disc; grain: fx-grain; show-grain: false;
+                c1: amb1; c2: amb2; c3: amb3;
+                level: [0.35, 0.5, 0.7][bg-level];
+                moving: bg-motion && lyrics-motion && playing && !window-hidden && lyrics-open;
+                beat: bg-reactive ? beat : 0;
+                step: 7s;
+            }
             // Açık kapaklarda da okunur kalsın: güçlü karartma + alt-üst gölgesi
             Rectangle { background: @linear-gradient(90deg, #090A0Df0 0%, #090A0Db8 42%, #090A0Dc8 100%); }
             Rectangle { background: @linear-gradient(180deg, #090A0D99 0%, transparent 30%, transparent 70%, #090A0Dbb 100%); }
+            // Koyu degradelerdeki basamakları dağıtan kumlanma
+            Image { width: parent.width; height: parent.height; source: fx-grain; horizontal-tiling: repeat; vertical-tiling: repeat; }
 
             // ----- Söz kipi -----
             Rectangle {

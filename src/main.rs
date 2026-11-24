@@ -7,6 +7,7 @@
 //   3. Çözücü yardımcısı ("şimdi" önceliği)                       ~3-5 sn
 //   4. Yedek: mpv'nin yt-dlp kancası                              ~8-10 sn
 
+mod ambience;
 mod art;
 mod cache;
 mod discord;
@@ -211,6 +212,8 @@ thread_local! {
     static BANNER_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
     /// Söz ekranı zemini: önceden bulanıklaştırılmış küçük kapaklar.
     static BLURS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
+    /// Kapak anahtarı → ortam zemini renkleri (küçük; kapak temizliğinde silinir)
+    static PALETTES: RefCell<HashMap<String, [Color; 3]>> = RefCell::new(HashMap::new());
     static BLUR_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
     /// Yalnız çalan şarkı için büyük kapaklar (kahraman, söz çekmecesi).
     static BIGS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
@@ -688,6 +691,8 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
 
     let blur = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.blur, art::BLUR, art::BLUR));
     cache_blur_lru(key.clone(), blur.clone());
+    let pal = a.palette.map(|(r, g, b)| Color::from_rgb_u8(r, g, b));
+    PALETTES.with(|m| m.borrow_mut().insert(key.clone(), pal));
 
     let mut now = ui.get_now();
     if ui.get_has_now() && now.key == key {
@@ -700,6 +705,20 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
         set_cover_accent(&ui, color);
         ui.set_now_blur(blur);
         ui.set_has_blur(true);
+        set_ambience(&ui, Some(pal));
+    }
+}
+
+/// Ortam zemini renkleri: kapak paleti; yoksa vurgu renginden türetilir (Slint tarafı).
+fn set_ambience(ui: &AppWindow, pal: Option<[Color; 3]>) {
+    match pal {
+        Some(p) => {
+            ui.set_amb_c1(p[0]);
+            ui.set_amb_c2(p[1]);
+            ui.set_amb_c3(p[2]);
+            ui.set_has_amb(true);
+        }
+        None => ui.set_has_amb(false),
     }
 }
 
@@ -773,6 +792,7 @@ fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
         }
         None => ui.set_has_blur(false),
     }
+    set_ambience(ui, PALETTES.with(|m| m.borrow().get(&t.key()).copied()));
     request_lyrics(ui, t);
     render_lyrics(ui);
     save_session(ui);
@@ -3751,9 +3771,11 @@ fn refresh_profile(ui: &AppWindow) {
     });
 }
 
-/// Spektrumu yalnız profil ekranı açıkken ve çalarken çalıştır.
+/// Spektrumu yalnız gerekince çalıştır: profil ekranı açıkken ya da "müziğe tepki" açık ve
+/// zemin görünürken (ana sayfa / söz ekranı), her ikisinde de yalnız çalarken.
 fn update_viz(ui: &AppWindow) {
-    let want = ui.get_view() == "profile" && ui.get_playing();
+    let zemin = ui.get_bg_reactive() && !ui.get_window_hidden() && (ui.get_lyrics_open() || ui.get_view() == "home");
+    let want = ui.get_playing() && (ui.get_view() == "profile" || zemin);
     let running = with_state(|st| st.viz.is_some());
     if want == running {
         return;
@@ -3761,6 +3783,7 @@ fn update_viz(ui: &AppWindow) {
     if !want {
         with_state(|st| st.viz = None); // Drop cava'yı kapatır
         ui.set_viz_on(false);
+        ui.set_beat(0.0);
         ui.set_spectrum(ModelRc::new(VecModel::from(vec![0.0f32; viz::BARS])));
         return;
     }
@@ -3768,9 +3791,18 @@ fn update_viz(ui: &AppWindow) {
     let weak = ui.as_weak();
     match viz::Viz::start(move |frame| {
         let _ = weak.upgrade_in_event_loop(move |ui| {
-            let m = ui.get_spectrum();
-            for (i, v) in frame.into_iter().enumerate() {
-                m.set_row_data(i, v);
+            // Bas enerjisi: en alt 4 bant; yükselişe hızlı, düşüşe yavaş tepki
+            let bass = frame.iter().take(4).copied().fold(0.0f32, f32::max);
+            let prev = ui.get_beat();
+            let b = if bass > prev { bass } else { prev * 0.82 + bass * 0.18 };
+            if (b - prev).abs() > 0.01 {
+                ui.set_beat(b.clamp(0.0, 1.0));
+            }
+            if ui.get_view() == "profile" {
+                let m = ui.get_spectrum();
+                for (i, v) in frame.into_iter().enumerate() {
+                    m.set_row_data(i, v);
+                }
             }
         });
     }) {
@@ -3820,6 +3852,9 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_theme_accent(s.theme_accent);
     ui.set_theme_backdrop(s.theme_backdrop);
     ui.set_auto_update(s.auto_update);
+    ui.set_bg_level(s.bg_level.clamp(0, 2));
+    ui.set_bg_motion(s.bg_motion);
+    ui.set_bg_reactive(s.bg_reactive && cfg!(target_os = "linux"));
     apply_theme(ui, s);
 }
 
@@ -3889,6 +3924,9 @@ fn apply_settings(ui: &AppWindow) {
         theme_accent: ui.get_theme_accent(),
         theme_backdrop: ui.get_theme_backdrop(),
         auto_update: ui.get_auto_update(),
+        bg_level: ui.get_bg_level(),
+        bg_motion: ui.get_bg_motion(),
+        bg_reactive: ui.get_bg_reactive(),
         ..prev
     };
     with_state(|st| {
@@ -4136,6 +4174,7 @@ fn hide_to_tray(ui: &AppWindow) {
     ART_ORDER.with(|q| q.borrow_mut().retain(|k| now_key.as_deref() == Some(k.as_str())));
     BANNER_ORDER.with(|q| q.borrow_mut().clear());
     BLURS.with(|m| m.borrow_mut().clear());
+    PALETTES.with(|m| m.borrow_mut().clear());
     BLUR_ORDER.with(|q| q.borrow_mut().clear());
     BIGS.with(|m| m.borrow_mut().clear());
     BIG_ORDER.with(|q| q.borrow_mut().clear());
@@ -5353,6 +5392,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(ui) = weak.upgrade() {
                 use slint::winit_030::WinitWindowAccessor;
                 ui.window().with_winit_window(|w| w.set_minimized(true));
+            }
+        }
+    });
+    // Ortam zemini görselleri (bir kez)
+    ui.set_fx_disc(Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+        &ambience::disc_rgba(),
+        ambience::DISC,
+        ambience::DISC,
+    )));
+    ui.set_fx_grain(Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+        &ambience::grain_rgba(),
+        ambience::GRAIN,
+        ambience::GRAIN,
+    )));
+    ui.set_can_react(cfg!(target_os = "linux"));
+    ui.on_viz_check({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                update_viz(&ui);
             }
         }
     });

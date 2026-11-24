@@ -10,6 +10,8 @@ pub struct Art {
     pub accent: (u8, u8, u8),
     /// Söz ekranı zemini için önceden bulanıklaştırılmış küçük kapak (BLUR x BLUR).
     pub blur: Vec<u8>,
+    /// Ortam zemini için kapaktan üç renk (yalnız `load`; diğerlerinde boş anlamında siyah)
+    pub palette: [(u8, u8, u8); 3],
 }
 
 pub const BLUR: u32 = 48;
@@ -36,9 +38,10 @@ pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
     let accent = accent_of(&img);
     // Ucuz bulanıklık: küçült, bulanıklaştır; arayüz büyütünce yumuşak görünür.
     let small = image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle);
-    let blur = image::imageops::blur(&small, 6.0).into_raw();
+    let palette = crate::ambience::palette(&small, accent);
+    let blur = image::imageops::blur(&small, 9.0).into_raw();
     let (width, height) = img.dimensions();
-    Ok(Art { rgba: img.into_raw(), width, height, accent, blur })
+    Ok(Art { rgba: img.into_raw(), width, height, accent, blur, palette })
 }
 
 /// Görseli önbellekten ya da ağdan getir (ham bayt).
@@ -82,7 +85,7 @@ pub fn load_wide(key: &str, url: &str, w: u32, h: u32) -> Result<Art, String> {
     let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
     let img = img.resize_to_fill(w, h, image::imageops::FilterType::Triangle).to_rgba8();
     let (width, height) = img.dimensions();
-    Ok(Art { rgba: img.into_raw(), width, height, accent: (0, 0, 0), blur: Vec::new() })
+    Ok(Art { rgba: img.into_raw(), width, height, accent: (0, 0, 0), blur: Vec::new(), palette: [(0, 0, 0); 3] })
 }
 
 /// Kenarlardaki neredeyse siyah satır/sütunları atlayan içerik kutusu.
@@ -211,7 +214,7 @@ pub fn load_playlist_cover(name: &str) -> Result<Art, String> {
     let img = image::open(playlist_cover_dir().join(name)).map_err(|e| e.to_string())?.to_rgba8();
     let accent = accent_of(&img);
     let (width, height) = img.dimensions();
-    Ok(Art { rgba: img.into_raw(), width, height, accent, blur: Vec::new() })
+    Ok(Art { rgba: img.into_raw(), width, height, accent, blur: Vec::new(), palette: [(0, 0, 0); 3] })
 }
 
 pub fn remove_playlist_cover(name: &str) {
