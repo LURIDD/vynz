@@ -55,6 +55,8 @@ pub struct Settings {
     pub lyrics_size: i32,
     /// 0 sola, 1 ortalı
     pub lyrics_align: i32,
+    /// Söz satır aralığı: 0 sıkı, 1 normal, 2 geniş
+    pub lyrics_spacing: i32,
     /// Hareketli kapak zemini
     pub lyrics_motion: bool,
     /// Önbellekteki şarkı bu kadar gün çalınmazsa silinir (0 = süresiz)
@@ -96,6 +98,8 @@ pub struct Settings {
     pub bg_motion: bool,
     /// Ortam zemini basla nabız atsın (Linux: cava)
     pub bg_reactive: bool,
+    /// Ortam zemininde ince kumlanma dokusu
+    pub bg_grain: bool,
 }
 
 impl Default for Settings {
@@ -111,6 +115,7 @@ impl Default for Settings {
             lyrics_style: 0,
             lyrics_size: 1,
             lyrics_align: 0,
+            lyrics_spacing: 1,
             lyrics_motion: true,
             keep_days: 30,
             lyrics_translate: 0,
@@ -132,6 +137,7 @@ impl Default for Settings {
             bg_level: 1,
             bg_motion: true,
             bg_reactive: false,
+            bg_grain: true,
         }
     }
 }

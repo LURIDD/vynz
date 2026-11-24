@@ -6455,6 +6455,7 @@ dependencies = [
  "flate2",
  "futures-lite",
  "image",
+ "libc",
  "libmpv2",
  "mpris-server",
  "open",

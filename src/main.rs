@@ -1277,14 +1277,14 @@ fn on_ended(ui: &AppWindow) {
 }
 
 thread_local! {
-    /// Mini oynatıcı penceresi ve ana pencereden durum kopyalayan zamanlayıcı
-    static MINI: RefCell<Option<(MiniWindow, Timer)>> = const { RefCell::new(None) };
+    /// Mini oynatıcı penceresi, durum zamanlayıcısı ve ana pencere bağlantısı
+    static MINI: RefCell<Option<(MiniWindow, Timer, Weak<AppWindow>)>> = const { RefCell::new(None) };
 }
 
 /// Mini oynatıcıyı aç (zaten açıksa öne getir). Durum ana pencereden 250 ms'de bir kopyalanır;
 /// düğmeler ana pencerenin geri çağrılarını kullanır (tek doğruluk kaynağı ana pencere).
 fn mini_open(ui: &AppWindow) {
-    let existing = MINI.with(|m| m.borrow().as_ref().map(|(w, _)| w.clone_strong()));
+    let existing = MINI.with(|m| m.borrow().as_ref().map(|(w, _, _)| w.clone_strong()));
     if let Some(w) = existing {
         let _ = w.show();
         return;
@@ -1311,6 +1311,10 @@ fn mini_open(ui: &AppWindow) {
         mini_close();
     });
     mini.on_dismiss(|| mini_close());
+    mini.window().on_close_requested(|| {
+        mini_close();
+        slint::CloseRequestResponse::HideWindow
+    });
     {
         let main = main.clone();
         mini.on_seek(move |t| {
@@ -1343,6 +1347,7 @@ fn mini_open(ui: &AppWindow) {
             m.set_has_art(now.has_art);
             m.set_playing(u.get_playing());
             m.set_liked(u.get_liked());
+            m.set_game_mode(u.get_game_mode());
             m.set_position(u.get_position());
             m.set_duration(u.get_duration());
             let (ut, mt) = (u.global::<Theme>(), m.global::<Theme>());
@@ -1355,14 +1360,59 @@ fn mini_open(ui: &AppWindow) {
     let t = Timer::default();
     t.start(TimerMode::Repeated, Duration::from_millis(250), sync);
     let _ = mini.show();
-    MINI.with(|m| *m.borrow_mut() = Some((mini, t)));
+    #[cfg(windows)]
+    {
+        // Windows 11'de köşe yuvarlaması DWM'e bırakılır
+        let mw = mini.as_weak();
+        Timer::single_shot(Duration::from_millis(60), move || {
+            if let Some(m) = mw.upgrade() {
+                use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                use slint::winit_030::WinitWindowAccessor;
+                use windows::Win32::Foundation::HWND;
+                use windows::Win32::Graphics::Dwm::{
+                    DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+                };
+                m.window().with_winit_window(|w| {
+                    if let Ok(handle) = w.window_handle() {
+                        if let RawWindowHandle::Win32(h) = handle.as_raw() {
+                            let hwnd = HWND(h.hwnd.get() as *mut std::ffi::c_void);
+                            let dark: u32 = 1;
+                            let round: i32 = DWMWCP_ROUND.0;
+                            unsafe {
+                                let _ = DwmSetWindowAttribute(
+                                    hwnd,
+                                    DWMWA_USE_IMMERSIVE_DARK_MODE,
+                                    (&dark as *const u32).cast(),
+                                    std::mem::size_of::<u32>() as u32,
+                                );
+                                let _ = DwmSetWindowAttribute(
+                                    hwnd,
+                                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                                    (&round as *const i32).cast(),
+                                    std::mem::size_of::<i32>() as u32,
+                                );
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    }
+    MINI.with(|m| *m.borrow_mut() = Some((mini, t, main)));
 }
 
 fn mini_close() {
     // Bırakmayı olay döngüsüne ertele: kapatma düğmesinin kendi geri çağrısı içindeyiz
     let _ = slint::invoke_from_event_loop(|| {
-        if let Some((w, _t)) = MINI.with(|m| m.borrow_mut().take()) {
+        if let Some((w, _t, main)) = MINI.with(|m| m.borrow_mut().take()) {
             let _ = w.hide();
+            // Oyun modundayken mini kapatılırsa ana pencere görünmez kalmasın
+            if let Some(u) = main.upgrade() {
+                if u.get_game_mode() {
+                    set_game_mode(&u, false);
+                    show_from_tray(&u);
+                }
+            }
         }
     });
 }
@@ -1372,7 +1422,7 @@ thread_local! {
     static GAME_TICK: RefCell<Option<Timer>> = const { RefCell::new(None) };
 }
 
-/// Oyun modu: sade sayfa + düşük kaynak. Çıkınca kapaklar diskten geri gelir.
+/// Oyun modu: mini oynatıcıyı aç, belleği boşalt ve ana pencereyi gizle. Çıkınca kapaklar geri gelir.
 fn set_game_mode(ui: &AppWindow, on: bool) {
     if on == ui.get_game_mode() {
         return;
@@ -1383,7 +1433,23 @@ fn set_game_mode(ui: &AppWindow, on: bool) {
         ui.set_sleep_pop(false);
         ui.set_menu_open(false);
         ui.set_drawer_open(false);
+        mini_open(ui);
         release_ram(ui);
+        // winit set_visible Wayland'de etkisiz; Slint hide() yüzeyi gerçekten kaldırır.
+        // Mini açık olduğu için olay döngüsü sürer; geri dönüş show_from_tray (ui.show()).
+        let _ = ui.hide();
+        #[cfg(all(target_os = "linux", target_env = "gnu"))]
+        {
+            // Ayırıcıdaki boş sayfaları işletim sistemine geri ver (Slint dokuları geç bırakabilir)
+            unsafe {
+                libc::malloc_trim(0);
+            }
+            Timer::single_shot(Duration::from_millis(500), || {
+                unsafe {
+                    libc::malloc_trim(0);
+                }
+            });
+        }
         let weak = ui.as_weak();
         let t = Timer::default();
         let tick = move || {
@@ -3986,14 +4052,35 @@ fn update_viz(ui: &AppWindow) {
     }
     ui.set_spectrum(ModelRc::new(VecModel::from(vec![0.0f32; viz::BARS])));
     let weak = ui.as_weak();
+    struct BeatState {
+        m: f32,
+        v: f32,
+        beat: f32,
+    }
+    let beat_st = Mutex::new(BeatState { m: 0.0, v: 0.0, beat: 0.0 });
     match viz::Viz::start(move |frame| {
+        // Uyarlamalı vuruş: 0..3 bas (1.0) + 4..7 vuruş/trampet (0.6), ~2 sn kayan ortalama/sapma
+        let mut sum = 0.0f32;
+        let mut wsum = 0.0f32;
+        for (i, &x) in frame.iter().take(8).enumerate() {
+            let w = if i < 4 { 1.0 } else { 0.6 };
+            sum += x * w;
+            wsum += w;
+        }
+        let e = if wsum > 0.0 { sum / wsum } else { 0.0 };
+        let beat = {
+            let mut st = beat_st.lock().unwrap();
+            const ALPHA: f32 = 0.03;
+            let diff = e - st.m;
+            let onset = (diff / (2.0 * st.v.sqrt() + 0.02)).clamp(0.0, 1.0);
+            st.m += ALPHA * diff;
+            st.v = ((1.0 - ALPHA) * st.v + ALPHA * diff * diff).max(0.0);
+            st.beat = if onset > st.beat { onset } else { st.beat * 0.85 };
+            st.beat
+        };
         let _ = weak.upgrade_in_event_loop(move |ui| {
-            // Bas enerjisi: en alt 4 bant; yükselişe hızlı, düşüşe yavaş tepki
-            let bass = frame.iter().take(4).copied().fold(0.0f32, f32::max);
-            let prev = ui.get_beat();
-            let b = if bass > prev { bass } else { prev * 0.82 + bass * 0.18 };
-            if (b - prev).abs() > 0.01 {
-                ui.set_beat(b.clamp(0.0, 1.0));
+            if (beat - ui.get_beat()).abs() > 0.01 {
+                ui.set_beat(beat);
             }
             if ui.get_view() == "profile" {
                 let m = ui.get_spectrum();
@@ -4039,6 +4126,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_lyrics_style(s.lyrics_style);
     ui.set_lyrics_size(s.lyrics_size);
     ui.set_lyrics_align(s.lyrics_align);
+    ui.set_lyrics_spacing(s.lyrics_spacing.clamp(0, 2));
     ui.set_lyrics_motion(s.lyrics_motion);
     ui.set_lyrics_translate(s.lyrics_translate);
     ui.set_keep_index(s.keep_index());
@@ -4052,6 +4140,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_bg_level(s.bg_level.clamp(0, 2));
     ui.set_bg_motion(s.bg_motion);
     ui.set_bg_reactive(s.bg_reactive && cfg!(target_os = "linux"));
+    ui.set_bg_grain(s.bg_grain);
     apply_theme(ui, s);
 }
 
@@ -4112,6 +4201,7 @@ fn apply_settings(ui: &AppWindow) {
         lyrics_style: ui.get_lyrics_style(),
         lyrics_size: ui.get_lyrics_size(),
         lyrics_align: ui.get_lyrics_align(),
+        lyrics_spacing: ui.get_lyrics_spacing(),
         lyrics_motion: ui.get_lyrics_motion(),
         lyrics_translate: ui.get_lyrics_translate(),
         keep_days: settings::KEEP_DAYS[ui.get_keep_index().clamp(0, 3) as usize],
@@ -4124,6 +4214,7 @@ fn apply_settings(ui: &AppWindow) {
         bg_level: ui.get_bg_level(),
         bg_motion: ui.get_bg_motion(),
         bg_reactive: ui.get_bg_reactive(),
+        bg_grain: ui.get_bg_grain(),
         ..prev
     };
     with_state(|st| {
