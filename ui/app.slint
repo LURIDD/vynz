@@ -5,10 +5,10 @@ import "fonts/InstrumentSerif-Regular.ttf";
 import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, Ambience, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider, DlItem } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, Ambience, Motion, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider, DlItem } from "parts.slint";
 export { Nav }
 
-export { Theme, Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
+export { Theme, Motion, Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
 
 // Başlıklı, sayfalı yatay raf: üzerine gelince oklar belirir, şerit kayar.
 // style: 0 şarkı kartı, 1 hızlı erişim kutucuğu, 2 liste/albüm, 3 sanatçı, 4 ruh hâli
@@ -394,6 +394,11 @@ export component AppWindow inherits Window {
     property <bool> eq-grab;
     // Alt çubuktaki hızlı ekolayzır paneli
     in-out property <bool> eq-pop: false;
+    // Oyun modu: animasyonlar durur, kapaklar bellekten atılır, sade bir sayfa görünür
+    in property <bool> game-mode: false;
+    in property <string> game-mem: "";
+    callback game-mode-set(bool);
+    callback mini-open();
     // Uyku zamanlayıcısı: kalan saniye (yalnız çalarken azalır) ya da "şarkı bitince"
     in-out property <int> sleep-left: 0;
     in-out property <bool> sleep-eot: false;
@@ -760,6 +765,11 @@ export component AppWindow inherits Window {
             return accept;
         }
         if (e.text == Key.F11) { root.toggle-fullscreen(); return accept; }
+        if (e.modifiers.control && (e.text == "g" || e.text == "G")) { root.game-mode-set(!game-mode); return accept; }
+        if (game-mode) {
+            if (e.text == " ") { root.toggle-play(); return accept; }
+            return reject;
+        }
         if (search-input.has-focus || create-pl-open || pl-rename-open || pl-input-focus || pl-pick-open) { return reject; }
         if (e.text == "/") { search-input.focus(); return accept; }
         if (e.text == " ") { root.toggle-play(); return accept; }
@@ -782,7 +792,7 @@ export component AppWindow inherits Window {
 
     // Kapaktan türeyen ortam ışığı (ana sayfa); söz ekranı açıkken görünmez, çizilmez
     Ambience {
-        visible: !lyrics-open || lyr.y > 40px;
+        visible: !game-mode && (!lyrics-open || lyr.y > 40px);
         disc: fx-disc; grain: fx-grain;
         c1: amb1; c2: amb2; c3: amb3;
         level: [0.13, 0.22, 0.34][bg-level];
@@ -793,6 +803,8 @@ export component AppWindow inherits Window {
 
     // ---------- Ana alan ----------
     main := Rectangle {
+        // oyun modunda alttaki ağaç çizilmesin (her konum güncellemesinde yeniden çizim pahalı)
+        visible: !game-mode;
         x: sidebar-w; y: 0; width: root.width - sidebar-w; height: root.height;
 
         // Üst çubuk: arama ortada, kuyruk sağda (Windows'ta boş alandan pencere sürüklenir)
@@ -2285,6 +2297,7 @@ export component AppWindow inherits Window {
 
     // ---------- Söz çekmecesi: her zaman tam genişlikte açılır, sol bar otomatik gizlenir ----------
     lyr := Rectangle {
+        visible: !game-mode;
         property <string> fam: LyricStyle.families[lyrics-style];
         property <int> wgt: LyricStyle.weights[lyrics-style];
         property <length> fsz: LyricStyle.size(lyrics-style, lyrics-size);
@@ -2872,6 +2885,7 @@ export component AppWindow inherits Window {
 
     // ---------- Kenar çubuğu (overlay; lyrics açılınca sola yumuşakça gizlenir) ----------
     Rectangle {
+        visible: !game-mode;
         x: (!lyrics-open || sidebar-peek) ? 0px : -sidebar-w - 8px;
         y: 0; width: sidebar-w; height: root.height;
         animate x { duration: 220ms; easing: ease-out; }
@@ -3077,6 +3091,8 @@ export component AppWindow inherits Window {
             Rectangle { height: 6px; }
 
             // Alta sabitlenmiş Profil + Ayarlar
+            NavButton { icon: Icons.gamepad; label: "Oyun modu"; compact: compact; active: game-mode; clicked => { root.game-mode-set(true); } }
+            NavButton { icon: Icons.pip; label: "Mini oynatıcı"; compact: compact; clicked => { root.mini-open(); } }
             NavButton { icon: Icons.user; label: "Profil"; compact: compact; active: view == "profile"; clicked => { root.go("profile"); } }
             NavButton { icon: Icons.settings; label: "Ayarlar"; compact: compact; active: view == "settings"; clicked => { root.go("settings"); } }
         }
@@ -3086,6 +3102,7 @@ export component AppWindow inherits Window {
     // Sıralama sürükle-bırak ile: satırı tut, 6 px'ten fazla kaydırınca sürükleme başlar,
     // bırakınca araya girer. Tıklama (sürüklemeden) çalar; × kuyruktan çıkarır.
     queue-drawer := Rectangle {
+        visible: !game-mode;
         property <int> drag-from: -1;
         property <int> drag-to: -1;
         property <bool> drag-moved;
@@ -3263,7 +3280,7 @@ export component AppWindow inherits Window {
         height: Theme.player-height;
         y: (lyrics-open && lyrics-mode) ? root.height + 24px : root.height - self.height - Theme.player-offset;
         opacity: (lyrics-open && lyrics-mode) ? 0 : 1;
-        visible: self.opacity > 0;
+        visible: self.opacity > 0 && !game-mode;
         animate y, opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
         border-radius: Theme.r-lg;
         background: Theme.floating;
@@ -3367,6 +3384,83 @@ export component AppWindow inherits Window {
                 live: true; wheel: true;
                 value: volume;
                 seek(f) => { volume = f; root.set-volume(f); }
+            }
+        }
+    }
+
+    // ---------- Oyun modu sayfası (her şeyin üstünde, pencere düğmeleri hariç) ----------
+    if game-mode: Rectangle {
+        background: Theme.canvas;
+        TouchArea { }
+        // Windows'ta üst şeritten pencere sürüklenebilsin
+        if is-windows: TouchArea {
+            x: 0; y: 0; width: parent.width - 150px; height: 40px;
+            pointer-event(e) => {
+                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) { root.win-drag(); }
+            }
+            double-clicked => { root.win-maximize(); }
+        }
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                alignment: center;
+                VerticalLayout {
+                    width: Math.min(440px, root.width - 48px);
+                    spacing: 18px;
+                    HorizontalLayout {
+                        spacing: 10px; alignment: start;
+                        Icon { width: 22px; height: 22px; y: 1px; commands: Icons.gamepad; stroke: Theme.accent; stroke-width: 1.8px; }
+                        Text { text: "Oyun modu"; font-family: Theme.display; font-size: 22px; font-weight: 800; color: Theme.text-primary; vertical-alignment: center; }
+                    }
+                    Text {
+                        wrap: word-wrap; font-size: 12.5px; color: Theme.text-muted;
+                        text: "Müzik çalmaya devam ediyor. Animasyonlar durdu, kapaklar bellekten boşaltıldı; işlemci ve bellek oyuna kalıyor." + (game-mem != "" ? "\n" + game-mem : "");
+                    }
+                    Rectangle {
+                        border-radius: Theme.r-lg; background: Theme.surface-1;
+                        border-width: 1px; border-color: Theme.border;
+                        height: gm-card.preferred-height;
+                        gm-card := VerticalLayout {
+                            padding: 18px; spacing: 14px;
+                            HorizontalLayout {
+                                spacing: 14px;
+                                Cover {
+                                    width: 72px; height: 72px; radius: Theme.r-md;
+                                    art: now.art; has-art: has-now && now.has-art;
+                                }
+                                VerticalLayout {
+                                    alignment: center; spacing: 4px;
+                                    Text { text: has-now ? now.title : "Çalan bir şey yok"; font-size: 16px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
+                                    Text { text: has-now ? now.artist : ""; font-size: 12.5px; color: Theme.text-secondary; overflow: elide; }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                Scrubber {
+                                    enabled: has-now && duration > 0;
+                                    value: duration > 0 ? position / duration : 0;
+                                    seek(f) => { root.seek(f * duration); }
+                                }
+                                HorizontalLayout {
+                                    Text { text: Fmt.time(position); font-family: Theme.mono; font-size: 10.5px; color: Theme.text-muted; }
+                                    Text { text: Fmt.time(duration); horizontal-alignment: right; font-family: Theme.mono; font-size: 10.5px; color: Theme.text-muted; }
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: center; spacing: 14px;
+                                IconButton { icon: Icons.skip-back; clicked => { root.prev(); } }
+                                IconButton { icon: playing ? Icons.pause : Icons.play; primary: true; filled: true; clicked => { root.toggle-play(); } }
+                                IconButton { icon: Icons.skip-forward; clicked => { root.next(); } }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px; alignment: start;
+                        PillButton { pill-height: 34px; text: "Oyun modundan çık"; primary: true; clicked => { root.game-mode-set(false); } }
+                        PillButton { pill-height: 34px; text: "Mini oynatıcı"; clicked => { root.mini-open(); } }
+                    }
+                    Text { text: "Kısayol: Ctrl+G · Boşluk: oynat/duraklat"; font-size: 11px; color: Theme.text-muted; }
+                }
             }
         }
     }

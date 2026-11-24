@@ -398,6 +398,11 @@ export component Cover inherits Rectangle {
     }
 }
 
+// Oyun modu / gizli pencere: süreklilik isteyen küçük animasyonlar durur
+export global Motion {
+    in-out property <bool> paused: false;
+}
+
 // Çalan şarkı göstergesi. Her karede değil, saniyede ~4 kez güncellenir (işlemci için).
 export component EqBars inherits Rectangle {
     in property <bool> running: true;
@@ -406,7 +411,7 @@ export component EqBars inherits Rectangle {
     height: 14px;
     Timer {
         interval: 260ms;
-        running: root.running;
+        running: root.running && !Motion.paused;
         triggered => { root.tick += 1; }
     }
     for i in 3: Rectangle {

@@ -1277,6 +1277,66 @@ fn on_ended(ui: &AppWindow) {
 }
 
 thread_local! {
+    /// Oyun modunda bellek göstergesini tazeleyen zamanlayıcı
+    static GAME_TICK: RefCell<Option<Timer>> = const { RefCell::new(None) };
+}
+
+/// Oyun modu: sade sayfa + düşük kaynak. Çıkınca kapaklar diskten geri gelir.
+fn set_game_mode(ui: &AppWindow, on: bool) {
+    if on == ui.get_game_mode() {
+        return;
+    }
+    ui.set_game_mode(on);
+    if on {
+        ui.set_eq_pop(false);
+        ui.set_sleep_pop(false);
+        ui.set_menu_open(false);
+        ui.set_drawer_open(false);
+        release_ram(ui);
+        let weak = ui.as_weak();
+        let t = Timer::default();
+        let tick = move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_game_mem(own_memory_text().into());
+            }
+        };
+        tick();
+        t.start(TimerMode::Repeated, Duration::from_secs(5), tick);
+        GAME_TICK.with(|g| *g.borrow_mut() = Some(t));
+    } else {
+        GAME_TICK.with(|g| g.borrow_mut().take());
+        ui.set_game_mem("".into());
+        ui.set_window_hidden(false);
+        ui.global::<Motion>().set_paused(false);
+        reload_art(ui);
+    }
+    update_viz(ui);
+}
+
+/// "Vynz şu an ~N MB kullanıyor" (Linux: /proc; diğerlerinde boş)
+fn own_memory_text() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(s) = std::fs::read_to_string("/proc/self/status") else { return String::new() };
+        // RssAnon: uygulamanın kendi belleği (paylaşılan kütüphaneler hariç)
+        let kb: u64 = s
+            .lines()
+            .find(|l| l.starts_with("RssAnon:"))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        if kb == 0 {
+            return String::new();
+        }
+        format!("Vynz şu an yaklaşık {} MB bellek kullanıyor.", kb / 1024)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        String::new()
+    }
+}
+
+thread_local! {
     /// Uyku zamanlayıcısının sesi kısma zamanlayıcısı (çalışırken canlı tutulur)
     static SLEEP_FADE: RefCell<Option<Timer>> = const { RefCell::new(None) };
 }
@@ -4214,7 +4274,16 @@ fn on_mpris(ui: &AppWindow, a: mpris::Act) {
 /// Pencereyi sistem tepsisine gizle ve düşük RAM (oyun) moduna geç.
 #[allow(dead_code)]
 fn hide_to_tray(ui: &AppWindow) {
+    release_ram(ui);
+    use slint::winit_030::WinitWindowAccessor;
+    ui.window().with_winit_window(|w| w.set_visible(false));
+}
+
+/// Düşük kaynak: animasyonları durdur, çalan dışındaki kapakları bellekten at, spektrumu kapat.
+/// Tepsiye inerken ve oyun modunda kullanılır.
+fn release_ram(ui: &AppWindow) {
     ui.set_window_hidden(true);
+    ui.global::<Motion>().set_paused(true);
     let now_key = if ui.get_has_now() { Some(ui.get_now().key.to_string()) } else { None };
     ARTS.with(|m| m.borrow_mut().retain(|k, _| now_key.as_deref() == Some(k.as_str())));
     ART_ORDER.with(|q| q.borrow_mut().retain(|k| now_key.as_deref() == Some(k.as_str())));
@@ -4232,8 +4301,6 @@ fn hide_to_tray(ui: &AppWindow) {
         st.viz = None;
     });
     ui.set_viz_on(false);
-    use slint::winit_030::WinitWindowAccessor;
-    ui.window().with_winit_window(|w| w.set_visible(false));
     #[cfg(target_os = "windows")]
     unsafe {
         use windows::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};
@@ -4244,7 +4311,19 @@ fn hide_to_tray(ui: &AppWindow) {
 /// Tepsiden geri dön: pencereyi göster ve kapakları disk önbelleğinden hızla doldur.
 #[allow(dead_code)]
 fn show_from_tray(ui: &AppWindow) {
+    if ui.get_game_mode() {
+        // oyun modundayken tepsiden açılırsa oyun sayfası görünür kalsın
+        use slint::winit_030::WinitWindowAccessor;
+        let _ = ui.show();
+        ui.window().with_winit_window(|w| {
+            w.set_visible(true);
+            w.set_minimized(false);
+            w.focus_window();
+        });
+        return;
+    }
     ui.set_window_hidden(false);
+    ui.global::<Motion>().set_paused(false);
     use slint::winit_030::WinitWindowAccessor;
     let _ = ui.show();
     ui.window().with_winit_window(|w| {
@@ -4252,6 +4331,22 @@ fn show_from_tray(ui: &AppWindow) {
         w.set_minimized(false);
         w.focus_window();
     });
+    reload_art(ui);
+}
+
+/// Bellekten atılan kapakları disk önbelleğinden yeniden iste (ana sayfa rafları + çalan).
+fn reload_art(ui: &AppWindow) {
+    if ui.get_has_now() {
+        let key = ui.get_now().key.to_string();
+        with_state(|st| {
+            if let Some(t) = st.index.and_then(|i| st.queue.get(i)).filter(|t| t.key() == key).cloned() {
+                // küçük kapak bulanık zemin + paleti getirir; büyük kapak geri gelince küçüğün yerini alır
+                st.requested.remove(&key);
+                request_art(st, &t);
+                request_big(st, &t);
+            }
+        });
+    }
     with_state(|st| {
         let shelves = st.shelves.clone();
         for s in &shelves {
@@ -5469,6 +5564,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move || {
             if let Some(ui) = weak.upgrade() {
                 update_viz(&ui);
+            }
+        }
+    });
+    ui.on_game_mode_set({
+        let weak = weak.clone();
+        move |on| {
+            if let Some(ui) = weak.upgrade() {
+                set_game_mode(&ui, on);
             }
         }
     });
