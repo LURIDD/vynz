@@ -26,6 +26,7 @@ mod recommend;
 mod resolve;
 mod runtime;
 mod settings;
+mod single;
 mod sources;
 mod stats;
 mod tray;
@@ -4667,7 +4668,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Güncellemeden sonra yeniden açıldıysak eski süreç kapanana kadar bekle (MPRIS adı vb.).
     updater::wait_for_parent();
     updater::cleanup_old();
+    // Zaten açıksa onu öne getir ve çık (güncelleme yeniden açılışı eski süreci yukarıda bekler)
+    if single::enabled() && single::signal_existing() {
+        return Ok(());
+    }
     let ui = AppWindow::new()?;
+    if single::enabled() {
+        let w = ui.as_weak();
+        single::listen(move || {
+            let _ = w.upgrade_in_event_loop(|ui| {
+                // Tepside ya da mini oynatıcıdaysa ana pencereyi getir
+                show_from_tray(&ui);
+                mini_close();
+            });
+        });
+    }
     // Wayland app_id. Needs the platform (so after AppWindow::new) but must come before
     // the native window is created on first show. Without it the window has an empty
     // class and docks cannot match it to vynz.desktop.
