@@ -213,11 +213,14 @@ thread_local! {
     static ARTS: RefCell<HashMap<String, (Image, Color)>> = RefCell::new(HashMap::new());
     static ART_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
     static BANNER_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
-    /// Söz ekranı zemini: önceden bulanıklaştırılmış küçük kapaklar.
+    /// Söz ekranı ve arka plan zemini: önceden bulanıklaştırılmış kapaklar.
     static BLURS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
+    /// Sıvı katman ve hale için radyal eriyen ikinci bulanık kapaklar.
+    static BLUR2S: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
     /// Kapak anahtarı → ortam zemini renkleri (küçük; kapak temizliğinde silinir)
     static PALETTES: RefCell<HashMap<String, [Color; 3]>> = RefCell::new(HashMap::new());
     static BLUR_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
+    static BLUR2_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
     /// Yalnız çalan şarkı için büyük kapaklar (kahraman, söz çekmecesi).
     static BIGS: RefCell<HashMap<String, Image>> = RefCell::new(HashMap::new());
     /// Listelere özel kapaklar (dosya adı -> görüntü, vurgu); liste sayısı kadar, ~400 KB/adet.
@@ -267,6 +270,25 @@ fn cache_blur_lru(key: String, img: Image) {
         let mut map = m.borrow_mut();
         let existed = map.insert(key.clone(), img).is_some();
         BLUR_ORDER.with(|o| {
+            let mut q = o.borrow_mut();
+            if existed {
+                q.retain(|k| k != &key);
+            }
+            q.push_back(key);
+            while q.len() > MAX_BLURS_RAM {
+                if let Some(old) = q.pop_front() {
+                    map.remove(&old);
+                }
+            }
+        });
+    });
+}
+
+fn cache_blur2_lru(key: String, img: Image) {
+    BLUR2S.with(|m| {
+        let mut map = m.borrow_mut();
+        let existed = map.insert(key.clone(), img).is_some();
+        BLUR2_ORDER.with(|o| {
             let mut q = o.borrow_mut();
             if existed {
                 q.retain(|k| k != &key);
@@ -695,6 +717,8 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
 
     let blur = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.blur, art::BLUR, art::BLUR));
     cache_blur_lru(key.clone(), blur.clone());
+    let blur2 = Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&a.blur2, art::BLUR, art::BLUR));
+    cache_blur2_lru(key.clone(), blur2.clone());
     let pal = a.palette.map(|(r, g, b)| Color::from_rgb_u8(r, g, b));
     PALETTES.with(|m| m.borrow_mut().insert(key.clone(), pal));
 
@@ -709,6 +733,8 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
         set_cover_accent(&ui, color);
         ui.set_now_blur(blur);
         ui.set_has_blur(true);
+        ui.set_now_blur2(blur2);
+        ui.set_has_blur2(true);
         set_ambience(&ui, Some(pal));
     }
 }
@@ -822,6 +848,13 @@ fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
             ui.set_has_blur(true);
         }
         None => ui.set_has_blur(false),
+    }
+    match BLUR2S.with(|b| b.borrow().get(&t.key()).cloned()) {
+        Some(b) => {
+            ui.set_now_blur2(b);
+            ui.set_has_blur2(true);
+        }
+        None => ui.set_has_blur2(false),
     }
     set_ambience(ui, PALETTES.with(|m| m.borrow().get(&t.key()).copied()));
     request_lyrics(ui, t);
@@ -4203,7 +4236,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_theme_accent(s.theme_accent);
     ui.set_theme_backdrop(s.theme_backdrop);
     ui.set_auto_update(s.auto_update);
-    ui.set_bg_style(s.bg_style.clamp(0, 2));
+    ui.set_bg_style(s.bg_style.clamp(0, 4));
     ui.set_bg_level(s.bg_level.clamp(0, 2));
     ui.set_bg_motion(s.bg_motion);
     ui.set_bg_reactive(s.bg_reactive && cfg!(target_os = "linux"));
@@ -4280,7 +4313,7 @@ fn apply_settings(ui: &AppWindow) {
         theme_accent: ui.get_theme_accent(),
         theme_backdrop: ui.get_theme_backdrop(),
         auto_update: ui.get_auto_update(),
-        bg_style: ui.get_bg_style().clamp(0, 2),
+        bg_style: ui.get_bg_style().clamp(0, 4),
         bg_level: ui.get_bg_level(),
         bg_motion: ui.get_bg_motion(),
         bg_reactive: ui.get_bg_reactive(),
@@ -4543,8 +4576,10 @@ fn release_ram(ui: &AppWindow) {
     ART_ORDER.with(|q| q.borrow_mut().retain(|k| now_key.as_deref() == Some(k.as_str())));
     BANNER_ORDER.with(|q| q.borrow_mut().clear());
     BLURS.with(|m| m.borrow_mut().clear());
+    BLUR2S.with(|m| m.borrow_mut().clear());
     PALETTES.with(|m| m.borrow_mut().clear());
     BLUR_ORDER.with(|q| q.borrow_mut().clear());
+    BLUR2_ORDER.with(|q| q.borrow_mut().clear());
     BIGS.with(|m| m.borrow_mut().clear());
     BIG_ORDER.with(|q| q.borrow_mut().clear());
     with_state(|st| {

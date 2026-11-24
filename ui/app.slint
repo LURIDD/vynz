@@ -5,7 +5,7 @@ import "fonts/InstrumentSerif-Regular.ttf";
 import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, Ambience, CoverFlow, Motion, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider, DlItem } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, Ambience, CoverBg, HaloGlow, Motion, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider, DlItem } from "parts.slint";
 export { Nav }
 
 export { Theme, Motion, Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
@@ -318,6 +318,120 @@ component SettingRow inherits Rectangle {
     }
 }
 
+// Görünümünü seç adımındaki arka plan stili kartı (gerçek bileşenin küçük önizlemesi)
+component BgStyleCard inherits VerticalLayout {
+    in property <int> style-id;
+    in property <string> name;
+    in property <string> desc;
+    in property <bool> selected;
+    in property <image> blur-a;
+    in property <image> blur-b;
+    in property <bool> blur-has-a;
+    in property <bool> blur-has-b;
+    in property <bool> blur-slot-b;
+    in property <bool> has-blur;
+    in property <image> blur2-a;
+    in property <image> blur2-b;
+    in property <bool> blur2-has-a;
+    in property <bool> blur2-has-b;
+    in property <bool> blur2-slot-b;
+    in property <bool> has-blur2;
+    in property <image> disc;
+    in property <image> grain;
+    in property <bool> show-grain;
+    in property <color> c1;
+    in property <color> c2;
+    in property <color> c3;
+    in property <image> d1;
+    in property <image> d2;
+    in property <image> d3;
+    in property <float> t;
+    in property <int> level-idx;
+    callback picked();
+
+    horizontal-stretch: 1;
+    spacing: 8px;
+    alignment: center;
+    Rectangle {
+        height: 112px;
+        border-radius: Theme.r-lg;
+        clip: true;
+        background: Theme.canvas;
+        border-width: root.selected ? 2px : 1px;
+        border-color: root.selected ? Theme.accent : Theme.border;
+        if root.style-id == 0 || root.style-id == 3: CoverBg {
+            blur-a: root.blur-a; blur-b: root.blur-b;
+            has-a: root.blur-has-a; has-b: root.blur-has-b; slot-b: root.blur-slot-b;
+            has-blur: root.has-blur;
+            blur2-a: root.blur2-a; blur2-b: root.blur2-b;
+            has2-a: root.blur2-has-a; has2-b: root.blur2-has-b; slot2-b: root.blur2-slot-b;
+            has-blur2: root.has-blur2;
+            liquid: root.style-id == 3;
+            lyrics: false;
+            c1: root.c1; c2: root.c2; c3: root.c3;
+            t: root.t;
+            level: [0.45, 0.60, 0.75][root.level-idx];
+        }
+        if root.style-id == 1: Ambience {
+            disc: root.disc; grain: root.grain; show-grain: false;
+            c1: root.c1; c2: root.c2; c3: root.c3;
+            d1: root.d1; d2: root.d2; d3: root.d3;
+            t: root.t;
+            level: [0.35, 0.55, 0.78][root.level-idx];
+        }
+        if root.style-id == 2: Rectangle {
+            background: @linear-gradient(180deg, root.c1.with-alpha([0.2, 0.34, 0.48][root.level-idx]) 0%, Theme.canvas 82%);
+        }
+        if root.show-grain: Image {
+            width: parent.width; height: parent.height;
+            source: root.grain; horizontal-tiling: repeat; vertical-tiling: repeat;
+        }
+        // Küçük arayüz ipucu (kapak + başlık çubukları); Hale (4) modunda ışık kapağın arkasından taşar
+        Rectangle {
+            x: 16px; y: parent.height - 48px; width: 34px; height: 34px;
+            if root.style-id == 4 && root.has-blur2: HaloGlow {
+                blur2-a: root.blur2-a; blur2-b: root.blur2-b;
+                has-a: root.blur2-has-a; has-b: root.blur2-has-b; slot-b: root.blur2-slot-b;
+                t: root.t;
+                level: [0.60, 0.75, 0.90][root.level-idx];
+            }
+            if root.style-id == 4 && !root.has-blur2: Rectangle {
+                width: parent.width * 2.6; height: parent.height * 2.6;
+                x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                background: @radial-gradient(circle, root.c1.with-alpha([0.50, 0.68, 0.85][root.level-idx]) 0%, transparent 68%);
+            }
+            Rectangle {
+                width: parent.width; height: parent.height;
+                border-radius: 7px; background: #ffffff22;
+            }
+        }
+        Rectangle {
+            x: 58px; y: parent.height - 41px; width: 84px; height: 7px;
+            border-radius: 3.5px; background: #ffffff44;
+        }
+        Rectangle {
+            x: 58px; y: parent.height - 27px; width: 52px; height: 5px;
+            border-radius: 2.5px; background: #ffffff26;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.picked(); }
+        }
+    }
+    VerticalLayout {
+        spacing: 2px;
+        Text {
+            text: root.name; horizontal-alignment: center;
+            font-size: 13.5px; font-weight: 700;
+            color: root.selected ? Theme.accent : Theme.text-primary;
+        }
+        Text {
+            text: root.desc; horizontal-alignment: center;
+            font-size: 11px; color: Theme.text-muted; wrap: word-wrap;
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     in property <string> window-title: "vynz";
     title: window-title;
@@ -545,8 +659,8 @@ export component AppWindow inherits Window {
     in property <color> amb-c2;
     in property <color> amb-c3;
     in property <float> beat: 0;
-    // 0 kapak akışı, 1 renk lekeleri, 2 sade
-    in-out property <int> bg-style: 1;
+    // 0 kapak, 1 renk lekeleri, 2 sade, 3 sıvı kapak, 4 hale
+    in-out property <int> bg-style: 0;
     // 0 sade, 1 orta, 2 canlı
     in-out property <int> bg-level: 1;
     in-out property <bool> bg-motion: true;
@@ -594,6 +708,41 @@ export component AppWindow inherits Window {
     in property <float> lyric-offset;
     in property <image> now-blur;
     in property <bool> has-blur;
+    in property <image> now-blur2;
+    in property <bool> has-blur2;
+    // Şarkı geçişinde 0/3/4 için A/B çapraz solma yuvaları
+    property <image> blur-a;
+    property <image> blur-b;
+    property <bool> blur-has-a: false;
+    property <bool> blur-has-b: false;
+    property <bool> blur-slot-b: false;
+    changed now-blur => {
+        if (blur-slot-b) {
+            blur-a = now-blur;
+            blur-has-a = true;
+            blur-slot-b = false;
+        } else {
+            blur-b = now-blur;
+            blur-has-b = true;
+            blur-slot-b = true;
+        }
+    }
+    property <image> blur2-a;
+    property <image> blur2-b;
+    property <bool> blur2-has-a: false;
+    property <bool> blur2-has-b: false;
+    property <bool> blur2-slot-b: false;
+    changed now-blur2 => {
+        if (blur2-slot-b) {
+            blur2-a = now-blur2;
+            blur2-has-a = true;
+            blur2-slot-b = false;
+        } else {
+            blur2-b = now-blur2;
+            blur2-has-b = true;
+            blur2-slot-b = true;
+        }
+    }
     callback lyric-shift(float);
 
     // Kaydedilen listeler
@@ -814,18 +963,21 @@ export component AppWindow inherits Window {
         visible: !game-mode && (!lyrics-open || lyr.y > 40px);
         clip: true;
 
-        if bg-style == 0: CoverFlow {
-            blur: now-blur; has-blur: has-blur && has-now;
-            disc: fx-disc; grain: fx-grain; show-grain: false;
-            c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
+        if bg-style == 0 || bg-style == 3: CoverBg {
+            blur-a: blur-a; blur-b: blur-b;
+            has-a: blur-has-a; has-b: blur-has-b; slot-b: blur-slot-b;
+            has-blur: has-blur && has-now;
+            blur2-a: blur2-a; blur2-b: blur2-b;
+            has2-a: blur2-has-a; has2-b: blur2-has-b; slot2-b: blur2-slot-b;
+            has-blur2: has-blur2 && has-now;
+            liquid: bg-style == 3;
+            lyrics: false;
+            c1: amb1; c2: amb2; c3: amb3;
             t: bg-motion ? amb-t : 0;
-            level: [0.25, 0.35, 0.5][bg-level];
+            level: [0.45, 0.60, 0.75][bg-level];
             beat: bg-reactive ? beat : 0;
         }
-        if bg-style == 0: Rectangle {
-            background: @linear-gradient(180deg, #090A0D78 0%, #090A0Db8 55%, #090A0De6 100%);
-        }
-        if bg-style == 0 && bg-grain: Image {
+        if (bg-style == 0 || bg-style == 3 || bg-style == 4) && bg-grain: Image {
             width: parent.width; height: parent.height;
             source: fx-grain; horizontal-tiling: repeat; vertical-tiling: repeat;
         }
@@ -940,18 +1092,28 @@ export component AppWindow inherits Window {
                 if view == "home": HorizontalLayout {
                     spacing: 32px;
                     padding-top: 12px; padding-bottom: 8px;
-                    Cover {
+                    Rectangle {
                         width: 224px; height: 224px;
-                        radius: Theme.r-lg;
-                        art: hero.art; has-art: hero.has-art && (has-now || has-mix);
-                        drop-shadow-blur: 56px; drop-shadow-offset-y: 28px; drop-shadow-color: #000000ad;
-                        TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { if (!has-now && has-mix) { root.play-mix(); } }
-                            pointer-event(e) => {
-                                if (has-now && e.button == PointerEventButton.right && e.kind == PointerEventKind.down) {
-                                    menu-x = self.absolute-position.x + self.mouse-x; menu-y = self.absolute-position.y + self.mouse-y;
-                                    menu-pl-open = false; menu-open = true; menu-kind = 7; root.menu-for(7, 0, 0);
+                        if bg-style == 4 && has-now && has-blur2: HaloGlow {
+                            blur2-a: blur2-a; blur2-b: blur2-b;
+                            has-a: blur2-has-a; has-b: blur2-has-b; slot-b: blur2-slot-b;
+                            t: bg-motion ? amb-t : 0;
+                            level: [0.85, 1.0, 1.0][bg-level]; spread: 3.2;
+                            beat: bg-reactive ? beat : 0;
+                        }
+                        Cover {
+                            width: 224px; height: 224px;
+                            radius: Theme.r-lg;
+                            art: hero.art; has-art: hero.has-art && (has-now || has-mix);
+                            drop-shadow-blur: 56px; drop-shadow-offset-y: 28px; drop-shadow-color: #000000ad;
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { if (!has-now && has-mix) { root.play-mix(); } }
+                                pointer-event(e) => {
+                                    if (has-now && e.button == PointerEventButton.right && e.kind == PointerEventKind.down) {
+                                        menu-x = self.absolute-position.x + self.mouse-x; menu-y = self.absolute-position.y + self.mouse-y;
+                                        menu-pl-open = false; menu-open = true; menu-kind = 7; root.menu-for(7, 0, 0);
+                                    }
                                 }
                             }
                         }
@@ -1995,34 +2157,64 @@ export component AppWindow inherits Window {
                                 Text { text: "Arka plan ışığı"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; }
                                 Text { text: "Ana sayfada ve sözlerde, çalan şarkının kapak renklerinden süzülen yumuşak ışık."; font-size: 11.5px; color: Theme.text-muted; wrap: word-wrap; }
                                 HorizontalLayout {
-                                    spacing: 12px; alignment: start;
+                                    spacing: 10px; alignment: start;
                                     Text { text: "Stil"; width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
-                                    for name[i] in ["Kapak akışı", "Renk lekeleri", "Sade"]: VerticalLayout {
+                                    for item in [
+                                        { id: 0, name: "Kapak" },
+                                        { id: 3, name: "Sıvı kapak" },
+                                        { id: 4, name: "Hale" },
+                                        { id: 1, name: "Renk lekeleri" },
+                                        { id: 2, name: "Sade" },
+                                    ]: VerticalLayout {
                                         spacing: 6px;
                                         Rectangle {
                                             width: 96px; height: 60px; border-radius: Theme.r-sm;
                                             clip: true;
                                             background: Theme.canvas;
-                                            border-width: bg-style == i ? 2px : 1px;
-                                            border-color: bg-style == i ? Theme.accent : Theme.border;
-                                            if i == 0: CoverFlow {
-                                                blur: now-blur; has-blur: has-blur && has-now;
-                                                disc: fx-disc; grain: fx-grain; show-grain: false;
-                                                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
+                                            border-width: bg-style == item.id ? 2px : 1px;
+                                            border-color: bg-style == item.id ? Theme.accent : Theme.border;
+                                            if item.id == 0 || item.id == 3: CoverBg {
+                                                blur-a: blur-a; blur-b: blur-b;
+                                                has-a: blur-has-a; has-b: blur-has-b; slot-b: blur-slot-b;
+                                                has-blur: has-blur && has-now;
+                                                blur2-a: blur2-a; blur2-b: blur2-b;
+                                                has2-a: blur2-has-a; has2-b: blur2-has-b; slot2-b: blur2-slot-b;
+                                                has-blur2: has-blur2 && has-now;
+                                                liquid: item.id == 3;
+                                                lyrics: false;
+                                                c1: amb1; c2: amb2; c3: amb3;
                                                 t: 0; level: 0.72;
                                             }
-                                            if i == 0: Rectangle { background: @linear-gradient(180deg, #090A0D44 0%, #090A0D99 100%); }
-                                            if i == 1: Ambience {
+                                            if item.id == 4: Rectangle {
+                                                width: 24px; height: 24px;
+                                                x: (parent.width - self.width) / 2;
+                                                y: (parent.height - self.height) / 2;
+                                                if has-blur2 && has-now: HaloGlow {
+                                                    blur2-a: blur2-a; blur2-b: blur2-b;
+                                                    has-a: blur2-has-a; has-b: blur2-has-b; slot-b: blur2-slot-b;
+                                                    t: 0; level: 0.85;
+                                                }
+                                                if !(has-blur2 && has-now): Rectangle {
+                                                    width: parent.width * 2.6; height: parent.height * 2.6;
+                                                    x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                                                    background: @radial-gradient(circle, amb1.with-alpha(0.75) 0%, transparent 68%);
+                                                }
+                                                Rectangle {
+                                                    width: parent.width; height: parent.height;
+                                                    border-radius: 5px; background: #ffffff26;
+                                                }
+                                            }
+                                            if item.id == 1: Ambience {
                                                 disc: fx-disc; grain: fx-grain; show-grain: false;
                                                 c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
                                                 t: 0; level: 0.65;
                                             }
-                                            if i == 2: Rectangle {
+                                            if item.id == 2: Rectangle {
                                                 background: @linear-gradient(180deg, amb1.with-alpha(0.36) 0%, Theme.canvas 82%);
                                             }
-                                            TouchArea { mouse-cursor: pointer; clicked => { bg-style = i; root.settings-changed(); } }
+                                            TouchArea { mouse-cursor: pointer; clicked => { bg-style = item.id; root.settings-changed(); } }
                                         }
-                                        Text { text: name; font-size: 12px; horizontal-alignment: center; color: bg-style == i ? Theme.text-primary : Theme.text-secondary; }
+                                        Text { text: item.name; font-size: 12px; horizontal-alignment: center; color: bg-style == item.id ? Theme.text-primary : Theme.text-secondary; }
                                     }
                                 }
                                 HorizontalLayout {
@@ -2415,13 +2607,19 @@ export component AppWindow inherits Window {
             background: Theme.canvas;
             TouchArea { clicked => { lyr.menu = false; } }
 
-            // 0: Kapak akışı (leke yok; bulanık kapak kopyaları t ile döner/kayar)
-            if bg-style == 0: CoverFlow {
-                blur: now-blur; has-blur: has-blur && has-now;
-                disc: fx-disc; grain: fx-grain; show-grain: false;
-                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
+            // 0: Kapak, 3: Sıvı kapak (kendi kapak-tonu karartmasıyla; 4: Hale için zemin Theme.canvas)
+            if bg-style == 0 || bg-style == 3: CoverBg {
+                blur-a: blur-a; blur-b: blur-b;
+                has-a: blur-has-a; has-b: blur-has-b; slot-b: blur-slot-b;
+                has-blur: has-blur && has-now;
+                blur2-a: blur2-a; blur2-b: blur2-b;
+                has2-a: blur2-has-a; has2-b: blur2-has-b; slot2-b: blur2-slot-b;
+                has-blur2: has-blur2 && has-now;
+                liquid: bg-style == 3;
+                lyrics: true;
+                c1: amb1; c2: amb2; c3: amb3;
                 t: bg-motion && lyrics-motion ? amb-t : 0;
-                level: [0.45, 0.65, 0.85][bg-level];
+                level: [0.70, 0.85, 1.0][bg-level];
                 beat: bg-reactive ? beat : 0;
             }
 
@@ -2451,9 +2649,9 @@ export component AppWindow inherits Window {
                 background: @linear-gradient(180deg, amb1.with-alpha([0.22, 0.34, 0.48][bg-level]) 0%, Theme.canvas 78%);
             }
 
-            // Açık kapaklarda da okunur kalsın: güçlü karartma + alt-üst gölgesi
-            if bg-style != 2: Rectangle { background: @linear-gradient(90deg, #090A0Df0 0%, #090A0Db8 42%, #090A0Dc8 100%); }
-            if bg-style != 2: Rectangle { background: @linear-gradient(180deg, #090A0D99 0%, transparent 30%, transparent 70%, #090A0Dbb 100%); }
+            // Renk lekeleri için eski sabit karartma (0/3 kendi kapak-tonu örtüsünü çizer, 4'te zemin Theme.canvas)
+            if bg-style == 1: Rectangle { background: @linear-gradient(90deg, #090A0Df0 0%, #090A0Db8 42%, #090A0Dc8 100%); }
+            if bg-style == 1: Rectangle { background: @linear-gradient(180deg, #090A0D99 0%, transparent 30%, transparent 70%, #090A0Dbb 100%); }
             // Koyu degradelerdeki basamakları dağıtan kumlanma
             if bg-grain: Image { width: parent.width; height: parent.height; source: fx-grain; horizontal-tiling: repeat; vertical-tiling: repeat; }
 
@@ -2474,6 +2672,13 @@ export component AppWindow inherits Window {
                     width: cs; alignment: center; spacing: 14px;
                     Rectangle {
                         width: parent.cs; height: parent.cs;
+                        if bg-style == 4 && has-now && has-blur2: HaloGlow {
+                            blur2-a: blur2-a; blur2-b: blur2-b;
+                            has-a: blur2-has-a; has-b: blur2-has-b; slot-b: blur2-slot-b;
+                            t: bg-motion && lyrics-motion ? amb-t : 0;
+                            level: [0.60, 0.75, 0.90][bg-level];
+                            beat: bg-reactive ? beat : 0;
+                        }
                         cov-ta := TouchArea { }
                         Cover {
                             width: parent.width; height: parent.height; radius: Theme.r-lg;
@@ -2838,12 +3043,22 @@ export component AppWindow inherits Window {
                     alignment: center; padding-left: 64px; padding-right: 64px;
                     HorizontalLayout {
                         alignment: center;
-                        Cover {
-                            width: now-scene.cs; height: now-scene.cs; radius: Theme.r-xl;
-                            art: now.art; has-art: has-now && now.has-art;
-                            drop-shadow-blur: 80px; drop-shadow-offset-y: 36px; drop-shadow-color: #000000c0;
-                            transform-scale: lyrics-mode ? 0.9 : (playing ? 1.0 : 0.96);
-                            animate transform-scale { duration: 420ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                        Rectangle {
+                            width: now-scene.cs; height: now-scene.cs;
+                            if bg-style == 4 && has-now && has-blur2: HaloGlow {
+                                blur2-a: blur2-a; blur2-b: blur2-b;
+                                has-a: blur2-has-a; has-b: blur2-has-b; slot-b: blur2-slot-b;
+                                t: bg-motion && lyrics-motion ? amb-t : 0;
+                                level: [0.60, 0.75, 0.90][bg-level];
+                                beat: bg-reactive ? beat : 0;
+                            }
+                            Cover {
+                                width: now-scene.cs; height: now-scene.cs; radius: Theme.r-xl;
+                                art: now.art; has-art: has-now && now.has-art;
+                                drop-shadow-blur: 80px; drop-shadow-offset-y: 36px; drop-shadow-color: #000000c0;
+                                transform-scale: lyrics-mode ? 0.9 : (playing ? 1.0 : 0.96);
+                                animate transform-scale { duration: 420ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                            }
                         }
                     }
                     Rectangle { height: 30px; }
@@ -3903,7 +4118,7 @@ export component AppWindow inherits Window {
         TouchArea { }
         Rectangle {
             width: Math.min(860px, root.width - 80px);
-            height: tastes-step == 1 ? Math.min(500px, root.height - 80px) : Math.min(640px, root.height - 80px);
+            height: tastes-step == 1 ? Math.min(580px, root.height - 60px) : Math.min(640px, root.height - 80px);
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             border-radius: Theme.r-xl;
@@ -4055,74 +4270,49 @@ export component AppWindow inherits Window {
                     IconButton { icon: Icons.x; clicked => { root.settings-changed(); tastes-open = false; tastes-step = 0; } }
                 }
 
-                HorizontalLayout {
+                VerticalLayout {
                     spacing: 14px;
                     vertical-stretch: 1;
-                    for item[i] in [
-                        { name: "Kapak akışı", desc: "Bulanık kapak yavaşça döner ve kayar" },
-                        { name: "Renk lekeleri", desc: "Kapak renklerinden süzülen ışık lekeleri" },
-                        { name: "Sade", desc: "Hareketsiz, tek renkli yumuşak degrade" },
-                    ]: VerticalLayout {
-                        horizontal-stretch: 1;
-                        spacing: 10px;
-                        alignment: center;
-                        Rectangle {
-                            height: 160px;
-                            border-radius: Theme.r-lg;
-                            clip: true;
-                            background: Theme.canvas;
-                            border-width: bg-style == i ? 2px : 1px;
-                            border-color: bg-style == i ? Theme.accent : Theme.border;
-                            if i == 0: CoverFlow {
-                                blur: now-blur; has-blur: has-blur && has-now;
-                                disc: fx-disc; grain: fx-grain; show-grain: false;
-                                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
-                                t: amb-t;
-                                level: [0.42, 0.6, 0.8][bg-level];
-                            }
-                            if i == 0: Rectangle { background: @linear-gradient(180deg, #090A0D38 0%, #090A0D99 100%); }
-                            if i == 1: Ambience {
-                                disc: fx-disc; grain: fx-grain; show-grain: false;
-                                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
-                                t: amb-t;
-                                level: [0.35, 0.55, 0.78][bg-level];
-                            }
-                            if i == 2: Rectangle {
-                                background: @linear-gradient(180deg, amb1.with-alpha([0.2, 0.34, 0.48][bg-level]) 0%, Theme.canvas 82%);
-                            }
-                            if bg-grain: Image {
-                                width: parent.width; height: parent.height;
-                                source: fx-grain; horizontal-tiling: repeat; vertical-tiling: repeat;
-                            }
-                            // Küçük arayüz ipucu (kapak + başlık çubukları)
-                            Rectangle {
-                                x: 16px; y: parent.height - 54px; width: 38px; height: 38px;
-                                border-radius: 7px; background: #ffffff22;
-                            }
-                            Rectangle {
-                                x: 64px; y: parent.height - 46px; width: 92px; height: 8px;
-                                border-radius: 4px; background: #ffffff44;
-                            }
-                            Rectangle {
-                                x: 64px; y: parent.height - 30px; width: 58px; height: 6px;
-                                border-radius: 3px; background: #ffffff26;
-                            }
-                            TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => { bg-style = i; root.settings-changed(); }
-                            }
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: 14px;
+                        for item in [
+                            { id: 0, name: "Kapak", desc: "Çalan şarkının kapağı, bulanık ve canlı" },
+                            { id: 3, name: "Sıvı kapak", desc: "Kapak renkleri akışkan katmanlarla karışır" },
+                            { id: 4, name: "Hale", desc: "Kapağın arkasından taşan ışık" },
+                        ]: BgStyleCard {
+                            style-id: item.id; name: item.name; desc: item.desc;
+                            selected: bg-style == item.id;
+                            blur-a: blur-a; blur-b: blur-b;
+                            blur-has-a: blur-has-a; blur-has-b: blur-has-b; blur-slot-b: blur-slot-b;
+                            has-blur: has-blur && has-now;
+                            blur2-a: blur2-a; blur2-b: blur2-b;
+                            blur2-has-a: blur2-has-a; blur2-has-b: blur2-has-b; blur2-slot-b: blur2-slot-b;
+                            has-blur2: has-blur2 && has-now;
+                            disc: fx-disc; grain: fx-grain; show-grain: bg-grain;
+                            c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
+                            t: amb-t; level-idx: bg-level;
+                            picked => { bg-style = item.id; root.settings-changed(); }
                         }
-                        VerticalLayout {
-                            spacing: 2px;
-                            Text {
-                                text: item.name; horizontal-alignment: center;
-                                font-size: 14px; font-weight: 700;
-                                color: bg-style == i ? Theme.accent : Theme.text-primary;
-                            }
-                            Text {
-                                text: item.desc; horizontal-alignment: center;
-                                font-size: 11.5px; color: Theme.text-muted; wrap: word-wrap;
-                            }
+                    }
+                    HorizontalLayout {
+                        spacing: 14px;
+                        for item in [
+                            { id: 1, name: "Renk lekeleri", desc: "Kapak renklerinden süzülen ışık lekeleri" },
+                            { id: 2, name: "Sade", desc: "Hareketsiz, tek renkli yumuşak degrade" },
+                        ]: BgStyleCard {
+                            style-id: item.id; name: item.name; desc: item.desc;
+                            selected: bg-style == item.id;
+                            blur-a: blur-a; blur-b: blur-b;
+                            blur-has-a: blur-has-a; blur-has-b: blur-has-b; blur-slot-b: blur-slot-b;
+                            has-blur: has-blur && has-now;
+                            blur2-a: blur2-a; blur2-b: blur2-b;
+                            blur2-has-a: blur2-has-a; blur2-has-b: blur2-has-b; blur2-slot-b: blur2-slot-b;
+                            has-blur2: has-blur2 && has-now;
+                            disc: fx-disc; grain: fx-grain; show-grain: bg-grain;
+                            c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
+                            t: amb-t; level-idx: bg-level;
+                            picked => { bg-style = item.id; root.settings-changed(); }
                         }
                     }
                 }

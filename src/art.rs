@@ -8,13 +8,15 @@ pub struct Art {
     pub height: u32,
     /// Okunabilirliği ayarlanmış vurgu rengi (r, g, b).
     pub accent: (u8, u8, u8),
-    /// Söz ekranı zemini için önceden bulanıklaştırılmış küçük kapak (BLUR x BLUR).
+    /// Söz ekranı ve arka plan için önceden bulanıklaştırılmış kapak (BLUR x BLUR, opak RGBA).
     pub blur: Vec<u8>,
+    /// Sıvı katman ve hale için 180° döndürülmüş, yüksek kontrastlı, kenarları radyal eriyen kapak (BLUR x BLUR).
+    pub blur2: Vec<u8>,
     /// Ortam zemini için kapaktan üç renk (yalnız `load`; diğerlerinde boş anlamında siyah)
     pub palette: [(u8, u8, u8); 3],
 }
 
-pub const BLUR: u32 = 48;
+pub const BLUR: u32 = 128;
 
 fn cache_dir() -> PathBuf {
     crate::paths::cache_dir().join("covers")
@@ -36,12 +38,56 @@ pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
     let img = image::DynamicImage::ImageRgba8(image::imageops::crop_imm(&img, x, y, w, h).to_image());
     let img = img.resize_to_fill(size, size, image::imageops::FilterType::Triangle).to_rgba8();
     let accent = accent_of(&img);
-    // Ucuz bulanıklık: küçült, bulanıklaştır; arayüz büyütünce yumuşak görünür.
-    let small = image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle);
+    // Bulanık kapaklar: 128x128 küçült, doygunluğu artır, açıklığı 0.18–0.72'ye sıkıştır, bulanıklaştır + titreşim.
+    let mut small = image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle);
     let palette = crate::ambience::palette(&small, accent);
-    let blur = image::imageops::blur(&small, 9.0).into_raw();
+    for p in small.pixels_mut() {
+        let (h, s, l) = rgb_to_hsl(p[0] as f64 / 255.0, p[1] as f64 / 255.0, p[2] as f64 / 255.0);
+        let s = (s * 1.4).min(0.9);
+        let l = 0.18 + l * (0.72 - 0.18);
+        let (r, g, b) = hsl_to_rgb(h, s, l);
+        p[0] = (r * 255.0).round().clamp(0.0, 255.0) as u8;
+        p[1] = (g * 255.0).round().clamp(0.0, 255.0) as u8;
+        p[2] = (b * 255.0).round().clamp(0.0, 255.0) as u8;
+        p[3] = 255;
+    }
+    let blurred = image::imageops::blur(&small, 10.0);
+    let mut rng = crate::ambience::Rng(0xA5A5_1357);
+    let mut blur = blurred.as_raw().clone();
+    for p in blur.chunks_exact_mut(4) {
+        for c in 0..3 {
+            let d = rng.unit() - rng.unit();
+            p[c] = (p[c] as f32 + d).round().clamp(0.0, 255.0) as u8;
+        }
+        p[3] = 255;
+    }
+    // blur2: 180° döndürülmüş, aydınlatılmış, merkez 1 → kenar 0 yumuşak radyal alfa.
+    let n = BLUR as usize;
+    let mut blur2 = vec![0u8; n * n * 4];
+    let center = (n as f32 - 1.0) / 2.0;
+    for y in 0..n {
+        for x in 0..n {
+            let src = blurred.get_pixel((n - 1 - x) as u32, (n - 1 - y) as u32);
+            let dx = (x as f32 - center) / center;
+            let dy = (y as f32 - center) / center;
+            let r = (dx * dx + dy * dy).sqrt();
+            let edge = (1.0 - r).clamp(0.0, 1.0);
+            let a = edge * edge * (3.0 - 2.0 * edge);
+            let i = (y * n + x) * 4;
+            // Işık gibi parlasın: rengi koru, açıklığı 0.42–0.82 bandına kaldır (koyu kapakta
+            // kontrast artırmak haleyi zeminle aynı karanlığa gömüyordu).
+            let (h, sat, l) = rgb_to_hsl(src[0] as f64 / 255.0, src[1] as f64 / 255.0, src[2] as f64 / 255.0);
+            let (r2, g2, b2) = hsl_to_rgb(h, (sat * 1.15).min(0.9), 0.42 + l * 0.4);
+            for (c, v) in [r2, g2, b2].into_iter().enumerate() {
+                let d = rng.unit() - rng.unit();
+                blur2[i + c] = (v as f32 * 255.0 + d).round().clamp(0.0, 255.0) as u8;
+            }
+            let da = rng.unit() - rng.unit();
+            blur2[i + 3] = (a * 255.0 + da).round().clamp(0.0, 255.0) as u8;
+        }
+    }
     let (width, height) = img.dimensions();
-    Ok(Art { rgba: img.into_raw(), width, height, accent, blur, palette })
+    Ok(Art { rgba: img.into_raw(), width, height, accent, blur, blur2, palette })
 }
 
 /// Görseli önbellekten ya da ağdan getir (ham bayt).
@@ -85,7 +131,7 @@ pub fn load_wide(key: &str, url: &str, w: u32, h: u32) -> Result<Art, String> {
     let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
     let img = img.resize_to_fill(w, h, image::imageops::FilterType::Triangle).to_rgba8();
     let (width, height) = img.dimensions();
-    Ok(Art { rgba: img.into_raw(), width, height, accent: (0, 0, 0), blur: Vec::new(), palette: [(0, 0, 0); 3] })
+    Ok(Art { rgba: img.into_raw(), width, height, accent: (0, 0, 0), blur: Vec::new(), blur2: Vec::new(), palette: [(0, 0, 0); 3] })
 }
 
 /// Kenarlardaki neredeyse siyah satır/sütunları atlayan içerik kutusu.
@@ -214,7 +260,7 @@ pub fn load_playlist_cover(name: &str) -> Result<Art, String> {
     let img = image::open(playlist_cover_dir().join(name)).map_err(|e| e.to_string())?.to_rgba8();
     let accent = accent_of(&img);
     let (width, height) = img.dimensions();
-    Ok(Art { rgba: img.into_raw(), width, height, accent, blur: Vec::new(), palette: [(0, 0, 0); 3] })
+    Ok(Art { rgba: img.into_raw(), width, height, accent, blur: Vec::new(), blur2: Vec::new(), palette: [(0, 0, 0); 3] })
 }
 
 pub fn remove_playlist_cover(name: &str) {

@@ -10,9 +10,9 @@ pub const DISC: u32 = 256;
 pub const GRAIN: u32 = 128;
 
 /// Basit, tohumlu xorshift: her açılışta aynı doku (titreme yapmasın).
-struct Rng(u32);
+pub(crate) struct Rng(pub(crate) u32);
 impl Rng {
-    fn next(&mut self) -> u32 {
+    pub(crate) fn next(&mut self) -> u32 {
         let mut x = self.0;
         x ^= x << 13;
         x ^= x >> 17;
@@ -21,7 +21,7 @@ impl Rng {
         x
     }
     /// 0..1
-    fn unit(&mut self) -> f32 {
+    pub(crate) fn unit(&mut self) -> f32 {
         (self.next() >> 8) as f32 / (1u32 << 24) as f32
     }
 }

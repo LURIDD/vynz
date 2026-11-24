@@ -1019,78 +1019,143 @@ export component Ambience inherits Rectangle {
     }
 }
 
-// Kapak akışı (Apple Music tarzı): bulanık kapağın üç büyük kopyası farklı yönlerde yavaşça
-// döner ve kayar. Kapak yoksa palet/vurgu renklerinden yumuşak akışkan zemin üretir.
-export component CoverFlow inherits Rectangle {
-    in property <image> blur;
+// Kapak (0) ve Sıvı kapak (3) arka planı:
+// - 1.18x sabit boyutlu bulanık kapak, çok yavaş Lissajous kayması (ölçek animasyonu yok)
+// - Sıvı kapak (liquid: true): üstte 1.4x radyal erimiş blur2, zıt yönde kayar ve çok yavaş döner
+// - Şarkı geçişinde A/B yuvaları arasında 700 ms çapraz solma
+// - Karartma siyah değil: kapak rengiyle harmanlanmış koyu ton (Theme.canvas.mix(c1, 0.85))
+export component CoverBg inherits Rectangle {
+    in property <image> blur-a;
+    in property <image> blur-b;
+    in property <bool> has-a: false;
+    in property <bool> has-b: false;
+    in property <bool> slot-b: false;
     in property <bool> has-blur: false;
-    in property <image> disc;
-    // Kapak renkleriyle Rust'ta boyanmış diskler (Slint colorize GPU'da koyu benek bırakıyordu)
-    in property <image> d1;
-    in property <image> d2;
-    in property <image> d3;
-    in property <image> grain;
+    in property <image> blur2-a;
+    in property <image> blur2-b;
+    in property <bool> has2-a: false;
+    in property <bool> has2-b: false;
+    in property <bool> slot2-b: false;
+    in property <bool> has-blur2: false;
+    in property <bool> liquid: false;
+    in property <bool> lyrics: false;
     in property <color> c1;
     in property <color> c2;
     in property <color> c3;
     in property <float> t: 0;
-    in property <float> level: 0.45;
+    in property <float> level: 0.6;
     in property <float> beat: 0;
-    in property <bool> show-grain: false;
     property <float> pulse: root.beat;
     animate pulse { duration: 110ms; easing: ease-out; }
+    property <float> eff-level: Math.min(1, root.level + root.pulse * 0.15);
+    property <color> veil: Theme.canvas.mix(root.c1, 0.85);
     clip: true;
 
+    // Taban katman: bulanık kapak (A/B çapraz solma)
     if root.has-blur: Rectangle {
-        property <length> s1: Math.max(root.width, root.height) * 1.65 * (1 + root.pulse * 0.06);
-        property <length> s2: Math.max(root.width, root.height) * 1.45 * (1 + root.pulse * 0.08);
-        property <length> s3: Math.max(root.width, root.height) * 1.25;
-        Image {
-            width: parent.s1; height: parent.s1;
-            x: (root.width - self.width) / 2 + root.width * 0.08 * Math.sin((root.t * 3.5) * 1deg);
-            y: (root.height - self.height) / 2 + root.height * 0.06 * Math.cos((root.t * 4.2) * 1deg);
-            source: root.blur; image-fit: cover;
-            opacity: Math.min(1, root.level * (1 + root.pulse * 0.25));
-            transform-rotation: (root.t * 3.0) * 1deg;
+        opacity: root.eff-level;
+        property <length> bw: root.width * 1.18;
+        property <length> bh: root.height * 1.18;
+        property <length> bx: (root.width - self.bw) / 2 + root.width * 0.04 * Math.sin((root.t * 7.5) * 1deg);
+        property <length> by: (root.height - self.bh) / 2 + root.height * 0.04 * Math.cos((root.t * 6.0) * 1deg);
+        if root.has-a: Image {
+            x: parent.bx; y: parent.by; width: parent.bw; height: parent.bh;
+            source: root.blur-a; image-fit: cover;
+            opacity: !root.slot-b ? 1 : 0;
+            visible: self.opacity > 0.005;
+            animate opacity { duration: 700ms; easing: ease-in-out; }
         }
-        Image {
-            width: parent.s2; height: parent.s2;
-            x: root.width * 0.58 - self.width / 2 + root.width * 0.09 * Math.cos((root.t * 4.8 + 90) * 1deg);
-            y: root.height * 0.62 - self.height / 2 + root.height * 0.08 * Math.sin((root.t * 3.9 + 45) * 1deg);
-            source: root.blur; image-fit: cover;
-            opacity: Math.min(1, root.level * 0.72 * (1 + root.pulse * 0.25));
-            transform-rotation: (-root.t * 4.5 + 40) * 1deg;
-        }
-        Image {
-            width: parent.s3; height: parent.s3;
-            x: root.width * 0.35 - self.width / 2 + root.width * 0.07 * Math.sin((root.t * 5.2 + 210) * 1deg);
-            y: root.height * 0.30 - self.height / 2 + root.height * 0.07 * Math.cos((root.t * 4.1 + 160) * 1deg);
-            source: root.blur; image-fit: cover;
-            opacity: Math.min(1, root.level * 0.50);
-            transform-rotation: (root.t * 2.4 + 135) * 1deg;
+        if root.has-b: Image {
+            x: parent.bx; y: parent.by; width: parent.bw; height: parent.bh;
+            source: root.blur-b; image-fit: cover;
+            opacity: root.slot-b ? 1 : 0;
+            visible: self.opacity > 0.005;
+            animate opacity { duration: 700ms; easing: ease-in-out; }
         }
     }
 
+    // Kapak yoksa vurgudan degrade yer tutucu
     if !root.has-blur: Rectangle {
-        background: @linear-gradient(135deg, root.c1.with-alpha(root.level * 0.55) 0%, root.c2.with-alpha(root.level * 0.45) 55%, root.c3.with-alpha(root.level * 0.35) 100%);
-        for b in [
-            { c: 0, bx: 0.30, by: 0.35, ax: 0.16, ay: 0.12, w: 5.0, o: 0.0,   size: 1.45, a: 0.85 },
-            { c: 1, bx: 0.72, by: 0.65, ax: 0.14, ay: 0.14, w: -6.2, o: 110.0, size: 1.35, a: 0.75 },
-            { c: 2, bx: 0.50, by: 0.25, ax: 0.12, ay: 0.10, w: 4.1, o: 220.0, size: 1.20, a: 0.65 },
-        ]: Image {
-            property <length> d: Math.max(root.width, root.height) * b.size * (1 + root.pulse * 0.08);
-            source: b.c == 0 ? root.d1 : b.c == 1 ? root.d2 : root.d3;
-            width: self.d; height: self.d;
-            x: root.width * (b.bx + b.ax * Math.sin((root.t * b.w + b.o) * 1deg)) - self.d / 2;
-            y: root.height * (b.by + b.ay * Math.cos((root.t * b.w * 1.2 + b.o) * 1deg)) - self.d / 2;
-            opacity: Math.min(1, root.level * b.a);
+        background: @linear-gradient(135deg, root.c1.with-alpha(root.eff-level * 0.55) 0%, root.c2.with-alpha(root.eff-level * 0.42) 55%, root.c3.with-alpha(root.eff-level * 0.30) 100%);
+        if root.liquid: Rectangle {
+            background: @linear-gradient(315deg, root.c2.with-alpha(root.eff-level * 0.50) 0%, transparent 62%);
         }
     }
 
-    if root.show-grain: Image {
-        width: root.width; height: root.height;
-        source: root.grain;
-        horizontal-tiling: repeat;
-        vertical-tiling: repeat;
+    // Sıvı kapak üst katmanı: 1.4x radyal erimiş blur2, zıt yönde kayar + çok yavaş döner
+    if root.liquid && root.has-blur2: Rectangle {
+        opacity: Math.min(0.85, 0.35 + root.level * 0.25 + root.pulse * 0.12);
+        property <length> s2: Math.max(root.width, root.height) * 1.4;
+        property <length> lx: (root.width - self.s2) / 2 - root.width * 0.05 * Math.sin((root.t * 5.2 + 45) * 1deg);
+        property <length> ly: (root.height - self.s2) / 2 - root.height * 0.05 * Math.cos((root.t * 6.8 + 90) * 1deg);
+        if root.has2-a: Image {
+            x: parent.lx; y: parent.ly; width: parent.s2; height: parent.s2;
+            source: root.blur2-a; image-fit: cover;
+            transform-rotation: (root.t * 1.5) * 1deg;
+            opacity: !root.slot2-b ? 1 : 0;
+            visible: self.opacity > 0.005;
+            animate opacity { duration: 700ms; easing: ease-in-out; }
+        }
+        if root.has2-b: Image {
+            x: parent.lx; y: parent.ly; width: parent.s2; height: parent.s2;
+            source: root.blur2-b; image-fit: cover;
+            transform-rotation: (root.t * 1.5) * 1deg;
+            opacity: root.slot2-b ? 1 : 0;
+            visible: self.opacity > 0.005;
+            animate opacity { duration: 700ms; easing: ease-in-out; }
+        }
+    }
+
+    // Ana sayfa karartması: genel %56–58 örtü + alt-üst hafif (siyah değil, kapak tonunda koyu)
+    if !root.lyrics: Rectangle {
+        background: @linear-gradient(180deg, root.veil.with-alpha(0.68) 0%, root.veil.with-alpha(0.56) 24%, root.veil.with-alpha(0.58) 76%, root.veil.with-alpha(0.74) 100%);
+    }
+    // Söz ekranı karartması: sol (kapak) tarafa zayıf, sağ (metin) tarafa güçlü yatay degrade
+    if root.lyrics: Rectangle {
+        background: @linear-gradient(90deg, root.veil.with-alpha(0.22) 0%, root.veil.with-alpha(0.42) 38%, root.veil.with-alpha(0.74) 68%, root.veil.with-alpha(0.84) 100%);
+    }
+    if root.lyrics: Rectangle {
+        background: @linear-gradient(180deg, root.veil.with-alpha(0.30) 0%, transparent 20%, transparent 80%, root.veil.with-alpha(0.40) 100%);
+    }
+}
+
+// Hale (4): kapağın arkasından taşan radyal erimiş ışık, 2.6x boyut, 8 sn yavaş nefes.
+export component HaloGlow inherits Rectangle {
+    in property <image> blur2-a;
+    in property <image> blur2-b;
+    in property <bool> has-a: false;
+    in property <bool> has-b: false;
+    in property <bool> slot-b: false;
+    in property <float> t: 0;
+    in property <float> level: 0.75;
+    in property <float> beat: 0;
+    // kapağa göre hale büyüklüğü
+    in property <float> spread: 2.6;
+    property <float> pulse: root.beat;
+    animate pulse { duration: 110ms; easing: ease-out; }
+    property <float> breath: 1.0 + 0.03 * (1 - Math.cos((root.t * 45.0) * 1deg));
+
+    Rectangle {
+        width: root.width * root.spread;
+        height: root.height * root.spread;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        transform-scale: root.breath;
+        opacity: Math.min(1, root.level + root.pulse * 0.15);
+
+        if root.has-a: Image {
+            width: parent.width; height: parent.height;
+            source: root.blur2-a; image-fit: cover;
+            opacity: !root.slot-b ? 1 : 0;
+            visible: self.opacity > 0.005;
+            animate opacity { duration: 700ms; easing: ease-in-out; }
+        }
+        if root.has-b: Image {
+            width: parent.width; height: parent.height;
+            source: root.blur2-b; image-fit: cover;
+            opacity: root.slot-b ? 1 : 0;
+            visible: self.opacity > 0.005;
+            animate opacity { duration: 700ms; easing: ease-in-out; }
+        }
     }
 }
