@@ -44,9 +44,12 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Download libmpv-2.dll and generate mpv.lib
         shell: pwsh
+        env:
+          # Kimliksiz API isteği paylaşılan makinede saatlik sınıra takılıyordu
+          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = "Stop"
-          $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest" -Headers @{ "User-Agent" = "vynz-ci" }
+          $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest" -Headers @{ "User-Agent" = "vynz-ci"; "Authorization" = "Bearer $env:GH_TOKEN" }
           $asset = $rel.assets | Where-Object { $_.name -match "^mpv-dev-x86_64-\d+.*\.7z$" -and $_.name -notmatch "v3" } | Select-Object -First 1
           if (-not $asset) { throw "mpv-dev-x86_64 asset bulunamadi" }
           Write-Host "Downloading $($asset.name)"
