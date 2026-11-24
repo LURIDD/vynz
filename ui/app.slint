@@ -5,7 +5,7 @@ import "fonts/InstrumentSerif-Regular.ttf";
 import "fonts/InstrumentSerif-Italic.ttf";
 
 import { Theme, Icons, Icon } from "theme.slint";
-import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, Ambience, Motion, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider, DlItem } from "parts.slint";
+import { Track, Shelf, ImportRow, PlaylistInfo, PlaylistCover, TasteGenre, LyricWord, LyricRow, LyricLine, LyricStyle, KaraokeWord, GapDots, Ambience, CoverFlow, Motion, ArtistStat, Status, Sources, SourceBadge, Fmt, Cover, EqBars, NavButton, IconButton, PillButton, ConfirmPill, Scrubber, TrackCard, TrackRow, ImportLine, Tile, MenuItem, CardUi, CardTile, MoodTile, PagerArrow, ArtistLink, Nav, EqSlider, DlItem } from "parts.slint";
 export { Nav }
 
 export { Theme, Motion, Track, Shelf, ImportRow, PlaylistInfo, TasteGenre, LyricWord, LyricRow, LyricLine, CardUi, ArtistStat }
@@ -468,6 +468,8 @@ export component AppWindow inherits Window {
 
     // Zevkler (ilk açılış + Ayarlar)
     in-out property <bool> tastes-open: false;
+    // 0: müzik zevkleri, 1: görünümünü seç
+    in-out property <int> tastes-step: 0;
     in property <[TasteGenre]> taste-genres;
     in property <string> taste-active-genre: "";
     in property <[Track]> taste-samples;
@@ -540,17 +542,29 @@ export component AppWindow inherits Window {
     in property <color> amb-c2;
     in property <color> amb-c3;
     in property <float> beat: 0;
+    // 0 kapak akışı, 1 renk lekeleri, 2 sade
+    in-out property <int> bg-style: 1;
     // 0 sade, 1 orta, 2 canlı
     in-out property <int> bg-level: 1;
     in-out property <bool> bg-motion: true;
     in-out property <bool> bg-reactive: false;
     in-out property <bool> bg-grain: true;
+    // Kesintisiz ortam zamanı (saniye, Rust zamanlayıcısı besler)
+    in property <float> amb-t: 0;
     // Linux'ta cava ile; diğer sistemlerde ayar gizli
     in property <bool> can-react: false;
     callback viz-check();
-    changed lyrics-open => { root.viz-check(); }
+    callback amb-check();
+    changed lyrics-open => { root.viz-check(); root.amb-check(); }
     changed bg-reactive => { root.viz-check(); }
-    changed window-hidden => { root.viz-check(); }
+    changed bg-style => { root.viz-check(); root.amb-check(); }
+    changed bg-motion => { root.amb-check(); }
+    changed lyrics-motion => { root.amb-check(); }
+    changed playing => { root.amb-check(); }
+    changed game-mode => { root.amb-check(); }
+    changed tastes-open => { root.amb-check(); }
+    changed tastes-step => { root.amb-check(); }
+    changed window-hidden => { root.viz-check(); root.amb-check(); }
     // Palet yoksa vurgu renginden türet
     out property <color> amb1: has-amb ? amb-c1 : Theme.accent;
     out property <color> amb2: has-amb ? amb-c2 : Theme.accent.darker(0.5);
@@ -754,7 +768,7 @@ export component AppWindow inherits Window {
             if (pl-rename-open) { pl-rename-open = false; return accept; }
             if (pl-pick-open) { pl-pick-open = false; return accept; }
             if (del-pl-index >= 0) { del-pl-index = -1; return accept; }
-            if (tastes-open) { tastes-open = false; return accept; }
+            if (tastes-open) { tastes-open = false; tastes-step = 0; return accept; }
             if (menu-open) { menu-open = false; menu-pl-open = false; return accept; }
             if (sidebar-peek) { sidebar-peek = false; return accept; }
             if (eq-pop) { eq-pop = false; return accept; }
@@ -793,14 +807,41 @@ export component AppWindow inherits Window {
     }
 
     // Kapaktan türeyen ortam ışığı (ana sayfa); söz ekranı açıkken görünmez, çizilmez
-    Ambience {
+    Rectangle {
         visible: !game-mode && (!lyrics-open || lyr.y > 40px);
-        disc: fx-disc; grain: fx-grain; show-grain: bg-grain;
-        c1: amb1; c2: amb2; c3: amb3;
-        level: [0.13, 0.22, 0.34][bg-level];
-        moving: bg-motion && playing && !window-hidden && !lyrics-open;
-        beat: bg-reactive ? beat : 0;
-        step: 11s;
+        clip: true;
+
+        if bg-style == 0: CoverFlow {
+            blur: now-blur; has-blur: has-blur && has-now;
+            disc: fx-disc; grain: fx-grain; show-grain: false;
+            c1: amb1; c2: amb2; c3: amb3;
+            t: bg-motion ? amb-t : 0;
+            level: [0.25, 0.35, 0.5][bg-level];
+            beat: bg-reactive ? beat : 0;
+        }
+        if bg-style == 0: Rectangle {
+            background: @linear-gradient(180deg, #090A0D78 0%, #090A0Db8 55%, #090A0De6 100%);
+        }
+        if bg-style == 0 && bg-grain: Image {
+            width: parent.width; height: parent.height;
+            source: fx-grain; horizontal-tiling: repeat; vertical-tiling: repeat;
+        }
+
+        if bg-style == 1: Ambience {
+            disc: fx-disc; grain: fx-grain; show-grain: bg-grain;
+            c1: amb1; c2: amb2; c3: amb3;
+            level: [0.13, 0.22, 0.34][bg-level];
+            t: bg-motion ? amb-t : 0;
+            beat: bg-reactive ? beat : 0;
+        }
+
+        if bg-style == 2: Rectangle {
+            background: @linear-gradient(180deg, amb1.with-alpha([0.14, 0.22, 0.32][bg-level]) 0%, Theme.canvas 72%);
+        }
+        if bg-style == 2 && bg-grain: Image {
+            width: parent.width; height: parent.height;
+            source: fx-grain; horizontal-tiling: repeat; vertical-tiling: repeat;
+        }
     }
 
     // ---------- Ana alan ----------
@@ -1951,15 +1992,47 @@ export component AppWindow inherits Window {
                                 Text { text: "Arka plan ışığı"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; }
                                 Text { text: "Ana sayfada ve sözlerde, çalan şarkının kapak renklerinden süzülen yumuşak ışık."; font-size: 11.5px; color: Theme.text-muted; wrap: word-wrap; }
                                 HorizontalLayout {
+                                    spacing: 12px; alignment: start;
+                                    Text { text: "Stil"; width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
+                                    for name[i] in ["Kapak akışı", "Renk lekeleri", "Sade"]: VerticalLayout {
+                                        spacing: 6px;
+                                        Rectangle {
+                                            width: 96px; height: 60px; border-radius: Theme.r-sm;
+                                            clip: true;
+                                            background: Theme.canvas;
+                                            border-width: bg-style == i ? 2px : 1px;
+                                            border-color: bg-style == i ? Theme.accent : Theme.border;
+                                            if i == 0: CoverFlow {
+                                                blur: now-blur; has-blur: has-blur && has-now;
+                                                disc: fx-disc; grain: fx-grain; show-grain: false;
+                                                c1: amb1; c2: amb2; c3: amb3;
+                                                t: 0; level: 0.72;
+                                            }
+                                            if i == 0: Rectangle { background: @linear-gradient(180deg, #090A0D44 0%, #090A0D99 100%); }
+                                            if i == 1: Ambience {
+                                                disc: fx-disc; grain: fx-grain; show-grain: false;
+                                                c1: amb1; c2: amb2; c3: amb3;
+                                                t: 0; level: 0.65;
+                                            }
+                                            if i == 2: Rectangle {
+                                                background: @linear-gradient(180deg, amb1.with-alpha(0.36) 0%, Theme.canvas 82%);
+                                            }
+                                            TouchArea { mouse-cursor: pointer; clicked => { bg-style = i; root.settings-changed(); } }
+                                        }
+                                        Text { text: name; font-size: 12px; horizontal-alignment: center; color: bg-style == i ? Theme.text-primary : Theme.text-secondary; }
+                                    }
+                                }
+                                HorizontalLayout {
                                     spacing: 8px; alignment: start;
                                     Text { text: "Yoğunluk"; width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
                                     for name[i] in ["Sade", "Orta", "Canlı"]: PillButton { pill-height: 30px; text: name; active: bg-level == i; clicked => { bg-level = i; root.settings-changed(); } }
                                 }
                                 HorizontalLayout {
                                     spacing: 8px; alignment: start;
+                                    opacity: bg-style == 2 ? 0.4 : 1;
                                     Text { text: "Hareket"; width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
-                                    PillButton { pill-height: 30px; text: "Süzülsün"; active: bg-motion; clicked => { bg-motion = true; root.settings-changed(); } }
-                                    PillButton { pill-height: 30px; text: "Durgun"; active: !bg-motion; clicked => { bg-motion = false; root.settings-changed(); } }
+                                    PillButton { pill-height: 30px; text: "Süzülsün"; active: bg-motion; enabled: bg-style != 2; clicked => { bg-motion = true; root.settings-changed(); } }
+                                    PillButton { pill-height: 30px; text: "Durgun"; active: !bg-motion; enabled: bg-style != 2; clicked => { bg-motion = false; root.settings-changed(); } }
                                 }
                                 HorizontalLayout {
                                     spacing: 8px; alignment: start;
@@ -1969,9 +2042,10 @@ export component AppWindow inherits Window {
                                 }
                                 if can-react: HorizontalLayout {
                                     spacing: 8px; alignment: start;
+                                    opacity: bg-style == 2 ? 0.4 : 1;
                                     Text { text: "Müziğe tepki"; width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
-                                    PillButton { pill-height: 30px; text: "Açık"; active: bg-reactive; clicked => { bg-reactive = true; root.settings-changed(); } }
-                                    PillButton { pill-height: 30px; text: "Kapalı"; active: !bg-reactive; clicked => { bg-reactive = false; root.settings-changed(); } }
+                                    PillButton { pill-height: 30px; text: "Açık"; active: bg-reactive; enabled: bg-style != 2; clicked => { bg-reactive = true; root.settings-changed(); } }
+                                    PillButton { pill-height: 30px; text: "Kapalı"; active: !bg-reactive; enabled: bg-style != 2; clicked => { bg-reactive = false; root.settings-changed(); } }
                                     Text { text: "Baslarda ışık nabız atar (cava gerekir)"; vertical-alignment: center; font-size: 11px; color: Theme.text-muted; }
                                 }
                             }
@@ -2312,7 +2386,6 @@ export component AppWindow inherits Window {
         property <length> lsp: LyricStyle.spacing[lyrics-style];
         property <bool> centered: lyrics-align == 1;
         property <bool> menu: false;
-        property <angle> spin: 0deg;
 
         // Windows'ta ve tam ekranda kenardan kenara: üst şerit pencere düğmeleriyle paylaşılır
         property <bool> edge: is-windows || fullscreen;
@@ -2333,45 +2406,51 @@ export component AppWindow inherits Window {
             triggered => { root.lyric-tick(); }
         }
 
-        // Hareketli zemin: bulanık kapak yavaşça döner (yalnız açıkken)
-        Timer {
-            interval: 8s;
-            running: !window-hidden && lyrics-open && lyrics-motion;
-            triggered => { lyr.spin += 24deg; }
-        }
-
         Rectangle {
             border-radius: lyr.edge ? 0px : Theme.r-xl;
             clip: true;
             background: Theme.canvas;
             TouchArea { clicked => { lyr.menu = false; } }
 
-            if has-blur && has-now: Image {
+            // 0: Kapak akışı (leke yok; bulanık kapak kopyaları t ile döner/kayar)
+            if bg-style == 0: CoverFlow {
+                blur: now-blur; has-blur: has-blur && has-now;
+                disc: fx-disc; grain: fx-grain; show-grain: false;
+                c1: amb1; c2: amb2; c3: amb3;
+                t: bg-motion && lyrics-motion ? amb-t : 0;
+                level: [0.45, 0.65, 0.85][bg-level];
+                beat: bg-reactive ? beat : 0;
+            }
+
+            // 1: Renk lekeleri (+ altta t ile kesintisiz dönen bulanık kapak)
+            if bg-style == 1 && has-blur && has-now: Image {
                 width: parent.width * 1.5; height: self.width;
                 x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
                 source: now-blur; image-fit: cover; opacity: 0.7;
-                transform-rotation: lyr.spin;
-                animate transform-rotation { duration: 8s; easing: linear; }
+                transform-rotation: (bg-motion && lyrics-motion ? amb-t * 3.0 : 0) * 1deg;
             }
-            if has-blur && has-now && lyrics-motion: Image {
+            if bg-style == 1 && has-blur && has-now && lyrics-motion: Image {
                 width: parent.width * 0.9; height: self.width;
                 x: parent.width * 0.55 - self.width / 2; y: parent.height * 0.6 - self.height / 2;
                 source: now-blur; image-fit: cover; opacity: 0.45;
-                transform-rotation: -lyr.spin * 1.6;
-                animate transform-rotation { duration: 8s; easing: linear; }
+                transform-rotation: (bg-motion ? -amb-t * 4.8 : 0) * 1deg;
             }
-            // Kapak renklerinde süzülen ışık lekeleri (kumlanma en üstte ayrı)
-            Ambience {
+            if bg-style == 1: Ambience {
                 disc: fx-disc; grain: fx-grain; show-grain: false;
                 c1: amb1; c2: amb2; c3: amb3;
                 level: [0.35, 0.5, 0.7][bg-level];
-                moving: bg-motion && lyrics-motion && playing && !window-hidden && lyrics-open;
+                t: bg-motion && lyrics-motion ? amb-t : 0;
                 beat: bg-reactive ? beat : 0;
-                step: 7s;
             }
+
+            // 2: Sade (hareketsiz, c1'den üstten aşağı tek koyu degrade)
+            if bg-style == 2: Rectangle {
+                background: @linear-gradient(180deg, amb1.with-alpha([0.22, 0.34, 0.48][bg-level]) 0%, Theme.canvas 78%);
+            }
+
             // Açık kapaklarda da okunur kalsın: güçlü karartma + alt-üst gölgesi
-            Rectangle { background: @linear-gradient(90deg, #090A0Df0 0%, #090A0Db8 42%, #090A0Dc8 100%); }
-            Rectangle { background: @linear-gradient(180deg, #090A0D99 0%, transparent 30%, transparent 70%, #090A0Dbb 100%); }
+            if bg-style != 2: Rectangle { background: @linear-gradient(90deg, #090A0Df0 0%, #090A0Db8 42%, #090A0Dc8 100%); }
+            if bg-style != 2: Rectangle { background: @linear-gradient(180deg, #090A0D99 0%, transparent 30%, transparent 70%, #090A0Dbb 100%); }
             // Koyu degradelerdeki basamakları dağıtan kumlanma
             if bg-grain: Image { width: parent.width; height: parent.height; source: fx-grain; horizontal-tiling: repeat; vertical-tiling: repeat; }
 
@@ -3814,14 +3893,14 @@ export component AppWindow inherits Window {
         }
     }
 
-    // ---------- Zevkler (ilk açılış & Ayarlar) ----------
+    // ---------- Zevkler & Görünüm (ilk açılış & Ayarlar) ----------
     if tastes-open: Rectangle {
         x: 0; y: 0; width: root.width; height: root.height;
         background: #000000aa;
         TouchArea { }
         Rectangle {
-            width: Math.min(820px, root.width - 80px);
-            height: Math.min(640px, root.height - 80px);
+            width: Math.min(860px, root.width - 80px);
+            height: tastes-step == 1 ? Math.min(500px, root.height - 80px) : Math.min(640px, root.height - 80px);
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             border-radius: Theme.r-xl;
@@ -3830,7 +3909,7 @@ export component AppWindow inherits Window {
             drop-shadow-blur: 60px; drop-shadow-color: #000000cc;
             TouchArea { }
 
-            VerticalLayout {
+            if tastes-step == 0: VerticalLayout {
                 padding: 28px; spacing: 16px;
                 HorizontalLayout {
                     alignment: space-between;
@@ -3953,6 +4032,120 @@ export component AppWindow inherits Window {
                         spacing: 8px;
                         PillButton { pill-height: 34px; text: "Şimdilik geç"; clicked => { root.taste-skip(); } }
                         PillButton { pill-height: 34px; text: "Kaydet"; primary: true; clicked => { root.taste-save(); } }
+                    }
+                }
+            }
+
+            // İkinci adım: Görünümünü seç
+            if tastes-step == 1: VerticalLayout {
+                padding: 28px; spacing: 20px;
+                HorizontalLayout {
+                    alignment: space-between;
+                    VerticalLayout {
+                        spacing: 4px; horizontal-stretch: 1;
+                        Text { text: "Görünümünü seç"; font-family: Theme.display; font-size: 26px; font-weight: 800; letter-spacing: -0.8px; color: Theme.text-primary; }
+                        Text {
+                            text: "Ana sayfada ve söz ekranında arka planın nasıl görüneceğini seç.";
+                            font-size: 12.5px; color: Theme.text-secondary; wrap: word-wrap;
+                        }
+                    }
+                    IconButton { icon: Icons.x; clicked => { root.settings-changed(); tastes-open = false; tastes-step = 0; } }
+                }
+
+                HorizontalLayout {
+                    spacing: 14px;
+                    vertical-stretch: 1;
+                    for item[i] in [
+                        { name: "Kapak akışı", desc: "Bulanık kapak yavaşça döner ve kayar" },
+                        { name: "Renk lekeleri", desc: "Kapak renklerinden süzülen ışık lekeleri" },
+                        { name: "Sade", desc: "Hareketsiz, tek renkli yumuşak degrade" },
+                    ]: VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 10px;
+                        alignment: center;
+                        Rectangle {
+                            height: 160px;
+                            border-radius: Theme.r-lg;
+                            clip: true;
+                            background: Theme.canvas;
+                            border-width: bg-style == i ? 2px : 1px;
+                            border-color: bg-style == i ? Theme.accent : Theme.border;
+                            if i == 0: CoverFlow {
+                                blur: now-blur; has-blur: has-blur && has-now;
+                                disc: fx-disc; grain: fx-grain; show-grain: false;
+                                c1: amb1; c2: amb2; c3: amb3;
+                                t: amb-t;
+                                level: [0.42, 0.6, 0.8][bg-level];
+                            }
+                            if i == 0: Rectangle { background: @linear-gradient(180deg, #090A0D38 0%, #090A0D99 100%); }
+                            if i == 1: Ambience {
+                                disc: fx-disc; grain: fx-grain; show-grain: false;
+                                c1: amb1; c2: amb2; c3: amb3;
+                                t: amb-t;
+                                level: [0.35, 0.55, 0.78][bg-level];
+                            }
+                            if i == 2: Rectangle {
+                                background: @linear-gradient(180deg, amb1.with-alpha([0.2, 0.34, 0.48][bg-level]) 0%, Theme.canvas 82%);
+                            }
+                            if bg-grain: Image {
+                                width: parent.width; height: parent.height;
+                                source: fx-grain; horizontal-tiling: repeat; vertical-tiling: repeat;
+                            }
+                            // Küçük arayüz ipucu (kapak + başlık çubukları)
+                            Rectangle {
+                                x: 16px; y: parent.height - 54px; width: 38px; height: 38px;
+                                border-radius: 7px; background: #ffffff22;
+                            }
+                            Rectangle {
+                                x: 64px; y: parent.height - 46px; width: 92px; height: 8px;
+                                border-radius: 4px; background: #ffffff44;
+                            }
+                            Rectangle {
+                                x: 64px; y: parent.height - 30px; width: 58px; height: 6px;
+                                border-radius: 3px; background: #ffffff26;
+                            }
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { bg-style = i; root.settings-changed(); }
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 2px;
+                            Text {
+                                text: item.name; horizontal-alignment: center;
+                                font-size: 14px; font-weight: 700;
+                                color: bg-style == i ? Theme.accent : Theme.text-primary;
+                            }
+                            Text {
+                                text: item.desc; horizontal-alignment: center;
+                                font-size: 11.5px; color: Theme.text-muted; wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px; alignment: center;
+                    Text { text: "Yoğunluk"; vertical-alignment: center; font-size: 13px; font-weight: 600; color: Theme.text-secondary; }
+                    for name[i] in ["Sade", "Orta", "Canlı"]: PillButton {
+                        pill-height: 32px; text: name; active: bg-level == i;
+                        clicked => { bg-level = i; root.settings-changed(); }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px; alignment: space-between;
+                    Text {
+                        text: "İstediğin zaman Ayarlar → Görünüm'den değiştirebilirsin.";
+                        vertical-alignment: center; font-size: 11.5px; color: Theme.text-muted;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        PillButton { pill-height: 34px; text: "Geri"; clicked => { tastes-step = 0; } }
+                        PillButton {
+                            pill-height: 34px; text: "Devam"; primary: true;
+                            clicked => { root.settings-changed(); tastes-open = false; tastes-step = 0; }
+                        }
                     }
                 }
             }

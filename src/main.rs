@@ -177,6 +177,9 @@ struct State {
     taste_draft_genres: Vec<String>,
     taste_draft_blocked: Vec<String>,
     taste_draft_tracks: Vec<TrackInfo>,
+    /// Ortam zemini sürekli zamanlayıcısı (33 ms, yalnız gerekince çalışır)
+    amb_timer: Timer,
+    amb_running: bool,
 }
 
 /// Arama "En iyi sonuç"u: çalınabilir şarkı ya da açılabilir kart.
@@ -537,6 +540,7 @@ fn apply_undo(ui: &AppWindow) {
                 let _ = st.settings.save();
             });
             ui.set_tastes_open(false);
+            ui.set_tastes_step(0);
             refresh_hidden(ui);
             refresh_taste_summary(ui);
             refresh_profile(ui);
@@ -3742,6 +3746,7 @@ fn open_tastes(ui: &AppWindow) {
     ui.set_taste_samples(ModelRc::new(VecModel::from(Vec::<Track>::new())));
     ui.set_taste_picked(ModelRc::new(VecModel::from(Vec::<bool>::new())));
     ui.set_taste_samples_loading(false);
+    ui.set_tastes_step(0);
     ui.set_tastes_open(true);
     if let Some(gid) = first_selected {
         load_genre_samples(ui, gid, true);
@@ -3809,7 +3814,7 @@ fn taste_save(ui: &AppWindow) {
         st.settings.tastes_done = true;
         let _ = st.settings.save();
     });
-    ui.set_tastes_open(false);
+    ui.set_tastes_step(1);
     refresh_taste_summary(ui);
     toast(ui, "Zevkler kaydedildi; ana sayfa yenileniyor…");
     load_home(ui);
@@ -3857,7 +3862,7 @@ fn taste_skip(ui: &AppWindow) {
             let _ = st.settings.save();
         }
     });
-    ui.set_tastes_open(false);
+    ui.set_tastes_step(1);
 }
 
 fn sync_playlist_view(ui: &AppWindow) {
@@ -4035,9 +4040,12 @@ fn refresh_profile(ui: &AppWindow) {
 }
 
 /// Spektrumu yalnız gerekince çalıştır: profil ekranı açıkken ya da "müziğe tepki" açık ve
-/// zemin görünürken (ana sayfa / söz ekranı), her ikisinde de yalnız çalarken.
+/// zemin görünürken (ana sayfa / söz ekranı; Sade stilde kapalı), her ikisinde de yalnız çalarken.
 fn update_viz(ui: &AppWindow) {
-    let zemin = ui.get_bg_reactive() && !ui.get_window_hidden() && (ui.get_lyrics_open() || ui.get_view() == "home");
+    let zemin = ui.get_bg_reactive()
+        && ui.get_bg_style() != 2
+        && !ui.get_window_hidden()
+        && (ui.get_lyrics_open() || ui.get_view() == "home");
     let want = ui.get_playing() && (ui.get_view() == "profile" || zemin);
     let running = with_state(|st| st.viz.is_some());
     if want == running {
@@ -4098,6 +4106,37 @@ fn update_viz(ui: &AppWindow) {
     }
 }
 
+/// Ortam zemini zamanlayıcısı (33 ms): yalnız gerekince çalışır.
+/// - İlk açılış/Ayarlar "Görünümünü seç" adımı görünürken (önizlemeler canlı)
+/// - Veya Sade (2) dışındaki bir stilde, hareket açıkken, çalarken ve ana sayfa/söz ekranı görünürken
+/// Pencere gizliyse ya da oyun modundaysa hiç çalışmaz.
+fn update_amb_timer(ui: &AppWindow) {
+    let preview_step = ui.get_tastes_open() && ui.get_tastes_step() == 1;
+    let lyrics_motion_ok = !ui.get_lyrics_open() || ui.get_lyrics_motion();
+    let bg_active = ui.get_bg_style() != 2
+        && ui.get_bg_motion()
+        && lyrics_motion_ok
+        && ui.get_playing()
+        && (ui.get_lyrics_open() || ui.get_view() == "home");
+    let want = !ui.get_window_hidden() && !ui.get_game_mode() && (preview_step || bg_active);
+    let weak = ui.as_weak();
+    with_state(|st| {
+        if want == st.amb_running {
+            return;
+        }
+        st.amb_running = want;
+        if !want {
+            st.amb_timer.stop();
+            return;
+        }
+        st.amb_timer.start(TimerMode::Repeated, Duration::from_millis(33), move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_amb_t(ui.get_amb_t() + 0.033);
+            }
+        });
+    });
+}
+
 // ---------- Ayarlar ----------
 
 fn human_bytes(b: u64) -> String {
@@ -4137,6 +4176,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_theme_accent(s.theme_accent);
     ui.set_theme_backdrop(s.theme_backdrop);
     ui.set_auto_update(s.auto_update);
+    ui.set_bg_style(s.bg_style.clamp(0, 2));
     ui.set_bg_level(s.bg_level.clamp(0, 2));
     ui.set_bg_motion(s.bg_motion);
     ui.set_bg_reactive(s.bg_reactive && cfg!(target_os = "linux"));
@@ -4211,6 +4251,7 @@ fn apply_settings(ui: &AppWindow) {
         theme_accent: ui.get_theme_accent(),
         theme_backdrop: ui.get_theme_backdrop(),
         auto_update: ui.get_auto_update(),
+        bg_style: ui.get_bg_style().clamp(0, 2),
         bg_level: ui.get_bg_level(),
         bg_motion: ui.get_bg_motion(),
         bg_reactive: ui.get_bg_reactive(),
@@ -4242,6 +4283,8 @@ fn apply_settings(ui: &AppWindow) {
     });
     let s = with_state(|st| st.settings.clone());
     apply_theme(ui, &s);
+    update_viz(ui);
+    update_amb_timer(ui);
     refresh_usage(ui);
 }
 
@@ -4686,6 +4729,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             taste_draft_genres: Vec::new(),
             taste_draft_blocked: Vec::new(),
             taste_draft_tracks: Vec::new(),
+            amb_timer: Timer::default(),
+            amb_running: false,
         })
     });
     with_state(|st| {
@@ -4853,6 +4898,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 refresh_profile(&ui);
             }
             update_viz(&ui);
+            update_amb_timer(&ui);
         }
     });
     ui.on_play_profile_track({
@@ -5749,6 +5795,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    ui.on_amb_check({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                update_amb_timer(&ui);
+            }
+        }
+    });
     ui.on_mini_open({
         let weak = weak.clone();
         move || {
@@ -5883,6 +5937,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if with_state(|st| !st.settings.tastes_done && st.history.is_empty()) {
         open_tastes(&ui);
     }
+    update_amb_timer(&ui);
     ui.run()?;
     save_session(&ui);
     // Ses düzeyi bir dahaki açılışta aynı gelsin.
