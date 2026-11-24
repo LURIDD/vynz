@@ -724,6 +724,33 @@ fn set_ambience(ui: &AppWindow, pal: Option<[Color; 3]>) {
         }
         None => ui.set_has_amb(false),
     }
+    refresh_amb_discs(ui);
+}
+
+thread_local! {
+    static AMB_DISC: Vec<u8> = ambience::disc_rgba();
+    static AMB_LAST: std::cell::Cell<[u32; 3]> = const { std::cell::Cell::new([u32::MAX; 3]) };
+}
+
+/// Zemin renkleri (amb1..3, palet ya da vurgudan) değişince boyalı diskleri yeniden üret.
+fn refresh_amb_discs(ui: &AppWindow) {
+    let cols = [ui.get_amb1(), ui.get_amb2(), ui.get_amb3()];
+    let key = cols.map(|c| c.as_argb_encoded());
+    if AMB_LAST.with(|l| l.get()) == key {
+        return;
+    }
+    AMB_LAST.with(|l| l.set(key));
+    let imgs: Vec<Image> = AMB_DISC.with(|base| {
+        cols.iter()
+            .map(|c| {
+                let px = ambience::tinted_disc(base, (c.red(), c.green(), c.blue()));
+                Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&px, ambience::DISC, ambience::DISC))
+            })
+            .collect()
+    });
+    ui.set_amb_d1(imgs[0].clone());
+    ui.set_amb_d2(imgs[1].clone());
+    ui.set_amb_d3(imgs[2].clone());
 }
 
 // ---------- Oynatma ----------
@@ -4216,6 +4243,7 @@ fn apply_theme(ui: &AppWindow, s: &Settings) {
     } else if let Some(c) = COVER_ACCENT.with(|x| x.get()) {
         th.set_accent(c);
     }
+    refresh_amb_discs(ui);
 }
 
 /// Kapaktan gelen vurgu: sabit vurgu seçiliyse yalnız saklanır.
@@ -4224,6 +4252,7 @@ fn set_cover_accent(ui: &AppWindow, c: Color) {
     if ui.get_theme_accent() == 0 {
         ui.global::<Theme>().set_accent(c);
     }
+    refresh_amb_discs(ui);
 }
 
 fn apply_settings(ui: &AppWindow) {

@@ -538,6 +538,9 @@ export component AppWindow inherits Window {
     in property <image> fx-disc;
     in property <image> fx-grain;
     in property <bool> has-amb: false;
+    in property <image> amb-d1;
+    in property <image> amb-d2;
+    in property <image> amb-d3;
     in property <color> amb-c1;
     in property <color> amb-c2;
     in property <color> amb-c3;
@@ -814,7 +817,7 @@ export component AppWindow inherits Window {
         if bg-style == 0: CoverFlow {
             blur: now-blur; has-blur: has-blur && has-now;
             disc: fx-disc; grain: fx-grain; show-grain: false;
-            c1: amb1; c2: amb2; c3: amb3;
+            c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
             t: bg-motion ? amb-t : 0;
             level: [0.25, 0.35, 0.5][bg-level];
             beat: bg-reactive ? beat : 0;
@@ -829,7 +832,7 @@ export component AppWindow inherits Window {
 
         if bg-style == 1: Ambience {
             disc: fx-disc; grain: fx-grain; show-grain: bg-grain;
-            c1: amb1; c2: amb2; c3: amb3;
+            c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
             level: [0.13, 0.22, 0.34][bg-level];
             t: bg-motion ? amb-t : 0;
             beat: bg-reactive ? beat : 0;
@@ -2005,13 +2008,13 @@ export component AppWindow inherits Window {
                                             if i == 0: CoverFlow {
                                                 blur: now-blur; has-blur: has-blur && has-now;
                                                 disc: fx-disc; grain: fx-grain; show-grain: false;
-                                                c1: amb1; c2: amb2; c3: amb3;
+                                                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
                                                 t: 0; level: 0.72;
                                             }
                                             if i == 0: Rectangle { background: @linear-gradient(180deg, #090A0D44 0%, #090A0D99 100%); }
                                             if i == 1: Ambience {
                                                 disc: fx-disc; grain: fx-grain; show-grain: false;
-                                                c1: amb1; c2: amb2; c3: amb3;
+                                                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
                                                 t: 0; level: 0.65;
                                             }
                                             if i == 2: Rectangle {
@@ -2416,7 +2419,7 @@ export component AppWindow inherits Window {
             if bg-style == 0: CoverFlow {
                 blur: now-blur; has-blur: has-blur && has-now;
                 disc: fx-disc; grain: fx-grain; show-grain: false;
-                c1: amb1; c2: amb2; c3: amb3;
+                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
                 t: bg-motion && lyrics-motion ? amb-t : 0;
                 level: [0.45, 0.65, 0.85][bg-level];
                 beat: bg-reactive ? beat : 0;
@@ -2437,7 +2440,7 @@ export component AppWindow inherits Window {
             }
             if bg-style == 1: Ambience {
                 disc: fx-disc; grain: fx-grain; show-grain: false;
-                c1: amb1; c2: amb2; c3: amb3;
+                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
                 level: [0.35, 0.5, 0.7][bg-level];
                 t: bg-motion && lyrics-motion ? amb-t : 0;
                 beat: bg-reactive ? beat : 0;
@@ -4073,14 +4076,14 @@ export component AppWindow inherits Window {
                             if i == 0: CoverFlow {
                                 blur: now-blur; has-blur: has-blur && has-now;
                                 disc: fx-disc; grain: fx-grain; show-grain: false;
-                                c1: amb1; c2: amb2; c3: amb3;
+                                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
                                 t: amb-t;
                                 level: [0.42, 0.6, 0.8][bg-level];
                             }
                             if i == 0: Rectangle { background: @linear-gradient(180deg, #090A0D38 0%, #090A0D99 100%); }
                             if i == 1: Ambience {
                                 disc: fx-disc; grain: fx-grain; show-grain: false;
-                                c1: amb1; c2: amb2; c3: amb3;
+                                c1: amb1; c2: amb2; c3: amb3; d1: amb-d1; d2: amb-d2; d3: amb-d3;
                                 t: amb-t;
                                 level: [0.35, 0.55, 0.78][bg-level];
                             }

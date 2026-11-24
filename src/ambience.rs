@@ -44,11 +44,24 @@ pub fn disc_rgba() -> Vec<u8> {
             let d = rng.unit() - rng.unit();
             let v = (a * 255.0 + d).round().clamp(0.0, 255.0) as u8;
             let i = (y * n + x) * 4;
-            out[i] = 255;
-            out[i + 1] = 255;
-            out[i + 2] = 255;
+            // Renk kanalı = alfa (önceden çarpılmış beyaz). colorize rengi zaten değiştirir; ama
+            // renk > alfa olan pikseller GPU çiziminde koyu beneklere dönüşüyordu.
+            out[i] = v;
+            out[i + 1] = v;
+            out[i + 2] = v;
             out[i + 3] = v;
         }
+    }
+    out
+}
+
+/// Beyaz diski verilen renge boya (düz alfa; renk kanalı sabit, alfa diskten).
+pub fn tinted_disc(base: &[u8], c: (u8, u8, u8)) -> Vec<u8> {
+    let mut out = base.to_vec();
+    for p in out.chunks_exact_mut(4) {
+        p[0] = c.0;
+        p[1] = c.1;
+        p[2] = c.2;
     }
     out
 }

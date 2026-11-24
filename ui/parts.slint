@@ -974,6 +974,10 @@ export component PagerArrow inherits Rectangle {
 // (src/ambience.rs); hareketi Rust'taki tek zamanlayıcı (t, saniye) kesintisiz besler.
 export component Ambience inherits Rectangle {
     in property <image> disc;
+    // Kapak renkleriyle Rust'ta boyanmış diskler (Slint colorize GPU'da koyu benek bırakıyordu)
+    in property <image> d1;
+    in property <image> d2;
+    in property <image> d3;
     in property <image> grain;
     in property <color> c1;
     in property <color> c2;
@@ -997,14 +1001,12 @@ export component Ambience inherits Rectangle {
         { c: 0, bx: 0.85, by: 0.90, ax: 0.07, ay: 0.06, w: 8.5, o: 60.0,  size: 0.70, a: 0.55 },
     ]: Image {
         property <length> d: Math.max(root.width, root.height) * b.size * (1 + root.pulse * 0.10);
-        source: root.disc;
-        colorize: b.c == 0 ? root.c1 : b.c == 1 ? root.c2 : root.c3;
+        source: b.c == 0 ? root.d1 : b.c == 1 ? root.d2 : root.d3;
         width: self.d; height: self.d;
         x: root.width * (b.bx + b.ax * Math.sin((root.t * b.w + b.o) * 1deg)) - self.d / 2;
         y: root.height * (b.by + b.ay * Math.cos((root.t * b.w * 1.3 + b.o) * 1deg)) - self.d / 2;
         opacity: Math.min(1, root.level * b.a * (1 + root.pulse * 0.35));
         animate width, height { duration: 110ms; easing: ease-out; }
-        animate colorize { duration: 900ms; }
     }
 
     if root.show-grain: Image {
@@ -1021,6 +1023,10 @@ export component CoverFlow inherits Rectangle {
     in property <image> blur;
     in property <bool> has-blur: false;
     in property <image> disc;
+    // Kapak renkleriyle Rust'ta boyanmış diskler (Slint colorize GPU'da koyu benek bırakıyordu)
+    in property <image> d1;
+    in property <image> d2;
+    in property <image> d3;
     in property <image> grain;
     in property <color> c1;
     in property <color> c2;
@@ -1071,8 +1077,7 @@ export component CoverFlow inherits Rectangle {
             { c: 2, bx: 0.50, by: 0.25, ax: 0.12, ay: 0.10, w: 4.1, o: 220.0, size: 1.20, a: 0.65 },
         ]: Image {
             property <length> d: Math.max(root.width, root.height) * b.size * (1 + root.pulse * 0.08);
-            source: root.disc;
-            colorize: b.c == 0 ? root.c1 : b.c == 1 ? root.c2 : root.c3;
+            source: b.c == 0 ? root.d1 : b.c == 1 ? root.d2 : root.d3;
             width: self.d; height: self.d;
             x: root.width * (b.bx + b.ax * Math.sin((root.t * b.w + b.o) * 1deg)) - self.d / 2;
             y: root.height * (b.by + b.ay * Math.cos((root.t * b.w * 1.2 + b.o) * 1deg)) - self.d / 2;
