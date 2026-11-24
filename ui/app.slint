@@ -294,6 +294,13 @@ export struct TopResult {
     has-art: bool,
 }
 
+// Yenilikler penceresi satırı: kind 0 özet paragraf, 1 başlık, 2 madde
+export struct NewsRow {
+    kind: int,
+    title: string,
+    text: string,
+}
+
 component SettingRow inherits Rectangle {
     in property <string> title;
     in property <string> note;
@@ -599,6 +606,13 @@ export component AppWindow inherits Window {
     callback taste-preview-sample(int);
     callback taste-save();
     callback taste-skip();
+
+    // Yenilikler penceresi (güncelleme sonrası ilk açılış + Ayarlar)
+    in property <[NewsRow]> news-rows;
+    in-out property <bool> news-open: false;
+    in property <string> news-version;
+    callback news-closed();
+    callback news-try-look();
 
     // Gizlenenler ("İlgilenmiyorum")
     in property <[string]> hidden-artists;
@@ -916,6 +930,7 @@ export component AppWindow inherits Window {
         if (e.modifiers.control && (e.text == "k" || e.text == "K")) { search-input.focus(); search-input.select-all(); return accept; }
         if (e.modifiers.control && (e.text == "z" || e.text == "Z") && toast-undo) { root.undo(); return accept; }
         if (e.text == Key.Escape) {
+            if (news-open) { news-open = false; root.news-closed(); return accept; }
             if (create-pl-open) { create-pl-open = false; return accept; }
             if (pl-rename-open) { pl-rename-open = false; return accept; }
             if (pl-pick-open) { pl-pick-open = false; return accept; }
@@ -2324,6 +2339,7 @@ export component AppWindow inherits Window {
                         SettingRow {
                             title: "Vynz " + app-version;
                             note: "Yeni sürüm çıkınca açılışta kendiliğinden indirilip kurulur, uygulama yeniden açılır.";
+                            PillButton { pill-height: 30px; text: "Yenilikleri göster"; clicked => { news-open = true; } }
                             PillButton { pill-height: 30px; text: update-checking ? "Denetleniyor…" : "Güncellemeleri denetle"; enabled: !update-checking; clicked => { root.check-updates(); } }
                             PillButton { pill-height: 30px; text: "Otomatik"; active: auto-update; clicked => { auto-update = true; root.settings-changed(); } }
                             PillButton { pill-height: 30px; text: "Elle"; active: !auto-update; clicked => { auto-update = false; root.settings-changed(); } }
@@ -4339,6 +4355,113 @@ export component AppWindow inherits Window {
                             pill-height: 34px; text: "Devam"; primary: true;
                             clicked => { root.settings-changed(); tastes-open = false; tastes-step = 0; }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------- Yenilikler penceresi ----------
+    if news-open: Rectangle {
+        x: 0; y: 0; width: root.width; height: root.height;
+        background: #000000aa;
+        TouchArea { clicked => { news-open = false; root.news-closed(); } }
+        Rectangle {
+            width: Math.min(560px, root.width - 48px);
+            height: news-col.preferred-height;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: Theme.r-xl;
+            background: Theme.floating;
+            border-width: 1px; border-color: Theme.border;
+            drop-shadow-blur: 60px; drop-shadow-color: #000000cc;
+            TouchArea { }
+
+            news-col := VerticalLayout {
+                padding: 28px; spacing: 16px;
+                HorizontalLayout {
+                    alignment: space-between;
+                    VerticalLayout {
+                        spacing: 4px; horizontal-stretch: 1;
+                        Text {
+                            text: "YENİLİKLER";
+                            font-size: 11px; font-weight: 800; letter-spacing: 1px;
+                            color: Theme.accent;
+                        }
+                        Text {
+                            text: "Vynz " + news-version;
+                            font-family: Theme.display; font-size: 26px; font-weight: 800; letter-spacing: -0.8px;
+                            color: Theme.text-primary;
+                        }
+                    }
+                    IconButton { icon: Icons.x; clicked => { news-open = false; root.news-closed(); } }
+                }
+
+                news-flick := Flickable {
+                    height: Math.min(news-list.preferred-height, Math.max(120px, root.height * 0.8 - 200px));
+                    content-width: self.width;
+                    content-height: news-list.preferred-height;
+                    news-list := VerticalLayout {
+                        width: news-flick.width;
+                        spacing: 10px;
+                        alignment: start;
+                        for row in news-rows: VerticalLayout {
+                            if row.kind == 0: Text {
+                                text: row.text;
+                                font-size: 13.5px; color: Theme.text-secondary;
+                                wrap: word-wrap;
+                            }
+                            if row.kind == 1: VerticalLayout {
+                                padding-top: 8px;
+                                Text {
+                                    text: row.title;
+                                    font-size: 11px; font-weight: 800; letter-spacing: 0.9px;
+                                    color: Theme.accent;
+                                }
+                            }
+                            if row.kind == 2: HorizontalLayout {
+                                spacing: 10px;
+                                alignment: stretch;
+                                VerticalLayout {
+                                    alignment: start;
+                                    padding-top: 6px;
+                                    Rectangle {
+                                        width: 6px; height: 6px; border-radius: 3px;
+                                        background: Theme.accent;
+                                    }
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    spacing: 2px;
+                                    if row.title != "": Text {
+                                        text: row.title;
+                                        font-size: 13px; font-weight: 700;
+                                        color: Theme.text-primary;
+                                        wrap: word-wrap;
+                                    }
+                                    if row.text != "": Text {
+                                        text: row.text;
+                                        font-size: 12.5px;
+                                        color: row.title != "" ? Theme.text-secondary : Theme.text-primary;
+                                        wrap: word-wrap;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Theme.border; }
+
+                HorizontalLayout {
+                    spacing: 8px; alignment: end;
+                    PillButton {
+                        pill-height: 34px; text: "Görünümü dene";
+                        clicked => { root.news-try-look(); }
+                    }
+                    PillButton {
+                        pill-height: 34px; text: "Harika"; primary: true;
+                        clicked => { news-open = false; root.news-closed(); }
                     }
                 }
             }

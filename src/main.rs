@@ -4437,6 +4437,84 @@ fn restore_session(ui: &AppWindow) {
 }
 
 /// MPRIS (medya tuşları, çubuk) komutlarını uygula.
+// ---------- Yenilikler ----------
+
+const NOTES: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/notes/v", env!("CARGO_PKG_VERSION"), ".md"));
+const CUR_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn clean_md(s: &str) -> String {
+    s.replace("**", "").replace('`', "")
+}
+
+fn tr_upper(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            'i' => out.push('İ'),
+            'ı' => out.push('I'),
+            _ => {
+                for u in c.to_uppercase() {
+                    out.push(u);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Sürüm notu markdown metnini "Yenilikler" penceresi satırlarına ayırır.
+/// kind: 0 özet paragraf, 1 bölüm başlığı (`## `), 2 madde (`- `).
+fn parse_news(md: &str) -> Vec<NewsRow> {
+    let mut rows = Vec::new();
+    for raw in md.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(h) = line.strip_prefix("## ") {
+            rows.push(NewsRow {
+                kind: 1,
+                title: tr_upper(&clean_md(h.trim())).into(),
+                text: "".into(),
+            });
+        } else if let Some(rest) = line.strip_prefix("- ") {
+            let rest = rest.trim();
+            let (title, text) = if let Some(after) = rest.strip_prefix("**") {
+                if let Some((t, body)) = after.split_once(":**") {
+                    (clean_md(t.trim()), clean_md(body.trim()))
+                } else {
+                    (String::new(), clean_md(rest))
+                }
+            } else {
+                (String::new(), clean_md(rest))
+            };
+            rows.push(NewsRow {
+                kind: 2,
+                title: title.into(),
+                text: text.into(),
+            });
+        } else {
+            rows.push(NewsRow {
+                kind: 0,
+                title: "".into(),
+                text: clean_md(line).into(),
+            });
+        }
+    }
+    rows
+}
+
+fn mark_news_seen() {
+    with_state(|st| {
+        if st.settings.last_seen_version != CUR_VERSION {
+            st.settings.last_seen_version = CUR_VERSION.into();
+            if let Err(e) = st.settings.save() {
+                eprintln!("ayarlar kaydedilemedi: {e}");
+            }
+        }
+    });
+}
+
 // ---------- Güncelleme ----------
 
 /// Son sürümü denetle; yenisi varsa (atlanmamışsa) hemen indirip kurmaya başla.
@@ -5253,6 +5331,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    ui.on_news_closed({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_news_open(false);
+                mark_news_seen();
+            }
+        }
+    });
+    ui.on_news_try_look({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_news_open(false);
+                mark_news_seen();
+                ui.set_settings_tab(4);
+                ui.invoke_go("settings".into());
+            }
+        }
+    });
     ui.on_eq_set({
         let weak = weak.clone();
         move |band, gain| {
@@ -6001,6 +6099,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if with_state(|st| !st.settings.tastes_done && st.history.is_empty()) {
         open_tastes(&ui);
     }
+    ui.set_news_version(CUR_VERSION.into());
+    ui.set_news_rows(ModelRc::new(VecModel::from(parse_news(NOTES))));
+    if std::env::var("VYNZ_SHOW_NEWS").is_ok_and(|v| v == "1") {
+        ui.set_news_open(true);
+    } else {
+        let show_news = with_state(|st| {
+            let last = st.settings.last_seen_version.as_str();
+            if last.is_empty() {
+                if st.settings.tastes_done || !st.history.is_empty() {
+                    true
+                } else {
+                    st.settings.last_seen_version = CUR_VERSION.into();
+                    let _ = st.settings.save();
+                    false
+                }
+            } else {
+                last != CUR_VERSION
+            }
+        });
+        if show_news && !ui.get_tastes_open() {
+            ui.set_news_open(true);
+        }
+    }
     update_amb_timer(&ui);
     ui.run()?;
     save_session(&ui);
@@ -6033,5 +6154,54 @@ mod queue_tests {
         assert_eq!(moved_index(2, 3, 4), 2); // çalandan sonrası kendi arasında
         assert_eq!(moved_index(2, 0, 1), 2);
         assert_eq!(moved_index(2, 1, 2), 1);
+    }
+}
+
+#[cfg(test)]
+mod news_tests {
+    use super::parse_news;
+
+    #[test]
+    fn parses_release_notes() {
+        let md = "\
+Vynz 0.3.0: yeni `görünüm` ve **hız** iyileştirmeleri.
+
+## Yeni
+- **Sıvı kapak:** Arka planda `akışkan` renkler.
+- **Beğendiklerim** sabit durur.
+- Düz madde metni.
+
+## Düzeltmeler
+- Küçük **bir** hata giderildi.
+";
+        let rows = parse_news(md);
+        assert_eq!(rows.len(), 7);
+
+        assert_eq!(rows[0].kind, 0);
+        assert_eq!(rows[0].title.as_str(), "");
+        assert_eq!(rows[0].text.as_str(), "Vynz 0.3.0: yeni görünüm ve hız iyileştirmeleri.");
+
+        assert_eq!(rows[1].kind, 1);
+        assert_eq!(rows[1].title.as_str(), "YENİ");
+        assert_eq!(rows[1].text.as_str(), "");
+
+        assert_eq!(rows[2].kind, 2);
+        assert_eq!(rows[2].title.as_str(), "Sıvı kapak");
+        assert_eq!(rows[2].text.as_str(), "Arka planda akışkan renkler.");
+
+        assert_eq!(rows[3].kind, 2);
+        assert_eq!(rows[3].title.as_str(), "");
+        assert_eq!(rows[3].text.as_str(), "Beğendiklerim sabit durur.");
+
+        assert_eq!(rows[4].kind, 2);
+        assert_eq!(rows[4].title.as_str(), "");
+        assert_eq!(rows[4].text.as_str(), "Düz madde metni.");
+
+        assert_eq!(rows[5].kind, 1);
+        assert_eq!(rows[5].title.as_str(), "DÜZELTMELER");
+
+        assert_eq!(rows[6].kind, 2);
+        assert_eq!(rows[6].title.as_str(), "");
+        assert_eq!(rows[6].text.as_str(), "Küçük bir hata giderildi.");
     }
 }

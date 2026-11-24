@@ -92,6 +92,8 @@ pub struct Settings {
     pub auto_update: bool,
     /// "Bu sürümü atla" denen sürüm
     pub skip_version: String,
+    /// "Yenilikler" penceresinde en son görülen sürüm
+    pub last_seen_version: String,
     /// Ortam zemini stili: 0 kapak, 1 renk lekeleri, 2 sade, 3 sıvı kapak, 4 hale
     pub bg_style: i32,
     /// Ortam zemini parlaklığı: 0 sade, 1 orta, 2 canlı
@@ -136,6 +138,7 @@ impl Default for Settings {
             theme_backdrop: 0,
             auto_update: true,
             skip_version: String::new(),
+            last_seen_version: String::new(),
             bg_style: 0,
             bg_level: 1,
             bg_motion: true,
