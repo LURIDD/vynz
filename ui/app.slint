@@ -4335,14 +4335,14 @@ export component MiniWindow inherits Window {
                 art: root.art; has-art: root.has-now && root.has-art;
             }
             VerticalLayout {
-                alignment: center; spacing: 3px;
+                alignment: center; spacing: 1px;
                 horizontal-stretch: 1;
                 Text { text: root.has-now ? root.track-title : "Çalan bir şey yok"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
                 Text { text: root.track-artist; font-size: 11.5px; color: Theme.text-secondary; overflow: elide; }
                 HorizontalLayout {
-                    spacing: 2px; alignment: start; padding-top: 2px;
+                    spacing: 2px; alignment: start; padding-top: 1px;
                     IconButton { icon: Icons.skip-back; enabled: root.has-now; clicked => { root.prev(); } }
-                    IconButton { icon: root.playing ? Icons.pause : Icons.play; primary: true; filled: true; enabled: root.has-now; clicked => { root.toggle(); } }
+                    IconButton { icon: root.playing ? Icons.pause : Icons.play; primary: true; size: 32px; enabled: root.has-now; clicked => { root.toggle(); } }
                     IconButton { icon: Icons.skip-forward; enabled: root.has-now; clicked => { root.next(); } }
                     IconButton { icon: Icons.heart; tint: root.liked ? Theme.accent : Theme.text-secondary; enabled: root.has-now; clicked => { root.like(); } }
                     if root.game-mode: Rectangle {

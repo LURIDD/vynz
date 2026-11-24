@@ -482,9 +482,11 @@ export component IconButton inherits Rectangle {
     in property <bool> enabled: true;
     in property <color> tint: Theme.text-secondary;
     in property <bool> filled;
+    // Birincil görünüm ama küçük boy (dar yerler: mini oynatıcı)
+    in property <length> size: primary ? 40px : 34px;
     callback clicked;
 
-    width: primary ? 40px : 34px;
+    width: root.size;
     height: self.width;
     border-radius: self.width / 2;
     opacity: enabled ? 1 : 0.35;
