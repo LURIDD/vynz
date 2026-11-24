@@ -1253,6 +1253,14 @@ fn on_started(ui: &AppWindow, pos: i64) {
     if let Some((t, i)) = advanced {
         set_now_ui(ui, &t, i);
         schedule_prefetch(ui);
+        // Uyku: "şarkı bitince" — boşluksuz geçişte yeni parça başını bekletir
+        if ui.get_sleep_eot() {
+            ui.set_sleep_eot(false);
+            with_state(|st| {
+                st.player.send(Cmd::SetPause(true));
+                st.player.send(Cmd::Seek(0.0));
+            });
+        }
     }
 }
 
@@ -1261,7 +1269,45 @@ fn on_ended(ui: &AppWindow) {
     let has_next = with_state(|st| st.index.is_some_and(|i| st.appended == Some(i + 1)));
     if !has_next {
         step(ui, 1);
+        if ui.get_sleep_eot() {
+            ui.set_sleep_eot(false);
+            with_state(|st| st.player.send(Cmd::SetPause(true)));
+        }
     }
+}
+
+thread_local! {
+    /// Uyku zamanlayıcısının sesi kısma zamanlayıcısı (çalışırken canlı tutulur)
+    static SLEEP_FADE: RefCell<Option<Timer>> = const { RefCell::new(None) };
+}
+
+/// Uyku süresi doldu: sesi 8 sn'de kıs, duraklat, ses düzeyini geri ver.
+fn sleep_fire(ui: &AppWindow) {
+    let v0 = ui.get_volume() as f64;
+    let steps = 32u32;
+    let n = std::rc::Rc::new(std::cell::Cell::new(0u32));
+    let t = Timer::default();
+    let weak = ui.as_weak();
+    t.start(TimerMode::Repeated, Duration::from_millis(250), move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let k = n.get() + 1;
+        n.set(k);
+        // Kullanıcı bu arada duraklattıysa ya da yeni süre kurduysa bırak
+        let cancelled = !ui.get_playing() || ui.get_sleep_left() > 0;
+        if k >= steps || cancelled {
+            with_state(|st| {
+                if !cancelled {
+                    st.player.send(Cmd::SetPause(true));
+                }
+                st.player.send(Cmd::Volume(v0));
+            });
+            SLEEP_FADE.with(|f| f.borrow_mut().take());
+            return;
+        }
+        let f = 1.0 - k as f64 / steps as f64;
+        with_state(|st| st.player.send(Cmd::Volume(v0 * f * f)));
+    });
+    SLEEP_FADE.with(|f| *f.borrow_mut() = Some(t));
 }
 
 /// Bekçi: parça 8 sn'de ilerlemezse adres bozuktur (ör. yavaşlatılmış akış); yedek yoldan aç.
@@ -5407,6 +5453,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ambience::GRAIN,
     )));
     ui.set_can_react(cfg!(target_os = "linux"));
+    if std::env::var_os("VYNZ_SLEEP_TEST").is_some() {
+        ui.set_sleep_unit(1);
+    }
+    ui.on_sleep_fire({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                sleep_fire(&ui);
+            }
+        }
+    });
     ui.on_viz_check({
         let weak = weak.clone();
         move || {

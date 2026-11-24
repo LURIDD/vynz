@@ -394,6 +394,22 @@ export component AppWindow inherits Window {
     property <bool> eq-grab;
     // Alt çubuktaki hızlı ekolayzır paneli
     in-out property <bool> eq-pop: false;
+    // Uyku zamanlayıcısı: kalan saniye (yalnız çalarken azalır) ya da "şarkı bitince"
+    in-out property <int> sleep-left: 0;
+    in-out property <bool> sleep-eot: false;
+    in-out property <bool> sleep-pop: false;
+    // test kancası: VYNZ_SLEEP_TEST ile 1 (dakika yerine saniye)
+    in property <int> sleep-unit: 60;
+    callback sleep-fire();
+    out property <bool> sleep-on: sleep-left > 0 || sleep-eot;
+    sleep-timer := Timer {
+        interval: 1s;
+        running: sleep-left > 0 && playing;
+        triggered => {
+            sleep-left -= 1;
+            if (sleep-left <= 0) { sleep-left = 0; root.sleep-fire(); }
+        }
+    }
     // Görünüm
     in-out property <int> theme-accent: 0;
     in-out property <int> theme-backdrop: 0;
@@ -735,6 +751,7 @@ export component AppWindow inherits Window {
             if (menu-open) { menu-open = false; menu-pl-open = false; return accept; }
             if (sidebar-peek) { sidebar-peek = false; return accept; }
             if (eq-pop) { eq-pop = false; return accept; }
+            if (sleep-pop) { sleep-pop = false; return accept; }
             if (search-input.has-focus || pl-input-focus) { keys.focus(); return accept; }
             if (fullscreen) { root.toggle-fullscreen(); return accept; }
             if (lyrics-open) { lyrics-open = false; return accept; }
@@ -3316,8 +3333,14 @@ export component AppWindow inherits Window {
             // Ekolayzır: açıkken vurgu renginde; tıklayınca hızlı panel
             Rectangle {
                 width: 34px; height: 34px; y: (Theme.player-height - self.height) / 2;
-                IconButton { icon: Icons.sliders; tint: (eq-on || eq-pop) ? Theme.accent : Theme.text-secondary; clicked => { eq-pop = !eq-pop; } }
+                IconButton { icon: Icons.sliders; tint: (eq-on || eq-pop) ? Theme.accent : Theme.text-secondary; clicked => { eq-pop = !eq-pop; sleep-pop = false; } }
                 if eq-on: Rectangle { x: 24px; y: 5px; width: 6px; height: 6px; border-radius: 3px; background: Theme.accent; }
+            }
+            // Uyku zamanlayıcısı
+            Rectangle {
+                width: 34px; height: 34px; y: (Theme.player-height - self.height) / 2;
+                IconButton { icon: Icons.moon; tint: (sleep-on || sleep-pop) ? Theme.accent : Theme.text-secondary; clicked => { sleep-pop = !sleep-pop; eq-pop = false; } }
+                if sleep-on: Rectangle { x: 24px; y: 5px; width: 6px; height: 6px; border-radius: 3px; background: Theme.accent; }
             }
             // Hoparlör: tıkla = sessize al / geri aç; tekerlek = ses
             Rectangle {
@@ -3395,6 +3418,45 @@ export component AppWindow inherits Window {
                     label: ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"][i];
                     changed(v) => { root.eq-set(i, v); }
                 }
+            }
+        }
+    }
+
+    // ---------- Uyku zamanlayıcısı paneli ----------
+    if sleep-pop: TouchArea { clicked => { sleep-pop = false; } }
+    if sleep-pop: Rectangle {
+        width: 380px;
+        height: slp.preferred-height;
+        x: Math.max(16px, root.width - self.width - 28px);
+        y: root.height - Theme.player-offset - Theme.player-height - self.height - 10px;
+        border-radius: Theme.r-lg;
+        background: Theme.floating;
+        border-width: 1px; border-color: Theme.border;
+        drop-shadow-blur: 40px; drop-shadow-offset-y: 12px; drop-shadow-color: #000000aa;
+        TouchArea { }
+        slp := VerticalLayout {
+            padding: 16px; spacing: 12px;
+            VerticalLayout {
+                spacing: 2px;
+                Text { text: "Uyku zamanlayıcısı"; font-family: Theme.display; font-size: 15px; font-weight: 700; color: Theme.text-primary; }
+                Text {
+                    font-size: 11.5px; color: sleep-on ? Theme.accent : Theme.text-muted;
+                    text: sleep-eot ? "Bu şarkı bitince duracak."
+                        : sleep-left > 0 ? "Kalan " + Fmt.time(sleep-left) + " · ses yavaşça kısılıp durur."
+                        : "Süre dolunca ses yavaşça kısılır ve çalma durur.";
+                }
+            }
+            HorizontalLayout {
+                spacing: 6px; alignment: start;
+                for m[i] in [15, 30, 45, 60, 120]: PillButton {
+                    pill-height: 30px; text: m < 60 ? m + " dk" : (m / 60) + " sa";
+                    clicked => { sleep-eot = false; sleep-left = m * sleep-unit; sleep-pop = false; }
+                }
+            }
+            HorizontalLayout {
+                spacing: 6px; alignment: start;
+                PillButton { pill-height: 30px; text: "Şarkı bitince"; active: sleep-eot; clicked => { sleep-left = 0; sleep-eot = true; sleep-pop = false; } }
+                if sleep-on: PillButton { pill-height: 30px; text: "Kapat"; clicked => { sleep-left = 0; sleep-eot = false; } }
             }
         }
     }
