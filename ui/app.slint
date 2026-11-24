@@ -4084,7 +4084,7 @@ export component MiniWindow inherits Window {
     callback like();
     callback seek(float);
     callback expand();
-    callback close();
+    callback dismiss();
     callback drag();
 
     Rectangle {
@@ -4129,7 +4129,7 @@ export component MiniWindow inherits Window {
             VerticalLayout {
                 alignment: start; spacing: 2px;
                 IconButton { icon: Icons.expand; clicked => { root.expand(); } }
-                IconButton { icon: Icons.x; clicked => { root.close(); } }
+                IconButton { icon: Icons.x; clicked => { root.dismiss(); } }
             }
         }
 

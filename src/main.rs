@@ -1310,7 +1310,7 @@ fn mini_open(ui: &AppWindow) {
         show_from_tray(&u);
         mini_close();
     });
-    mini.on_close(|| mini_close());
+    mini.on_dismiss(|| mini_close());
     {
         let main = main.clone();
         mini.on_seek(move |t| {
