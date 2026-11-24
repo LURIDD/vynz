@@ -6,8 +6,7 @@ fn main() {
         res.set_icon("design/logo/vynz.ico");
         res.set("ProductName", "Vynz");
         res.set("FileDescription", "Vynz Music Player");
-        if let Err(e) = res.compile() {
-            println!("cargo:warning=winresource hatası: {e}");
-        }
+        // İkon gömülemezse sessizce geçme: exe ikonsuz çıkıyordu (vynz.ico aslında PNG idi)
+        res.compile().expect("winresource: ikon/kaynak gömülemedi");
     }
 }

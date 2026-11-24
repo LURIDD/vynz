@@ -5311,7 +5311,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let force_quit = Arc::new(AtomicBool::new(false));
-    ui.set_is_windows(cfg!(target_os = "windows"));
+    // VYNZ_FAKE_WINDOWS=1: Windows başlık çubuğu düzenini Linux'ta görmek için (yalnız test)
+    ui.set_is_windows(cfg!(target_os = "windows") || std::env::var_os("VYNZ_FAKE_WINDOWS").is_some());
 
     #[cfg(target_os = "windows")]
     let _tray_guard = {
@@ -5352,6 +5353,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(ui) = weak.upgrade() {
                 use slint::winit_030::WinitWindowAccessor;
                 ui.window().with_winit_window(|w| w.set_minimized(true));
+            }
+        }
+    });
+    ui.on_toggle_fullscreen({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                use slint::winit_030::winit::window::Fullscreen;
+                use slint::winit_030::WinitWindowAccessor;
+                let mut now = false;
+                ui.window().with_winit_window(|w| {
+                    now = w.fullscreen().is_none();
+                    w.set_fullscreen(if now { Some(Fullscreen::Borderless(None)) } else { None });
+                });
+                ui.set_fullscreen(now);
             }
         }
     });

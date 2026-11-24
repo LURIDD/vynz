@@ -364,6 +364,9 @@ export component AppWindow inherits Window {
     property <length> sidebar-w: compact ? 64px : 196px;
 
     in property <bool> is-windows: false;
+    // Gerçek tam ekran (F11 / söz ekranındaki düğme); Rust winit ile uygular
+    in-out property <bool> fullscreen: false;
+    callback toggle-fullscreen();
     in property <bool> window-hidden: false;
     in-out property <bool> close-to-tray: true;
     callback win-drag();
@@ -708,11 +711,13 @@ export component AppWindow inherits Window {
             if (menu-open) { menu-open = false; menu-pl-open = false; return accept; }
             if (sidebar-peek) { sidebar-peek = false; return accept; }
             if (search-input.has-focus || pl-input-focus) { keys.focus(); return accept; }
+            if (fullscreen) { root.toggle-fullscreen(); return accept; }
             if (lyrics-open) { lyrics-open = false; return accept; }
             if (drawer-open) { drawer-open = false; return accept; }
             if (sheet != "") { root.sheet-back(); return accept; }
             return accept;
         }
+        if (e.text == Key.F11) { root.toggle-fullscreen(); return accept; }
         if (search-input.has-focus || create-pl-open || pl-rename-open || pl-input-focus || pl-pick-open) { return reject; }
         if (e.text == "/") { search-input.focus(); return accept; }
         if (e.text == " ") { root.toggle-play(); return accept; }
@@ -2231,14 +2236,18 @@ export component AppWindow inherits Window {
         property <bool> menu: false;
         property <angle> spin: 0deg;
 
-        x: 16px;
-        width: root.width - 32px;
-        height: (lyrics-open && lyrics-mode) ? root.height - 24px : root.height - Theme.player-clearance - 4px;
-        y: lyrics-open ? 12px : root.height + 20px;
+        // Windows'ta ve tam ekranda kenardan kenara: üst şerit pencere düğmeleriyle paylaşılır
+        property <bool> edge: is-windows || fullscreen;
+        property <length> top-y: edge ? 3px : 16px;
+        property <length> right-pad: (is-windows && !fullscreen) ? 138px + 8px : 16px;
+        x: edge ? 0px : 16px;
+        width: edge ? root.width : root.width - 32px;
+        height: (lyrics-open && lyrics-mode) ? (edge ? root.height : root.height - 24px) : root.height - Theme.player-clearance - 4px;
+        y: lyrics-open ? (edge ? 0px : 12px) : root.height + 20px;
         opacity: lyrics-open ? 1 : 0;
         animate y, height, opacity { duration: 240ms; easing: ease-out; }
         drop-shadow-blur: 60px; drop-shadow-offset-y: 20px; drop-shadow-color: #000000aa;
-        border-radius: Theme.r-xl;
+        border-radius: edge ? 0px : Theme.r-xl;
 
         Timer {
             interval: 50ms;
@@ -2254,7 +2263,7 @@ export component AppWindow inherits Window {
         }
 
         Rectangle {
-            border-radius: Theme.r-xl;
+            border-radius: lyr.edge ? 0px : Theme.r-xl;
             clip: true;
             background: Theme.canvas;
             TouchArea { clicked => { lyr.menu = false; } }
@@ -2720,7 +2729,7 @@ export component AppWindow inherits Window {
 
             // Sol üst: kenar çubuğunu üst katman olarak aç/kapa
             IconButton {
-                x: 16px; y: 16px;
+                x: 16px; y: lyr.top-y;
                 icon: Icons.menu;
                 tint: sidebar-peek ? Theme.accent : Theme.text-secondary;
                 clicked => { sidebar-peek = !sidebar-peek; }
@@ -2728,7 +2737,8 @@ export component AppWindow inherits Window {
 
             // Sağ üst: söz/kapak kipi, kuyruk, stil, çekmeceyi indir
             HorizontalLayout {
-                x: parent.width - self.preferred-width - (is-windows ? 148px : 16px); y: 16px; spacing: 6px;
+                x: parent.width - self.preferred-width - lyr.right-pad; y: lyr.top-y; spacing: 6px;
+                IconButton { icon: fullscreen ? Icons.shrink : Icons.expand; tint: fullscreen ? Theme.accent : Theme.text-secondary; clicked => { root.toggle-fullscreen(); } }
                 IconButton { icon: Icons.list-music; tint: drawer-open ? Theme.accent : Theme.text-secondary; clicked => { drawer-open = !drawer-open; } }
                 IconButton { icon: Icons.mic; tint: lyrics-mode ? Theme.accent : Theme.text-secondary; clicked => { lyrics-mode = !lyrics-mode; lyr.menu = false; } }
                 if lyrics-mode: IconButton { icon: Icons.type; tint: lyr.menu ? Theme.accent : Theme.text-secondary; clicked => { lyr.menu = !lyr.menu; } }
@@ -2737,7 +2747,7 @@ export component AppWindow inherits Window {
 
             // Stil menüsü
             if lyr.menu: Rectangle {
-                x: parent.width - self.width - 16px; y: 60px;
+                x: parent.width - self.width - lyr.right-pad; y: lyr.top-y + 44px;
                 width: 300px; height: smenu.preferred-height;
                 border-radius: Theme.r-lg; background: Theme.floating;
                 drop-shadow-blur: 30px; drop-shadow-offset-y: 12px; drop-shadow-color: #000000b0;
@@ -3015,8 +3025,9 @@ export component AppWindow inherits Window {
         property <length> drag-ghost-y;
         property <length> row-step: 62px;
         width: 400px;
-        y: 72px;
-        height: root.height - 72px - Theme.player-clearance + 12px;
+        // söz ekranında üst şerit düğmelerinin altından başlar
+        y: (lyrics-open && lyr.edge) ? 48px : 72px;
+        height: root.height - self.y - ((lyrics-open && lyrics-mode) ? 16px : Theme.player-clearance - 12px);
         x: drawer-open ? root.width - self.width - 16px : root.width + 24px;
         opacity: drawer-open ? 1 : 0;
         animate x, opacity { duration: Theme.drawer-dur; easing: ease-out; }
@@ -3281,7 +3292,7 @@ export component AppWindow inherits Window {
     }
 
     // ---------- Windows entegre pencere kontrolleri (küçült / büyüt / kapat) ----------
-    if is-windows: HorizontalLayout {
+    if is-windows && !fullscreen: HorizontalLayout {
         x: root.width - 138px; y: 0px; width: 138px; height: 40px;
         spacing: 0px;
         Rectangle {
