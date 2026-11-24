@@ -399,13 +399,20 @@ pub fn parse_lrc(lrc: &str) -> Vec<Line> {
 }
 
 /// Bitiş zamanı olmayan satırlara bir sonrakinin başlangıcını ver (en çok ~11 harf/sn).
+/// Kelime zamanı olmayan satırlarda kaynağın verdiği bitiş de sınırlanır: YouTube Music
+/// bitişi çoğu zaman bir sonraki satıra (son satırda şarkının sonuna) kadar uzatıyor ve
+/// arkadaki müzik arası satırın içine sayılıp söz yavaşça doluyordu.
 fn fill_ends(lines: &mut [Line]) {
     for i in 0..lines.len() {
+        let by_chars = lines[i].text.chars().count() as f32 / 11.0 + 0.6;
         if lines[i].end > lines[i].t {
+            if lines[i].words.is_empty() {
+                let cap = lines[i].t + (by_chars * 1.8).max(2.5);
+                lines[i].end = lines[i].end.min(cap);
+            }
             continue;
         }
         let next = lines.get(i + 1).map(|l| l.t).unwrap_or(lines[i].t + 5.0);
-        let by_chars = lines[i].text.chars().count() as f32 / 11.0 + 0.6;
         lines[i].end = next.min(lines[i].t + by_chars.max(1.2));
     }
 }
@@ -540,6 +547,19 @@ pub fn translate(lines: &[String], target: &str) -> Result<(String, Vec<String>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_source_end_is_capped() {
+        // YTM: son satırın bitişi şarkı sonuna (37 sn) uzatılmış
+        let mut lines = vec![
+            Line { t: 114.33, end: 116.75, text: "Lokavt bir hak değil garabet çekip grev halayı".into(), words: Vec::new() },
+            Line { t: 116.75, end: 153.71, text: "Basın kime yarandı siktir, iş birlikçi alayı".into(), words: Vec::new() },
+        ];
+        fill_ends(&mut lines);
+        assert!((lines[0].end - 116.75).abs() < 0.01, "kısa bitiş korunur");
+        assert!(lines[1].end < 116.75 + 10.0, "uzun bitiş sınırlanır: {}", lines[1].end);
+        assert!(lines[1].end > 116.75 + 4.0);
+    }
 
     #[test]
     fn lrc_parses_and_sorts() {

@@ -57,8 +57,15 @@ pub struct Card {
 }
 
 impl Card {
+    /// Kapak önbellek anahtarı. Adresin özeti de eklenir: "mix"/"discover" gibi sabit anahtarlı
+    /// kartların kapağı içerik değişince değişir (yoksa ilk kaydedilen kapak diskten hep okunuyordu).
     pub fn art_key(&self) -> String {
-        format!("c-{}", self.key.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect::<String>())
+        let mut h: u32 = 0x811C_9DC5; // FNV-1a
+        for b in self.thumb.bytes() {
+            h ^= b as u32;
+            h = h.wrapping_mul(0x0100_0193);
+        }
+        format!("c-{}-{h:08x}", self.key.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect::<String>())
     }
 }
 

@@ -1369,13 +1369,18 @@ fn mini_open(ui: &AppWindow) {
     on_main!(on_next, |u| u.invoke_next());
     on_main!(on_prev, |u| u.invoke_prev());
     on_main!(on_like, |u| u.invoke_toggle_like());
+    // Büyüt: önce ana pencere gelir, sonra mini kapanır (ters sırada bir an hiç pencere
+    // kalmıyor, Windows'ta ana pencere geri gelmiyordu).
     on_main!(on_expand, |u| {
-        set_game_mode(&u, false);
         show_from_tray(&u);
         mini_close();
     });
-    mini.on_dismiss(|| mini_close());
-    mini.window().on_close_requested(|| {
+    // Alt+F4 vb. ile kapatılırsa da ana pencere görünmez kalmasın
+    let main_cr = main.clone();
+    mini.window().on_close_requested(move || {
+        if let Some(u) = main_cr.upgrade() {
+            show_from_tray(&u);
+        }
         mini_close();
         slint::CloseRequestResponse::HideWindow
     });
@@ -1411,7 +1416,6 @@ fn mini_open(ui: &AppWindow) {
             m.set_has_art(now.has_art);
             m.set_playing(u.get_playing());
             m.set_liked(u.get_liked());
-            m.set_game_mode(u.get_game_mode());
             m.set_position(u.get_position());
             m.set_duration(u.get_duration());
             let (ut, mt) = (u.global::<Theme>(), m.global::<Theme>());
@@ -1463,98 +1467,40 @@ fn mini_open(ui: &AppWindow) {
         });
     }
     MINI.with(|m| *m.borrow_mut() = Some((mini, t, main)));
+    // Mini açılınca ana pencere tepsiye iner; geri dönüş mininin büyüt düğmesi (ya da tepsi)
+    hide_main(ui);
+}
+
+/// Ana pencereyi gizle ve kaynakları bırak (mini oynatıcıya geçerken).
+fn hide_main(ui: &AppWindow) {
+    release_ram(ui);
+    // winit set_visible Wayland'de etkisiz; Slint hide() yüzeyi gerçekten kaldırır.
+    // Mini açık olduğu için olay döngüsü sürer.
+    let _ = ui.hide();
+    trim_heap();
+}
+
+/// Linux (glibc): ayırıcıdaki boş sayfaları sisteme geri ver; dokular geç bırakılabildiği
+/// için yarım saniye sonra bir kez daha.
+fn trim_heap() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        unsafe {
+            libc::malloc_trim(0);
+        }
+        Timer::single_shot(Duration::from_millis(500), || unsafe {
+            libc::malloc_trim(0);
+        });
+    }
 }
 
 fn mini_close() {
-    // Bırakmayı olay döngüsüne ertele: kapatma düğmesinin kendi geri çağrısı içindeyiz
+    // Bırakmayı olay döngüsüne ertele: düğmenin kendi geri çağrısı içindeyiz
     let _ = slint::invoke_from_event_loop(|| {
-        if let Some((w, _t, main)) = MINI.with(|m| m.borrow_mut().take()) {
+        if let Some((w, _t, _main)) = MINI.with(|m| m.borrow_mut().take()) {
             let _ = w.hide();
-            // Oyun modundayken mini kapatılırsa ana pencere görünmez kalmasın
-            if let Some(u) = main.upgrade() {
-                if u.get_game_mode() {
-                    set_game_mode(&u, false);
-                    show_from_tray(&u);
-                }
-            }
         }
     });
-}
-
-thread_local! {
-    /// Oyun modunda bellek göstergesini tazeleyen zamanlayıcı
-    static GAME_TICK: RefCell<Option<Timer>> = const { RefCell::new(None) };
-}
-
-/// Oyun modu: mini oynatıcıyı aç, belleği boşalt ve ana pencereyi gizle. Çıkınca kapaklar geri gelir.
-fn set_game_mode(ui: &AppWindow, on: bool) {
-    if on == ui.get_game_mode() {
-        return;
-    }
-    ui.set_game_mode(on);
-    if on {
-        ui.set_eq_pop(false);
-        ui.set_sleep_pop(false);
-        ui.set_menu_open(false);
-        ui.set_drawer_open(false);
-        mini_open(ui);
-        release_ram(ui);
-        // winit set_visible Wayland'de etkisiz; Slint hide() yüzeyi gerçekten kaldırır.
-        // Mini açık olduğu için olay döngüsü sürer; geri dönüş show_from_tray (ui.show()).
-        let _ = ui.hide();
-        #[cfg(all(target_os = "linux", target_env = "gnu"))]
-        {
-            // Ayırıcıdaki boş sayfaları işletim sistemine geri ver (Slint dokuları geç bırakabilir)
-            unsafe {
-                libc::malloc_trim(0);
-            }
-            Timer::single_shot(Duration::from_millis(500), || {
-                unsafe {
-                    libc::malloc_trim(0);
-                }
-            });
-        }
-        let weak = ui.as_weak();
-        let t = Timer::default();
-        let tick = move || {
-            if let Some(ui) = weak.upgrade() {
-                ui.set_game_mem(own_memory_text().into());
-            }
-        };
-        tick();
-        t.start(TimerMode::Repeated, Duration::from_secs(5), tick);
-        GAME_TICK.with(|g| *g.borrow_mut() = Some(t));
-    } else {
-        GAME_TICK.with(|g| g.borrow_mut().take());
-        ui.set_game_mem("".into());
-        ui.set_window_hidden(false);
-        ui.global::<Motion>().set_paused(false);
-        reload_art(ui);
-    }
-    update_viz(ui);
-}
-
-/// "Vynz şu an ~N MB kullanıyor" (Linux: /proc; diğerlerinde boş)
-fn own_memory_text() -> String {
-    #[cfg(target_os = "linux")]
-    {
-        let Ok(s) = std::fs::read_to_string("/proc/self/status") else { return String::new() };
-        // RssAnon: uygulamanın kendi belleği (paylaşılan kütüphaneler hariç)
-        let kb: u64 = s
-            .lines()
-            .find(|l| l.starts_with("RssAnon:"))
-            .and_then(|l| l.split_whitespace().nth(1))
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        if kb == 0 {
-            return String::new();
-        }
-        format!("Vynz şu an yaklaşık {} MB bellek kullanıyor.", kb / 1024)
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        String::new()
-    }
 }
 
 thread_local! {
@@ -4178,7 +4124,7 @@ fn update_amb_timer(ui: &AppWindow) {
         && lyrics_motion_ok
         && ui.get_playing()
         && (ui.get_lyrics_open() || ui.get_view() == "home");
-    let want = !ui.get_window_hidden() && !ui.get_game_mode() && (preview_step || bg_active);
+    let want = !ui.get_window_hidden() && (preview_step || bg_active);
     let weak = ui.as_weak();
     with_state(|st| {
         if want == st.amb_running {
@@ -4642,6 +4588,7 @@ fn hide_to_tray(ui: &AppWindow) {
     release_ram(ui);
     use slint::winit_030::WinitWindowAccessor;
     ui.window().with_winit_window(|w| w.set_visible(false));
+    trim_heap();
 }
 
 /// Düşük kaynak: animasyonları durdur, çalan dışındaki kapakları bellekten at, spektrumu kapat.
@@ -4678,17 +4625,6 @@ fn release_ram(ui: &AppWindow) {
 /// Tepsiden geri dön: pencereyi göster ve kapakları disk önbelleğinden hızla doldur.
 #[allow(dead_code)]
 fn show_from_tray(ui: &AppWindow) {
-    if ui.get_game_mode() {
-        // oyun modundayken tepsiden açılırsa oyun sayfası görünür kalsın
-        use slint::winit_030::WinitWindowAccessor;
-        let _ = ui.show();
-        ui.window().with_winit_window(|w| {
-            w.set_visible(true);
-            w.set_minimized(false);
-            w.focus_window();
-        });
-        return;
-    }
     ui.set_window_hidden(false);
     ui.global::<Motion>().set_paused(false);
     use slint::winit_030::WinitWindowAccessor;
@@ -5973,14 +5909,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
-    ui.on_game_mode_set({
-        let weak = weak.clone();
-        move |on| {
-            if let Some(ui) = weak.upgrade() {
-                set_game_mode(&ui, on);
-            }
-        }
-    });
     ui.on_toggle_fullscreen({
         let weak = weak.clone();
         move || {
@@ -5993,6 +5921,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     w.set_fullscreen(if now { Some(Fullscreen::Borderless(None)) } else { None });
                 });
                 ui.set_fullscreen(now);
+            }
+        }
+    });
+    ui.on_sync_fullscreen({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                use slint::winit_030::WinitWindowAccessor;
+                let mut fs = ui.get_fullscreen();
+                ui.window().with_winit_window(|w| fs = w.fullscreen().is_some());
+                if fs != ui.get_fullscreen() {
+                    ui.set_fullscreen(fs);
+                }
             }
         }
     });
