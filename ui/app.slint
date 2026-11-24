@@ -492,7 +492,7 @@ export component AppWindow inherits Window {
     // Etkin satır, gerçek genişliğe göre görsel satırlara bölünmüş
     in property <[LyricRow]> lyric-rows;
     // Söz alanının genişliği değişince etkin satır yeniden bölünür
-    out property <length> lyric-area: lview.width;
+    out property <length> lyric-area: lview.width - 2 * lview.gp;
     changed lyric-area => { root.lyric-relayout(); }
     callback lyric-relayout();
     // Etkin satırda kelime arası (Rust yazı tipinden ölçer)
@@ -2285,8 +2285,9 @@ export component AppWindow inherits Window {
                 animate x, opacity { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
             HorizontalLayout {
                 // Kapak kenardan uzak, geniş pencerede ortaya doğru kayar
-                padding-left: Math.max(112px, lyr.width * 0.09); padding-right: 64px; padding-top: 48px; padding-bottom: 36px;
-                spacing: Math.max(64px, lyr.width * 0.05);
+                // lview ışıma payı (gp) kadar iki yana taşar; metin aynı yerde kalır
+                padding-left: Math.max(112px, lyr.width * 0.09); padding-right: Math.max(0px, 64px - lview.gp); padding-top: 48px; padding-bottom: 36px;
+                spacing: Math.max(64px, lyr.width * 0.05) - lview.gp;
                 // Sol: büyük kapak + kapak altı sade kontroller
                 VerticalLayout {
                     property <length> cs: Math.max(260px, Math.min(Math.min(440px, lyr.width * 0.3), lyr.height - 290px));
@@ -2390,6 +2391,9 @@ export component AppWindow inherits Window {
                 // Sağ: kayan söz akışı
                 lview := Rectangle {
                     clip: true;
+                    // KaraokeWord ışıması kare: dar kelimede (♪) yandan ~1 fsz taşar; kırpılıp kutu gibi
+                    // görünmesin diye iç pay. Kapakla arada en az 12 px boşluk kalsın.
+                    property <length> gp: Math.min(lyr.fsz * 1.1, Math.max(64px, lyr.width * 0.05) - 12px);
                     property <length> active-y: 0;
                     property <length> anchor: self.height * 0.4;
                     property <bool> manual: false;
@@ -2432,7 +2436,7 @@ export component AppWindow inherits Window {
                     // Etkin satırın arkasında kapak renginde yumuşak ışıma
                     if lyric-state == 2: Rectangle {
                         width: lview.width * 1.1; height: lview.height * 0.7;
-                        x: lyr.centered ? (lview.width - self.width) / 2 : -lview.width * 0.25;
+                        x: lyr.centered ? (lview.width - self.width) / 2 : -lview.width * 0.25 + lview.gp;
                         y: lview.anchor - self.height / 2;
                         opacity: lview.manual ? 0.35 : 1.0;
                         background: @radial-gradient(circle, Theme.accent.with-alpha(0.16) 0%, transparent 60%);
@@ -2442,7 +2446,8 @@ export component AppWindow inherits Window {
                         // Etkin satır görünümün %40'ına hizalanır; manuel kaydırmada kullanıcının konumunu korur.
                         y: lview.manual ? lview.manual-y : (lview.anchor - lview.active-y);
                         animate y { duration: lview.manual ? 120ms : 560ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                        width: lview.width;
+                        x: lview.gp;
+                        width: lview.width - 2 * lview.gp;
                         height: col.preferred-height;
                         changed height => { lview.col-h = self.height; }
                         col := VerticalLayout {
@@ -2552,7 +2557,7 @@ export component AppWindow inherits Window {
                     }
                     // Yükleniyor: nabız gibi atan satır iskeleti
                     if lyric-state == 1: VerticalLayout {
-                        alignment: center; spacing: 22px;
+                        alignment: center; spacing: 22px; padding-left: lview.gp; padding-right: lview.gp;
                         property <bool> pulse;
                         Timer { interval: 700ms; running: lyrics-open; triggered => { parent.pulse = !parent.pulse; } }
                         for k in 6: Rectangle {
@@ -2566,7 +2571,7 @@ export component AppWindow inherits Window {
                     }
                     // Söz yok: müziğe yer açan bir sahne
                     if lyric-state == 4 || (lyric-state == 0 && has-now): VerticalLayout {
-                        alignment: center; spacing: 18px;
+                        alignment: center; spacing: 18px; padding-left: lview.gp; padding-right: lview.gp;
                         // Hareketli ses çubukları (saniyede ~4 adım)
                         bars := Rectangle {
                             height: 120px;
@@ -2804,7 +2809,8 @@ export component AppWindow inherits Window {
         }
 
         VerticalLayout {
-            padding: 12px; padding-top: 20px; padding-bottom: Theme.player-clearance;
+            // Söz kipinde alt çubuk gizli: onun payını bırakma
+            padding: 12px; padding-top: 20px; padding-bottom: (lyrics-open && lyrics-mode) ? 16px : Theme.player-clearance;
             spacing: 2px;
 
             HorizontalLayout {

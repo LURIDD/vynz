@@ -94,3 +94,19 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
   - **Kapaktan türeyen üst zemin geçişi:** Liste üst başlığının arkasında ilk kapaktan gelen yumuşak renk geçişi (`@linear-gradient`) + toplam süre (`24 şarkı · 1 sa 18 dk`) + `Çal`, `Karıştır`, `Yeniden adlandır`, `Sil` aksiyonları.
   - **Liste içi hızlı filtre & düzenleme:** Uzun listelerde anında şarkı bulmak için küçük bir arama/filtre kutusu ve şarkıları listeden tek tıkla çıkarma / sırasını değiştirme.
 
+
+---
+
+## Fix listesi (bekleyen hatalar)
+
+### F1. Söz vitrininde ışımanın kutu gibi kesilmesi (24 Kas 2026)
+- **Görünüm:** Müzik arasında etkin satır `♪` olduğunda arkasındaki ışıma yuvarlak sönmüyor, sert kenarlı bir kare/dikdörtgen olarak kesik görünüyor. Ekran görüntüsü: `notes/fix/isik-kopmasi.jpg` (SONBAHAR, 00:05, Modern stil).
+- **İlgili kod:** `ui/parts.slint` `KaraokeWord` → `glow := Rectangle` (kelimeden `size * 0.9` taşan kare, radial degrade).
+- **Neden:** Kare ışıma kelimenin solundan taşıyor (dar `♪`'da ~1 fsz), `lview` (`clip: true`) sol kenarında kesiliyordu.
+- **Durum:** DÜZELTİLDİ (24 Kas). `lview`'a iki yana `gp = min(1.1·fsz, boşluk-12px)` iç pay; metin aynı yerde, ışık kırpılmadan söner (piksel ölçümüyle doğrulandı).
+
+### F2. Söz kipinde sol barın altında boşluk (24 Kas 2026)
+- **Görünüm:** Sözler tam ekran açıkken (alt oynatma çubuğu gizli) sol bar açılınca `Ayarlar`'ın altında ~110 px boş alan kalıyor; bar pencerenin altına kadar uzanıyor ama içerik alt çubuk hâlâ varmış gibi yukarıda bitiyor. Ekran görüntüsü: `notes/fix/sol-bar-alt-bosluk.png`.
+- **Neden:** Sol bar `padding-bottom: Theme.player-clearance` (116 px) söz kipinde de kalıyordu.
+- **Not (aynı görüntü):** Sol bar söz kipinde kapağın ve kontrollerin üstüne biniyor (kapak, başlık, `-0.5 sn` soldan kesik). İstenen davranışsa sorun değil; değilse içerik bar kadar sağa kaymalı (açık).
+- **Durum:** Boşluk DÜZELTİLDİ (24 Kas): söz kipinde alt pay 16 px.
