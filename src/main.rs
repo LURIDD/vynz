@@ -1277,6 +1277,97 @@ fn on_ended(ui: &AppWindow) {
 }
 
 thread_local! {
+    /// Mini oynatıcı penceresi ve ana pencereden durum kopyalayan zamanlayıcı
+    static MINI: RefCell<Option<(MiniWindow, Timer)>> = const { RefCell::new(None) };
+}
+
+/// Mini oynatıcıyı aç (zaten açıksa öne getir). Durum ana pencereden 250 ms'de bir kopyalanır;
+/// düğmeler ana pencerenin geri çağrılarını kullanır (tek doğruluk kaynağı ana pencere).
+fn mini_open(ui: &AppWindow) {
+    let existing = MINI.with(|m| m.borrow().as_ref().map(|(w, _)| w.clone_strong()));
+    if let Some(w) = existing {
+        let _ = w.show();
+        return;
+    }
+    let Ok(mini) = MiniWindow::new() else { return };
+    let main = ui.as_weak();
+    macro_rules! on_main {
+        ($setter:ident, |$u:ident| $body:expr) => {{
+            let main = main.clone();
+            mini.$setter(move || {
+                if let Some($u) = main.upgrade() {
+                    $body;
+                }
+            });
+        }};
+    }
+    on_main!(on_toggle, |u| u.invoke_toggle_play());
+    on_main!(on_next, |u| u.invoke_next());
+    on_main!(on_prev, |u| u.invoke_prev());
+    on_main!(on_like, |u| u.invoke_toggle_like());
+    on_main!(on_expand, |u| {
+        set_game_mode(&u, false);
+        show_from_tray(&u);
+        mini_close();
+    });
+    mini.on_close(|| mini_close());
+    {
+        let main = main.clone();
+        mini.on_seek(move |t| {
+            if let Some(u) = main.upgrade() {
+                u.invoke_seek(t);
+            }
+        });
+    }
+    {
+        let w = mini.as_weak();
+        mini.on_drag(move || {
+            if let Some(m) = w.upgrade() {
+                use slint::winit_030::WinitWindowAccessor;
+                m.window().with_winit_window(|w| {
+                    let _ = w.drag_window();
+                });
+            }
+        });
+    }
+    let sync = {
+        let main = main.clone();
+        let mw = mini.as_weak();
+        move || {
+            let (Some(u), Some(m)) = (main.upgrade(), mw.upgrade()) else { return };
+            let now = u.get_now();
+            m.set_has_now(u.get_has_now());
+            m.set_track_title(now.title.clone());
+            m.set_track_artist(now.artist.clone());
+            m.set_art(now.art.clone());
+            m.set_has_art(now.has_art);
+            m.set_playing(u.get_playing());
+            m.set_liked(u.get_liked());
+            m.set_position(u.get_position());
+            m.set_duration(u.get_duration());
+            let (ut, mt) = (u.global::<Theme>(), m.global::<Theme>());
+            mt.set_accent(ut.get_accent());
+            mt.set_canvas(ut.get_canvas());
+            mt.set_floating(ut.get_floating());
+        }
+    };
+    sync();
+    let t = Timer::default();
+    t.start(TimerMode::Repeated, Duration::from_millis(250), sync);
+    let _ = mini.show();
+    MINI.with(|m| *m.borrow_mut() = Some((mini, t)));
+}
+
+fn mini_close() {
+    // Bırakmayı olay döngüsüne ertele: kapatma düğmesinin kendi geri çağrısı içindeyiz
+    let _ = slint::invoke_from_event_loop(|| {
+        if let Some((w, _t)) = MINI.with(|m| m.borrow_mut().take()) {
+            let _ = w.hide();
+        }
+    });
+}
+
+thread_local! {
     /// Oyun modunda bellek göstergesini tazeleyen zamanlayıcı
     static GAME_TICK: RefCell<Option<Timer>> = const { RefCell::new(None) };
 }
@@ -5564,6 +5655,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move || {
             if let Some(ui) = weak.upgrade() {
                 update_viz(&ui);
+            }
+        }
+    });
+    ui.on_mini_open({
+        let weak = weak.clone();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                mini_open(&ui);
             }
         }
     });

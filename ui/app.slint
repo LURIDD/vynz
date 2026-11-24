@@ -4057,3 +4057,96 @@ export component AppWindow inherits Window {
     }
     }
 }
+
+// ---------- Mini oynatıcı: küçük, çerçevesiz, üstte duran ayrı pencere ----------
+// Hyprland'de "her zaman üstte" için başlıkla kural: windowrule float+pin, title "Vynz Mini".
+export component MiniWindow inherits Window {
+    title: "Vynz Mini";
+    icon: @image-url("../design/logo/vynz-icon.svg");
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    width: 400px;
+    height: 104px;
+
+    in property <string> track-title;
+    in property <string> track-artist;
+    in property <image> art;
+    in property <bool> has-art;
+    in property <bool> has-now;
+    in property <bool> playing;
+    in property <bool> liked;
+    in property <float> position;
+    in property <float> duration;
+    callback toggle();
+    callback next();
+    callback prev();
+    callback like();
+    callback seek(float);
+    callback expand();
+    callback close();
+    callback drag();
+
+    Rectangle {
+        x: 4px; y: 4px; width: parent.width - 8px; height: parent.height - 8px;
+        border-radius: 18px;
+        background: Theme.floating;
+        border-width: 1px; border-color: Theme.border;
+        clip: true;
+
+        // boş alandan sürükle
+        TouchArea {
+            pointer-event(e) => {
+                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) { root.drag(); }
+            }
+        }
+        // kapaktan gelen hafif vurgu
+        Rectangle {
+            width: parent.width * 0.9; height: self.width;
+            x: -self.width * 0.35; y: -self.height * 0.45;
+            background: @radial-gradient(circle, Theme.accent.with-alpha(0.22) 0%, transparent 62%);
+        }
+
+        HorizontalLayout {
+            padding: 10px; padding-right: 12px; spacing: 12px;
+            Cover {
+                width: 76px; height: 76px; radius: 12px;
+                art: root.art; has-art: root.has-now && root.has-art;
+            }
+            VerticalLayout {
+                alignment: center; spacing: 3px;
+                horizontal-stretch: 1;
+                Text { text: root.has-now ? root.track-title : "Çalan bir şey yok"; font-size: 13.5px; font-weight: 700; color: Theme.text-primary; overflow: elide; }
+                Text { text: root.track-artist; font-size: 11.5px; color: Theme.text-secondary; overflow: elide; }
+                HorizontalLayout {
+                    spacing: 2px; alignment: start; padding-top: 2px;
+                    IconButton { icon: Icons.skip-back; enabled: root.has-now; clicked => { root.prev(); } }
+                    IconButton { icon: root.playing ? Icons.pause : Icons.play; primary: true; filled: true; enabled: root.has-now; clicked => { root.toggle(); } }
+                    IconButton { icon: Icons.skip-forward; enabled: root.has-now; clicked => { root.next(); } }
+                    IconButton { icon: Icons.heart; tint: root.liked ? Theme.accent : Theme.text-secondary; enabled: root.has-now; clicked => { root.like(); } }
+                }
+            }
+            VerticalLayout {
+                alignment: start; spacing: 2px;
+                IconButton { icon: Icons.expand; clicked => { root.expand(); } }
+                IconButton { icon: Icons.x; clicked => { root.close(); } }
+            }
+        }
+
+        // ince ilerleme çizgisi (tıkla = atla)
+        Rectangle {
+            x: 0; y: parent.height - 3px; width: parent.width; height: 3px;
+            background: Theme.surface-2;
+            Rectangle {
+                x: 0; height: parent.height;
+                width: parent.width * (root.duration > 0 ? Math.clamp(root.position / root.duration, 0, 1) : 0);
+                background: Theme.accent;
+            }
+        }
+        TouchArea {
+            x: 0; y: parent.height - 8px; width: parent.width; height: 8px;
+            mouse-cursor: pointer;
+            clicked => { if (root.duration > 0) { root.seek(self.mouse-x / self.width * root.duration); } }
+        }
+    }
+}
