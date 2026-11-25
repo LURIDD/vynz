@@ -110,3 +110,23 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Neden:** Sol bar `padding-bottom: Theme.player-clearance` (116 px) söz kipinde de kalıyordu.
 - **Not (aynı görüntü):** Sol bar söz kipinde kapağın ve kontrollerin üstüne biniyor (kapak, başlık, `-0.5 sn` soldan kesik). İstenen davranışsa sorun değil; değilse içerik bar kadar sağa kaymalı (açık).
 - **Durum:** Boşluk DÜZELTİLDİ (24 Kas): söz kipinde alt pay 16 px.
+
+### F3. YTM listesi aktarılırken bazı şarkıların boş profille gelmesi (25 Kas 2026)
+- **Görünüm:** YouTube Music'ten çekilen bir listede bazı şarkılar boş profil içinde (başlık/sanatçı/kapak eksik) geliyor; nedeni bilinmiyor.
+- **İncelenecek liste:** https://music.youtube.com/playlist?list=PLsH3S5xRu5wPodftftgUgslBjYDDPAwsn
+- **Bakılacak yer:** `src/import.rs` (yt-dlp flat YTM aktarımı); flat çıktıda eksik alan gelen öğeler (kullanılamayan/bölgesel kısıtlı video, video vs. şarkı ayrımı, sanatçı alanı boş) olabilir. **Tahmin**, doğrulanmadı.
+- **Durum:** Açık.
+
+### F4. Mini oynatıcıda beğeni kalbinin yalnız kenarlığının değişmesi (25 Kas 2026)
+- **Görünüm:** Mini oynatıcıda şarkı beğenilince kalbin içi dolmuyor, yalnız kenarlık rengi değişiyor; beğenilip beğenilmediği anlaşılmıyor.
+- **İstenen:** Beğenilince kalbin içi dolu olmalı (ana çubuktaki davranışla aynı).
+- **Durum:** Açık.
+
+---
+
+## Yeni özellikler
+
+### Y1. Windows için cava benzeri görselleştirici (25 Kas 2026)
+- Linux'ta görselleştirici ve "müziğe tepki" `cava` ham çıktısına dayanıyor (`src/viz.rs`); Windows'ta cava yok.
+- Windows karşılığı gerekli: örn. WASAPI loopback ile ses yakalayıp FFT'yi Rust içinde yapmak (cava'ya bağımlılığı tamamen kaldırma seçeneği de var).
+- **Durum:** Fikir aşamasında.
