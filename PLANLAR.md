@@ -156,3 +156,8 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Analiz (Tahmin, doğrulanmadı):** Kapak çoğunlukla siyah + ince beyaz/mor ayrıntıdan oluşunca bulanıklık bunları gri-koyu mora ortalıyor; doygunluk düşük kaldığı için ışık zeminle kayboluyor. Duraklatılmışken `level`/`pulse` düşüyor olabilir, ayrıca kontrol edilmeli.
 - **Geliştirme yönü:** Işığı ortalama yerine kapak paletinden (`palette`, accent) baskın + canlı renklerle kurmak; düşük doygunlukta vurgu rengine yaslanmak; isteğe bağlı elle renk seçimi (Otomatik / Vurgu / Özel). Y3 (yayılma sürgüsü) ile aynı ayar grubunda olabilir.
 - **Durum:** Açık.
+
+### Y5. Çoklu dil: İngilizce + isteğe bağlı diller (26 Kas 2026)
+- **Kaynak:** GitHub issue #1 (nidego, Brezilya): arayüz yalnız Türkçe, İngilizce/Portekizce yok. 26 Kas'ta yanıtlandı: İngilizce "çok yakında", pt-BR listede, diğer diller istek üzerine; İngilizce çıkınca issue'ya haber verilecek.
+- **Yön:** Slint `@tr()` + gettext (.po) ile arayüz metinlerini çeviri dosyalarına taşımak; Rust tarafındaki metinler (bildirimler, Yenilikler notları `notes/vX.Y.Z.md`, hata iletileri) de dahil. Ayarlar'a dil seçimi, varsayılan sistem dili.
+- **Durum:** Açık, söz verildi (öncelikli).
