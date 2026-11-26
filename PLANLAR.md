@@ -130,3 +130,10 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - Linux'ta görselleştirici ve "müziğe tepki" `cava` ham çıktısına dayanıyor (`src/viz.rs`); Windows'ta cava yok.
 - Windows karşılığı gerekli: örn. WASAPI loopback ile ses yakalayıp FFT'yi Rust içinde yapmak (cava'ya bağımlılığı tamamen kaldırma seçeneği de var).
 - **Durum:** Fikir aşamasında.
+
+### F5. Discord durumunun bazen "Dinliyor" yerine "Oynuyor"a düşmesi (26 Kas 2026)
+- **Görünüm:** Vynz çalarken Discord durumu zaman zaman "… dinliyor" yerine "… oynuyor" gösteriyor; ne zaman olduğu belli değil.
+- **İlgili kod:** `src/discord.rs` gönderim döngüsü (~satır 153-161) ve `activity()` (~satır 213-231).
+- **Güçlü aday (Tahmin, doğrulanmadı):** `set_activity` herhangi bir nedenle reddedilince (çok uzun başlık, geçersiz kapak adresi, boş alan vb.) kod bunu "eski istemci `type` alanını tanımıyor" sayıp `no_type = true` yapıyor ve bu bayrak oturum boyunca hiç sıfırlanmıyor. Sonraki tüm durumlar `type: 2` (Listening) olmadan gidiyor, Discord da varsayılan olarak "Oynuyor" gösteriyor.
+- **Düzeltme yönü:** Reddin nedenini Discord'un hata yanıtından okuyup yalnız `type` hatasında düşmek; ya da `no_type`'ı şarkı değişiminde/yeniden bağlantıda sıfırlamak. Reddedilen içeriği (hangi şarkıda olduğu) günlüğe yazmak.
+- **Durum:** Açık.
