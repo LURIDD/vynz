@@ -32,6 +32,7 @@ mod stats;
 mod tray;
 mod updater;
 mod viz;
+mod ytfast;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -199,7 +200,7 @@ struct HomeData {
 }
 
 /// VYNZ_DEBUG=1 ile zaman damgalı olay günlüğü (stderr): hız ölçümü için.
-fn dbg(msg: &str) {
+pub(crate) fn dbg(msg: &str) {
     use std::sync::OnceLock;
     static T0: OnceLock<std::time::Instant> = OnceLock::new();
     static ON: OnceLock<bool> = OnceLock::new();

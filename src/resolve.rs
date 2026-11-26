@@ -141,19 +141,61 @@ impl Resolver {
             }
             return;
         }
+        let fast = crate::ytfast::enabled() && crate::ytfast::video_id(page_url).is_some();
         let mut g = self.inner.lock().unwrap();
         g.last_used = Some(Instant::now());
         if let Some(list) = g.waiting.get_mut(key) {
-            // Zaten yolda. "Şimdi" isteğiyse yine de öncelikli bir kopya gönder.
+            // Zaten yolda. "Şimdi" isteğiyse yine de öncelikli bir kopya gönder
+            // (hızlı yol zaten yardımcıdan önce bitiyor, ona kopya gerekmez).
             if let Some(d) = done {
                 list.push(d);
             }
-            if prio != Prio::Now {
+            if prio != Prio::Now || fast {
                 return;
             }
         } else {
             g.waiting.insert(key.to_string(), done.into_iter().collect());
         }
+        if fast {
+            drop(g);
+            let me = self.clone();
+            let (key, page_url) = (key.to_string(), page_url.to_string());
+            let _ = thread::Builder::new().name("vynz-ytfast".into()).spawn(move || {
+                let t0 = Instant::now();
+                match crate::ytfast::resolve(&page_url) {
+                    Ok(r) => {
+                        crate::dbg(&format!("ytfast {key}: {} ms", t0.elapsed().as_millis()));
+                        me.finish(&key, Ok(r));
+                    }
+                    Err(e) => {
+                        crate::dbg(&format!("ytfast {key}: {e}; yt-dlp'ye düşülüyor"));
+                        let g = me.inner.lock().unwrap();
+                        me.send_helper(g, &key, &page_url, prio);
+                    }
+                }
+            });
+            return;
+        }
+        self.send_helper(g, key, page_url, prio);
+    }
+
+    /// Hızlı yolun sonucunu önbelleğe yaz ve bekleyenlere bildir.
+    fn finish(&self, key: &str, result: Result<Resolved, String>) {
+        let mut g = self.inner.lock().unwrap();
+        if let Ok(r) = &result {
+            g.cache.insert(key.to_string(), r.clone());
+            g.dirty = true;
+        }
+        let waiters = g.waiting.remove(key).unwrap_or_default();
+        g.last_used = Some(Instant::now());
+        drop(g);
+        for d in waiters {
+            d(result.clone());
+        }
+    }
+
+    /// İsteği yt-dlp yardımcısına gönder (bekleyenler `waiting` içinde hazır).
+    fn send_helper(&self, mut g: std::sync::MutexGuard<'_, Inner>, key: &str, page_url: &str, prio: Prio) {
         if let Err(e) = self.ensure_proc(&mut g) {
             let waiters = g.waiting.remove(key).unwrap_or_default();
             drop(g);
