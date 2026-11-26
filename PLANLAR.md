@@ -143,3 +143,9 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **İlgili kod:** `ui/parts.slint` `HaloGlow` (~satır 1122); `ui/app.slint` içinde üç ayrı yerde çiziliyor (~1106, ~2684, ~3057), her biri kendi kabının içinde kırpılıyor.
 - **Düşünülecek:** Işığı tek bir katman olarak pencere zemininde (sol bar + içerik + alt çubuk) çizip barların yarı saydam zeminle üstüne binmesi; ya da sol barın ve alt çubuğun da kendi Hale yansımasını alması. Performans (ek bulanık katman) ve okunabilirlik (sol bar yazıları) birlikte değerlendirilmeli.
 - **Durum:** Fikir aşamasında, karar verilmedi.
+
+### Y3. Hale yayılma alanı sürgüsü (26 Kas 2026)
+- **İstek:** Görünüm > Arka plan'da Hale seçiliyken renklerin ne kadar geniş yayılacağını ayarlayan bir sürgü.
+- **İlgili kod:** `HaloGlow` zaten `spread` özelliğine sahip (`ui/parts.slint`, varsayılan 2.6 = kapağın 2.6 katı); şu an sabit. Ayara (`settings.json`, örn. `halo_spread`) bağlanıp üç çizim yerine (`ui/app.slint` ~1106, ~2684, ~3057) aktarılması yeterli olabilir.
+- **Düşünülecek:** Aralık (örn. 1.5–5×), büyük değerde ışığın içerik kenarında kesilmesi (bkz. Y2, birlikte ele alınabilir), sürgü sürüklenirken canlı önizleme.
+- **Durum:** Açık.
