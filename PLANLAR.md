@@ -114,8 +114,10 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 ### F3. YTM listesi aktarılırken bazı şarkıların boş profille gelmesi (25 Kas 2026)
 - **Görünüm:** YouTube Music'ten çekilen bir listede bazı şarkılar boş profil içinde (başlık/sanatçı/kapak eksik) geliyor; nedeni bilinmiyor.
 - **İncelenecek liste:** https://music.youtube.com/playlist?list=PLsH3S5xRu5wPodftftgUgslBjYDDPAwsn
-- **Bakılacak yer:** `src/import.rs` (yt-dlp flat YTM aktarımı); flat çıktıda eksik alan gelen öğeler (kullanılamayan/bölgesel kısıtlı video, video vs. şarkı ayrımı, sanatçı alanı boş) olabilir. **Tahmin**, doğrulanmadı.
-- **Durum:** Açık.
+- **Bakılacak yer:** `src/import.rs` `flat_list` (yt-dlp flat YTM aktarımı).
+- **Kök neden (27 Kas, DOĞRULANDI):** Yaş kısıtlaması DEĞİL. 49 şarkılık listede 4 öğe yalnız `id` ile geliyor (başlık/kanal/süre `null`); dördü de YouTube'dan silinmiş: `HRaYiVprRV8`, `lrPVfFYQtJc`, `kg5lkuA_1BU` telif şikâyetiyle (Andina Music LLC), `daSm4RUaxcI` kanalı kapatıldığı için. `flat_list` başlıksız öğeyi boş başlık/sanatçıyla listeye ekliyor.
+- **Düzeltme:** Başlığı `null` öğeleri aktarmadan çıkar; aktarım sonunda "N şarkı YouTube'da artık yok" bildir.
+- **Durum:** Açık (neden bulundu).
 
 ### F4. Mini oynatıcıda beğeni kalbinin yalnız kenarlığının değişmesi (25 Kas 2026)
 - **Görünüm:** Mini oynatıcıda şarkı beğenilince kalbin içi dolmuyor, yalnız kenarlık rengi değişiyor; beğenilip beğenilmediği anlaşılmıyor.
@@ -167,3 +169,20 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Kullanıcıda:** GitHub 2FA kontrolü, formu gönderme.
 - **Riskler:** YouTube imza çözümü/PO token "güvenlik önlemi aşma" sayılabilir; ilk açılışta imzasız araç indirme (uv, Python, yt-dlp, deno).
 - **Durum:** Başvuru gönderildi (27 Kas 2026, ad LURID Imura); yanıt bekleniyor. Zayıf nokta: itibar (≈50 indirme, 3 yıldız).
+
+### F6. Yaş doğrulaması gereken şarkılar çalmıyor (27 Kas 2026)
+- **Doğrulandı:** Test videosu `qkO6iBwcoe4` (Rammstein - Pussy, resmî klip). Yerli çözücü `ytfast` → `LOGIN_REQUIRED: Sign in to confirm your age`; yt-dlp (çerezsiz) → `Sign in to confirm your age`. Web yedeği de aynı oturumsuz istemciyle gidiyor. Çerezsiz hiçbir yol bu içeriği açamıyor.
+- **Kısa vadeli düzeltme:** Hata yutulmasın: şarkı "Yaş doğrulaması gerekiyor" bildirimiyle atlansın (bkz. Y7 ile kalıcı çözüm). YTM'de aynı şarkının yaş kısıtsız Topic/ses sürümü varsa ona düşmek denenebilir.
+- **Durum:** Açık.
+
+---
+
+### Y7. İsteğe bağlı YouTube hesabı bağlama (yaş kısıtlı içerik için) (27 Kas 2026)
+- **Fikir (kullanıcı):** Kullanıcı isterse YouTube hesabı bağlanır; yalnız yaş doğrulaması gereken şarkılarda hesap oturumuyla çözülür.
+- **Yol:** Tarayıcıdan çerez içe aktarma (yt-dlp `cookies-from-browser` Firefox tabanlı Zen'i de okur) ya da Vynz içinde giriş penceresi; yerli çözücüde SAPISIDHASH ile oturumlu istek. Hesap yalnız LOGIN_REQUIRED/yaş hatasında kullanılır, normal çalmada değil.
+- **Riskler:** Hesabın 18+ ve gerekirse kimlikle doğrulanmış olması şart; otomasyon nedeniyle hesap işaretlenme riski (ikincil hesap önerilir); çerezler yerelde, dosya izinleri kısıtlı saklanmalı; gizlilik politikasına (CODE_SIGNING_POLICY.md) eklenmeli.
+- **Durum:** Fikir, onay bekliyor.
+
+### Y8. Spotify girişiyle çalma (yalnız soru, ileride değerlendirilecek) (27 Kas 2026)
+- librespot ile mümkün ama YALNIZ Premium hesapta; ücretsiz hesapta çalmaz. Spotify kullanım koşullarına aykırı, hesap riski ve Spotify'ın protokol değişikliklerinde kırılma riski var. Ücretsiz kullanıcılar için mevcut yol (meta veri alıp YTM'de eşleştirme) kalır.
+- **Durum:** Ertelendi.
