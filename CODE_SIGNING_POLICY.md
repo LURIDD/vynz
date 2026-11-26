@@ -7,9 +7,9 @@ and have not been modified.
 Free code signing provided by [SignPath.io](https://about.signpath.io),
 certificate by [SignPath Foundation](https://signpath.org).
 
-> Status: the application to the SignPath Foundation is pending. Releases up to
-> and including v0.3.3 are **not** signed. Use the `SHA256SUMS` file attached to
-> each release to verify downloads.
+> Status: the application to the SignPath Foundation is pending. Current
+> releases are **not** signed yet. Use the `SHA256SUMS` file attached to each
+> release to verify downloads.
 
 ## How releases are built and signed
 

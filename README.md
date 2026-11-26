@@ -112,7 +112,7 @@ ayrıntılar, ekip rolleri ve gizlilik bilgisi
 
 Free code signing provided by [SignPath.io](https://about.signpath.io),
 certificate by [SignPath Foundation](https://signpath.org) *(başvuru
-aşamasında; v0.3.3 ve öncesi imzasızdır)*.
+aşamasında; şimdiki sürümler imzasızdır)*.
 
 ## Lisans
 
