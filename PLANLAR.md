@@ -124,6 +124,14 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **İstenen:** Beğenilince kalbin içi dolu olmalı (ana çubuktaki davranışla aynı).
 - **Durum:** DÜZELTİLDİ (27 Kas): mini oynatıcıda `filled: root.liked` (ekran görüntüsüyle doğrulandı).
 
+### F7. Kuyrukta "Sanatçıyı önerme" / "İlgilenmiyorum" şarkıyı atlamıyor ve kuyruktan silmiyor (27 Kas 2026)
+- **Bildiren:** kullanıcının arkadaşı (Discord).
+- **Neden:** İki eylem yalnız tercihi kaydediyordu. "İlgilenmiyorum" yalnız çalan şarkıya uygulanınca atlıyordu; kuyruktaki istenmeyen şarkılar kuyrukta kalıyordu, atlanınca sıradaki yine aynı sanatçı olabiliyordu.
+- **Düzeltme:** `purge_disliked`: istenmeyen tüm şarkılar kuyruktan çıkarılıyor, çalan da istenmiyorsa ondan sonraki ilk uygun şarkıya geçiliyor (yoksa duraklatılıp bildiriliyor); bildirimde çıkarılan sayı.
+- **Doğrulama:** Test kopyasında Haifisch çalarken kuyruktaki "Mein Land"de "Sanatçıyı önerme" → kuyruk 26→20, Chop Suey!'e geçildi.
+- **Not:** Sanatçı alanı yükleyici olan şarkılar (ör. "Rammstein - Pussy", sanatçı "Eliass Kevrelis") eşleşmiyor.
+- **Durum:** DÜZELTİLDİ (27 Kas).
+
 ---
 
 ## Yeni özellikler

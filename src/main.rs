@@ -2307,8 +2307,8 @@ fn menu_action(ui: &AppWindow, action: i32) {
             }
             if ui.get_has_now() && ui.get_now().key == t.key().as_str() {
                 ui.set_liked(false);
-                step(ui, 1);
             }
+            purge_disliked(ui);
             let msg = format!("Artık önerilmeyecek: {}", t.title);
             toast_undo(ui, &msg, Undo::Dislike { t, liked: was_liked });
         }
@@ -2317,23 +2317,81 @@ fn menu_action(ui: &AppWindow, action: i32) {
             if artist.is_empty() {
                 return;
             }
-            let (home_data, skip_now) = with_state(|st| {
+            let home_data = with_state(|st| {
                 st.history.dislike_artist(&artist);
-                let skip = st.index.and_then(|i| st.queue.get(i)).is_some_and(|cur| st.history.is_disliked(cur));
-                let hd = (!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone());
-                (hd, skip)
+                (!st.home.personal.is_empty() || !st.home.external.is_empty()).then(|| st.home.clone())
             });
             refresh_hidden(ui);
             if let Some(d) = home_data {
                 show_home(ui, d);
             }
-            if skip_now {
-                step(ui, 1);
-            }
-            toast_undo(ui, &format!("Artık önerilmeyecek sanatçı: {artist}"), Undo::DislikeArtist(artist.clone()));
+            let n = purge_disliked(ui);
+            let msg = if n > 0 {
+                format!("Artık önerilmeyecek sanatçı: {artist} · kuyruktan {n} şarkı çıkarıldı")
+            } else {
+                format!("Artık önerilmeyecek sanatçı: {artist}")
+            };
+            toast_undo(ui, &msg, Undo::DislikeArtist(artist.clone()));
         }
         _ => {}
     }
+}
+
+/// "İlgilenmiyorum" / "Sanatçıyı önerme" sonrası: istenmeyen şarkıları kuyruktan çıkar; çalan
+/// şarkı da istenmiyorsa kuyrukta ondan sonraki ilk uygun şarkıya geç. Çıkarılan sayıyı döner
+/// (çalan dahil).
+fn purge_disliked(ui: &AppWindow) -> usize {
+    let (removed, play) = with_state(|st| {
+        let cur = st.index;
+        let cur_bad = cur.and_then(|i| st.queue.get(i)).is_some_and(|t| st.history.is_disliked(t));
+        let mut kept = Vec::with_capacity(st.queue.len());
+        let mut new_cur = None;
+        let mut next_after_cur = None;
+        let mut removed = 0;
+        for (i, t) in std::mem::take(&mut st.queue).into_iter().enumerate() {
+            let is_cur = Some(i) == cur;
+            if st.history.is_disliked(&t) && !is_cur {
+                removed += 1;
+                continue;
+            }
+            if is_cur {
+                new_cur = Some(kept.len());
+            } else if cur_bad && next_after_cur.is_none() && cur.is_some_and(|c| i > c) {
+                next_after_cur = Some(kept.len());
+            }
+            kept.push(t);
+        }
+        st.queue = kept;
+        st.index = new_cur;
+        if removed > 0 && st.appended.is_some() {
+            st.player.send(Cmd::ClearNext);
+            st.appended = None;
+        }
+        if !cur_bad {
+            return (removed, None);
+        }
+        let Some(next) = next_after_cur else {
+            // Sonrasında uygun şarkı yok: çalanı kuyrukta bırak, duraklat.
+            st.player.send(Cmd::SetPause(true));
+            return (removed, Some(None));
+        };
+        // Çalan şarkıyı da çıkar; sonraki uygun şarkı bir sola kayar.
+        st.queue.remove(new_cur.unwrap_or(0));
+        st.index = None;
+        (removed + 1, Some(Some(next - 1)))
+    });
+    match play {
+        Some(Some(i)) => play_index(ui, i),
+        Some(None) => {
+            ui.set_playing(false);
+            toast(ui, "Kuyrukta başka uygun şarkı kalmadı");
+        }
+        None => {}
+    }
+    if removed > 0 {
+        queue_changed(ui);
+    }
+    removed
 }
 
 fn refresh_hidden(ui: &AppWindow) {
