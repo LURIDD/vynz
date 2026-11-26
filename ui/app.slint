@@ -4568,7 +4568,7 @@ export component MiniWindow inherits Window {
                     IconButton { icon: Icons.skip-back; enabled: root.has-now; clicked => { root.prev(); } }
                     IconButton { icon: root.playing ? Icons.pause : Icons.play; primary: true; size: 32px; enabled: root.has-now; clicked => { root.toggle(); } }
                     IconButton { icon: Icons.skip-forward; enabled: root.has-now; clicked => { root.next(); } }
-                    IconButton { icon: Icons.heart; tint: root.liked ? Theme.accent : Theme.text-secondary; enabled: root.has-now; clicked => { root.like(); } }
+                    IconButton { icon: Icons.heart; tint: root.liked ? Theme.accent : Theme.text-secondary; filled: root.liked; enabled: root.has-now; clicked => { root.like(); } }
                 }
             }
             VerticalLayout {

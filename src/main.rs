@@ -119,6 +119,8 @@ struct State {
     /// 0 kapalı, 1 tüm liste, 2 tek şarkı
     repeat: i32,
     radio_busy: bool,
+    /// Çalınamayan (yaş doğrulamalı) şarkıyı, kuyruk radyoyla uzayınca atla: o anki play_seq.
+    skip_seq: Option<u64>,
     /// Sağ tık menüsünün hedefi
     menu: Option<TrackInfo>,
     /// Sanatçı seçim menüsü: (adlar, şarkının videoId'si)
@@ -1200,6 +1202,29 @@ fn on_resolved_now(ui: &AppWindow, seq: u64, key: String, res: Result<resolve::R
         return;
     }
     dbg(&format!("çözüldü {key}: {}", if res.is_ok() { "tamam" } else { "hata" }));
+    // Yaş doğrulaması isteyen içerik oturumsuz hiçbir yolla açılmaz (yedek yol da aynı hatayı
+    // alır): beklemeden bildir ve sonrakine geç.
+    if let Err(e) = &res {
+        if is_age_gate(e) {
+            eprintln!("yaş doğrulaması gerekiyor ({key}): {e}");
+            let title = with_state(|st| st.index.and_then(|i| st.queue.get(i)).map(|t| t.title.clone())).unwrap_or_default();
+            toast(ui, &format!("Yaş doğrulaması gerekiyor, atlandı: {title}"));
+            // Aramadan tek şarkı çalınınca kuyruk radyoyla arkadan doluyor: dolunca atla.
+            let wait = with_state(|st| {
+                let last = st.index.is_none_or(|i| i + 1 >= st.queue.len());
+                if last && st.radio_busy {
+                    st.skip_seq = Some(st.play_seq);
+                    true
+                } else {
+                    false
+                }
+            });
+            if !wait {
+                step(ui, 1);
+            }
+            return;
+        }
+    }
     with_state(|st| {
         let Some(t) = st.index.and_then(|i| st.queue.get(i).cloned()) else { return };
         match res {
@@ -1218,6 +1243,12 @@ fn on_resolved_now(ui: &AppWindow, seq: u64, key: String, res: Result<resolve::R
         }
     });
     maybe_append_next(ui);
+}
+
+/// YouTube'un yaş doğrulaması hatası (yerli çözücü: LOGIN_REQUIRED, yt-dlp: "Sign in to confirm your age").
+fn is_age_gate(e: &str) -> bool {
+    let e = e.to_lowercase();
+    e.contains("confirm your age") || e.contains("age-restricted") || e.contains("age restricted")
 }
 
 /// Kuyruktaki sonraki parçaları önceden çöz; ilki hazır olunca mpv'ye sıradaki olarak ekle.
@@ -1886,6 +1917,17 @@ fn queue_changed(ui: &AppWindow) {
     });
     ui.set_queue(model_of(&list));
     ui.set_queue_index(idx.map(|i| i as i32).unwrap_or(-1));
+    let skip = with_state(|st| {
+        let due = st.skip_seq == Some(st.play_seq) && st.index.is_some_and(|i| i + 1 < st.queue.len());
+        if due || st.skip_seq.is_some_and(|q| q != st.play_seq) {
+            st.skip_seq = None;
+        }
+        due
+    });
+    if skip {
+        step(ui, 1);
+        return;
+    }
     schedule_prefetch(ui);
 }
 
@@ -3230,6 +3272,9 @@ fn refresh_import(ui: &AppWindow) {
         let mut note = format!("{} · {} şarkı", f.source_label, f.rows.len());
         if f.truncated {
             note.push_str(" · Spotify ilk 100 şarkıyı verdi");
+        }
+        if f.unavailable > 0 {
+            note.push_str(&format!(" · {} şarkı kaynakta artık yok, atlandı", f.unavailable));
         }
         let rows: Vec<ImportRow> = f.rows.iter().map(import_row_ui).collect();
         let picks: Vec<TrackInfo> = f.rows.iter().filter_map(|r| r.pick().cloned()).collect();
@@ -4786,6 +4831,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             shuffle_orig: None,
             repeat: 0,
             radio_busy: false,
+            skip_seq: None,
             menu: None,
             artist_pick: (Vec::new(), String::new()),
             pending_update: None,

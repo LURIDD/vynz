@@ -172,6 +172,11 @@ impl Resolver {
                         crate::dbg(&format!("ytfast {key}: {} ms", t0.elapsed().as_millis()));
                         me.finish(&key, Ok(r));
                     }
+                    // Yaş doğrulaması oturumsuz hiçbir istemcide geçmez: diğer yolları bekletme.
+                    Err(e) if e.to_lowercase().contains("confirm your age") => {
+                        crate::dbg(&format!("ytfast {key}: {e}; yaş doğrulaması, yedek yol yok"));
+                        me.finish(&key, Err(e));
+                    }
                     Err(e) => {
                         crate::dbg(&format!("ytfast {key}: {e}; web istemcisi deneniyor"));
                         if crate::ytweb::enabled() {

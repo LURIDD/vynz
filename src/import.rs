@@ -57,6 +57,8 @@ pub struct Fetched {
     pub rows: Vec<Row>,
     /// Kaynak gömülü sayfa sınırına takıldıysa (Spotify 100) bilgi.
     pub truncated: bool,
+    /// Kaynakta artık bulunmayan (silinmiş, telif nedeniyle kaldırılmış) atlanan öğe sayısı.
+    pub unavailable: usize,
 }
 
 pub enum Link {
@@ -139,15 +141,18 @@ fn find_key<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
 }
 
 /// YouTube/SoundCloud listesi: sıcak çözücü yardımcısıyla (yt-dlp) düz liste.
-fn flat_list(url: &str, source: Source, resolver: &Resolver) -> Result<(String, Vec<TrackInfo>), String> {
+/// Üçüncü değer: atlanan, artık bulunmayan öğe sayısı.
+fn flat_list(url: &str, source: Source, resolver: &Resolver) -> Result<(String, Vec<TrackInfo>, usize), String> {
     let d = resolver.request_sync(serde_json::json!({"op": "flat", "url": url}), Prio::Soon)?;
     let name = d.get("title").and_then(Value::as_str).unwrap_or("Aktarılan liste").to_string();
     let entries = d.get("entries").and_then(Value::as_array).cloned().unwrap_or_default();
-    let tracks = entries
+    let total = entries.len();
+    let tracks: Vec<TrackInfo> = entries
         .iter()
         .filter_map(|e| {
             let id = e.get("id")?.as_str()?.to_string();
-            let title = e.get("title").and_then(Value::as_str).unwrap_or("").to_string();
+            // Silinmiş / telif nedeniyle kaldırılmış videolar düz listede yalnız id ile gelir.
+            let title = e.get("title").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty())?.to_string();
             let uploader = e
                 .get("artists")
                 .and_then(Value::as_array)
@@ -187,7 +192,8 @@ fn flat_list(url: &str, source: Source, resolver: &Resolver) -> Result<(String, 
             }
         })
         .collect();
-    Ok((name, tracks))
+    let skipped = total - tracks.len();
+    Ok((name, tracks, skipped))
 }
 
 fn split_dash(title: &str, uploader: &str) -> (String, String) {
@@ -326,12 +332,12 @@ pub fn run(
             } else {
                 u
             };
-            let (name, tracks) = flat_list(&u, Source::Ytm, resolver)?;
-            Ok(direct(name, "YouTube Music", tracks))
+            let (name, tracks, skipped) = flat_list(&u, Source::Ytm, resolver)?;
+            Ok(Fetched { unavailable: skipped, ..direct(name, "YouTube Music", tracks) })
         }
         Link::SoundCloud(u) => {
-            let (name, tracks) = flat_list(&u, Source::SoundCloud, resolver)?;
-            Ok(direct(name, "SoundCloud", tracks))
+            let (name, tracks, skipped) = flat_list(&u, Source::SoundCloud, resolver)?;
+            Ok(Fetched { unavailable: skipped, ..direct(name, "SoundCloud", tracks) })
         }
         Link::Spotify { kind, id } => {
             let (name, wanted, truncated) = spotify(&kind, &id)?;
@@ -370,7 +376,7 @@ pub fn match_all(
         }
     });
     let rows = rows.into_iter().filter_map(|m| m.into_inner().ok().flatten()).collect();
-    Fetched { name, source_label: label, rows, truncated }
+    Fetched { name, source_label: label, rows, truncated, unavailable: 0 }
 }
 
 // ---------- Dosyadan aktarma ----------
@@ -509,7 +515,7 @@ fn direct(name: String, label: &'static str, tracks: Vec<TrackInfo>) -> Fetched 
             status: Status::Direct,
         })
         .collect();
-    Fetched { name, source_label: label, rows, truncated: false }
+    Fetched { name, source_label: label, rows, truncated: false, unavailable: 0 }
 }
 
 #[cfg(test)]

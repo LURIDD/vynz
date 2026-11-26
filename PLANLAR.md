@@ -117,12 +117,12 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Bakılacak yer:** `src/import.rs` `flat_list` (yt-dlp flat YTM aktarımı).
 - **Kök neden (27 Kas, DOĞRULANDI):** Yaş kısıtlaması DEĞİL. 49 şarkılık listede 4 öğe yalnız `id` ile geliyor (başlık/kanal/süre `null`); dördü de YouTube'dan silinmiş: `HRaYiVprRV8`, `lrPVfFYQtJc`, `kg5lkuA_1BU` telif şikâyetiyle (Andina Music LLC), `daSm4RUaxcI` kanalı kapatıldığı için. `flat_list` başlıksız öğeyi boş başlık/sanatçıyla listeye ekliyor.
 - **Düzeltme:** Başlığı `null` öğeleri aktarmadan çıkar; aktarım sonunda "N şarkı YouTube'da artık yok" bildir.
-- **Durum:** Açık (neden bulundu).
+- **Durum:** DÜZELTİLDİ (27 Kas): başlıksız öğeler atlanıyor, aktarım notunda "N şarkı kaynakta artık yok, atlandı".
 
 ### F4. Mini oynatıcıda beğeni kalbinin yalnız kenarlığının değişmesi (25 Kas 2026)
 - **Görünüm:** Mini oynatıcıda şarkı beğenilince kalbin içi dolmuyor, yalnız kenarlık rengi değişiyor; beğenilip beğenilmediği anlaşılmıyor.
 - **İstenen:** Beğenilince kalbin içi dolu olmalı (ana çubuktaki davranışla aynı).
-- **Durum:** Açık.
+- **Durum:** DÜZELTİLDİ (27 Kas): mini oynatıcıda `filled: root.liked` (ekran görüntüsüyle doğrulandı).
 
 ---
 
@@ -138,7 +138,7 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **İlgili kod:** `src/discord.rs` gönderim döngüsü (~satır 153-161) ve `activity()` (~satır 213-231).
 - **Güçlü aday (Tahmin, doğrulanmadı):** `set_activity` herhangi bir nedenle reddedilince (çok uzun başlık, geçersiz kapak adresi, boş alan vb.) kod bunu "eski istemci `type` alanını tanımıyor" sayıp `no_type = true` yapıyor ve bu bayrak oturum boyunca hiç sıfırlanmıyor. Sonraki tüm durumlar `type: 2` (Listening) olmadan gidiyor, Discord da varsayılan olarak "Oynuyor" gösteriyor.
 - **Düzeltme yönü:** Reddin nedenini Discord'un hata yanıtından okuyup yalnız `type` hatasında düşmek; ya da `no_type`'ı şarkı değişiminde/yeniden bağlantıda sıfırlamak. Reddedilen içeriği (hangi şarkıda olduğu) günlüğe yazmak.
-- **Durum:** Açık.
+- **Durum:** DÜZELTİLDİ (27 Kas): ret iletisi okunuyor; tür yalnız "type" hatasında ve türsüz gönderim kabul edilirse bırakılıyor, yeniden bağlanınca sıfırlanıyor; diğer retlerde türü koruyan sade sürüm (kapak/zaman yok) gönderiliyor.
 
 ### Y2. Hale efektini diğer katmanlarla birleştirme (26 Kas 2026)
 - **Görünüm:** Hale (`bg_style 4`) ışığı yalnız içerik alanının içinde kalıyor; sol barın kenarında (ve ana sayfa kartlarının arkasında) keskin bir çizgiyle kesiliyor, kapaktan taşan ışık sol bara ve diğer katmanlara geçmiyor. Ekran görüntüsü: `notes/fix/hale-katman.jpg` (CANTA LALA, ana sayfa).
@@ -173,7 +173,7 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 ### F6. Yaş doğrulaması gereken şarkılar çalmıyor (27 Kas 2026)
 - **Doğrulandı:** Test videosu `qkO6iBwcoe4` (Rammstein - Pussy, resmî klip). Yerli çözücü `ytfast` → `LOGIN_REQUIRED: Sign in to confirm your age`; yt-dlp (çerezsiz) → `Sign in to confirm your age`. Web yedeği de aynı oturumsuz istemciyle gidiyor. Çerezsiz hiçbir yol bu içeriği açamıyor.
 - **Kısa vadeli düzeltme:** Hata yutulmasın: şarkı "Yaş doğrulaması gerekiyor" bildirimiyle atlansın (bkz. Y7 ile kalıcı çözüm). YTM'de aynı şarkının yaş kısıtsız Topic/ses sürümü varsa ona düşmek denenebilir.
-- **Durum:** Açık.
+- **Durum:** Kısa vadeli DÜZELTİLDİ (27 Kas): yerli çözücü yaş hatasında yedek yolları beklemiyor, "Yaş doğrulaması gerekiyor, atlandı" bildirimi + sonrakine geçiş (kuyruk radyoyla doluyorsa dolunca). Kalıcı çözüm Y7.
 
 ---
 

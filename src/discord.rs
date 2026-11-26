@@ -150,19 +150,32 @@ fn run(id: String, rx: mpsc::Receiver<Ev>, mut enabled: bool) {
             }
         }
         let Some(c) = conn.as_mut() else { continue };
-        let act = now.as_ref().map(|n| activity(n, no_type)).unwrap_or(Value::Null);
+        let act = now.as_ref().map(|n| activity(n, no_type, false)).unwrap_or(Value::Null);
         match c.set_activity(act) {
-            Ok(true) => dirty = false,
-            Ok(false) if !no_type => {
-                // Eski istemci "type" alanını reddetti: onsuz bir kez daha dene.
-                no_type = true;
-                let act = now.as_ref().map(|n| activity(n, true)).unwrap_or(Value::Null);
-                dirty = !matches!(c.set_activity(act), Ok(true));
+            Ok(None) => dirty = false,
+            Ok(Some(err)) => {
+                eprintln!("discord: etkinlik reddedildi: {err}");
+                // Yalnız "type" alanını tanımayan eski istemcide türsüz gönder; başka her ret
+                // (uzun alan, geçersiz kapak adresi...) için türü koruyup sade sürümü dene.
+                // Önceden her ret kalıcı olarak türü düşürüyordu: durum "Dinliyor" yerine
+                // "Oynuyor"a takılıp kalıyordu.
+                let type_err = !no_type && err.to_lowercase().contains("type");
+                let act = now.as_ref().map(|n| activity(n, no_type || type_err, !type_err)).unwrap_or(Value::Null);
+                match c.set_activity(act) {
+                    // Türsüz gönderim gerçekten kabul edildiyse bu bağlantı için türü bırak.
+                    Ok(None) => no_type |= type_err,
+                    Ok(Some(err)) => eprintln!("discord: sade etkinlik de reddedildi: {err}"),
+                    Err(_) => {
+                        conn = None;
+                        last_try = None;
+                    }
+                }
+                dirty = false; // aynı içeriği tekrar tekrar gönderme
             }
-            Ok(false) => dirty = false, // reddedildi; aynı içeriği tekrar tekrar gönderme
             Err(_) => {
                 conn = None;
                 last_try = None; // Discord yeniden başlatılmış olabilir: hemen bir kez dene
+                no_type = false; // yeni istemci türü tanıyor olabilir
             }
         }
     }
@@ -210,7 +223,8 @@ fn field(s: &str) -> String {
     s
 }
 
-fn activity(n: &Now, no_type: bool) -> Value {
+/// `plain`: kapak ve zaman damgası olmadan (ret sonrası güvenli sürüm).
+fn activity(n: &Now, no_type: bool, plain: bool) -> Value {
     let artist = if n.artist.trim().is_empty() { "Vynz" } else { n.artist.as_str() };
     let pos = f64::from_bits(POS.load(Ordering::Relaxed)).max(0.0);
     // Duraklatılmışken Discord'da işleyen bir sayaç yerine son konum sabit yazı olarak kalır.
@@ -231,7 +245,7 @@ fn activity(n: &Now, no_type: bool) -> Value {
         a["status_display_type"] = json!(2);
     }
     let mut assets = serde_json::Map::new();
-    if n.art.starts_with("https://") && n.art.len() <= 256 {
+    if !plain && n.art.starts_with("https://") && n.art.len() <= 256 {
         assets.insert("large_image".into(), json!(n.art));
         let text = if n.album.trim().is_empty() { &n.title } else { &n.album };
         assets.insert("large_text".into(), json!(field(text)));
@@ -242,7 +256,7 @@ fn activity(n: &Now, no_type: bool) -> Value {
     if !assets.is_empty() {
         a["assets"] = Value::Object(assets);
     }
-    if n.playing {
+    if n.playing && !plain {
         let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
         let start = now_ms - (pos * 1000.0) as i64;
         let mut ts = json!({ "start": start });
@@ -309,7 +323,8 @@ impl Conn {
     }
 
     /// Ok(true) kabul edildi, Ok(false) Discord hata döndü, Err bağlantı koptu.
-    fn set_activity(&mut self, activity: Value) -> std::io::Result<bool> {
+    /// `Ok(None)`: kabul edildi; `Ok(Some(ileti))`: Discord reddetti.
+    fn set_activity(&mut self, activity: Value) -> std::io::Result<Option<String>> {
         self.nonce += 1;
         let req = json!({
             "cmd": "SET_ACTIVITY",
@@ -324,10 +339,14 @@ impl Conn {
                 return Err(std::io::Error::other("Discord bağlantıyı kapattı"));
             }
             if body["nonce"] == req["nonce"] {
-                return Ok(body["evt"] != "ERROR");
+                if body["evt"] == "ERROR" {
+                    let msg = body["data"]["message"].as_str().unwrap_or("bilinmeyen hata");
+                    return Ok(Some(format!("{} ({})", msg, body["data"]["code"])));
+                }
+                return Ok(None);
             }
         }
-        Ok(false)
+        Ok(Some("yanıt gelmedi".into()))
     }
 }
 
@@ -391,12 +410,12 @@ mod tests {
     #[test]
     fn paused_activity_has_no_timestamps() {
         let n = Now { title: "Şarkı".into(), artist: "Sanatçı".into(), album: "".into(), art: "https://i.ytimg.com/x.jpg".into(), length: 200.0, playing: false };
-        let a = activity(&n, false);
+        let a = activity(&n, false, false);
         assert!(a.get("timestamps").is_none());
         assert_eq!(a["type"], 2);
         assert_eq!(a["assets"]["large_image"], "https://i.ytimg.com/x.jpg");
         let n = Now { playing: true, ..n };
-        let a = activity(&n, true);
+        let a = activity(&n, true, false);
         assert!(a.get("type").is_none());
         assert!(a["timestamps"]["end"].as_i64().unwrap() > a["timestamps"]["start"].as_i64().unwrap());
     }
@@ -410,14 +429,23 @@ mod rpc_tests {
     fn paused_activity_is_static() {
         POS.store(83.4f64.to_bits(), Ordering::Relaxed);
         let mut n = Now { title: "Gidiyorum".into(), artist: "Sezen Aksu".into(), album: String::new(), art: String::new(), length: 225.0, playing: false };
-        let a = activity(&n, false);
+        let a = activity(&n, false, false);
         assert!(a.get("timestamps").is_none());
         assert_eq!(a["state"], "⏸ 1:23 / 3:45 · Sezen Aksu");
         assert_eq!(a["status_display_type"], 2);
         n.playing = true;
-        let a = activity(&n, false);
+        let a = activity(&n, false, false);
         assert_eq!(a["state"], "Sezen Aksu");
         assert!(a["timestamps"]["end"].as_i64().unwrap() > a["timestamps"]["start"].as_i64().unwrap());
-        assert!(activity(&n, true).get("status_display_type").is_none());
+        assert!(activity(&n, true, false).get("status_display_type").is_none());
+    }
+
+    #[test]
+    fn plain_fallback_keeps_listening_type() {
+        let n = Now { title: "Şarkı".into(), artist: "Sanatçı".into(), album: String::new(), art: "https://i.ytimg.com/x.jpg".into(), length: 200.0, playing: true };
+        let a = activity(&n, false, true);
+        assert_eq!(a["type"], 2);
+        assert!(a.get("assets").is_none());
+        assert!(a.get("timestamps").is_none());
     }
 }
