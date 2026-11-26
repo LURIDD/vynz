@@ -137,3 +137,9 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Güçlü aday (Tahmin, doğrulanmadı):** `set_activity` herhangi bir nedenle reddedilince (çok uzun başlık, geçersiz kapak adresi, boş alan vb.) kod bunu "eski istemci `type` alanını tanımıyor" sayıp `no_type = true` yapıyor ve bu bayrak oturum boyunca hiç sıfırlanmıyor. Sonraki tüm durumlar `type: 2` (Listening) olmadan gidiyor, Discord da varsayılan olarak "Oynuyor" gösteriyor.
 - **Düzeltme yönü:** Reddin nedenini Discord'un hata yanıtından okuyup yalnız `type` hatasında düşmek; ya da `no_type`'ı şarkı değişiminde/yeniden bağlantıda sıfırlamak. Reddedilen içeriği (hangi şarkıda olduğu) günlüğe yazmak.
 - **Durum:** Açık.
+
+### Y2. Hale efektini diğer katmanlarla birleştirme (26 Kas 2026)
+- **Görünüm:** Hale (`bg_style 4`) ışığı yalnız içerik alanının içinde kalıyor; sol barın kenarında (ve ana sayfa kartlarının arkasında) keskin bir çizgiyle kesiliyor, kapaktan taşan ışık sol bara ve diğer katmanlara geçmiyor. Ekran görüntüsü: `notes/fix/hale-katman.jpg` (CANTA LALA, ana sayfa).
+- **İlgili kod:** `ui/parts.slint` `HaloGlow` (~satır 1122); `ui/app.slint` içinde üç ayrı yerde çiziliyor (~1106, ~2684, ~3057), her biri kendi kabının içinde kırpılıyor.
+- **Düşünülecek:** Işığı tek bir katman olarak pencere zemininde (sol bar + içerik + alt çubuk) çizip barların yarı saydam zeminle üstüne binmesi; ya da sol barın ve alt çubuğun da kendi Hale yansımasını alması. Performans (ek bulanık katman) ve okunabilirlik (sol bar yazıları) birlikte değerlendirilmeli.
+- **Durum:** Fikir aşamasında, karar verilmedi.
