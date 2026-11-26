@@ -161,3 +161,9 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Kaynak:** GitHub issue #1 (nidego, Brezilya): arayüz yalnız Türkçe, İngilizce/Portekizce yok. 26 Kas'ta yanıtlandı: İngilizce "çok yakında", pt-BR listede, diğer diller istek üzerine; İngilizce çıkınca issue'ya haber verilecek.
 - **Yön:** Slint `@tr()` + gettext (.po) ile arayüz metinlerini çeviri dosyalarına taşımak; Rust tarafındaki metinler (bildirimler, Yenilikler notları `notes/vX.Y.Z.md`, hata iletileri) de dahil. Ayarlar'a dil seçimi, varsayılan sistem dili.
 - **Durum:** Açık, söz verildi (öncelikli).
+
+### Y6. Windows kod imzası (SignPath Foundation) (27 Kas 2026)
+- **Hazır:** `CODE_SIGNING_POLICY.md`, README'de "Code signing policy" + SmartScreen notu, CI'da etikete bağlı iki imza adımı (vynz.exe, sonra setup.exe; `SIGNPATH_ORGANIZATION_ID` yoksa atlanır), `packaging/windows/signpath/` artifact yapılandırmaları, Inno'da sürüm meta verisi. Form cevapları depo dışında: `~/Projeler/vynz-arastirma/signpath/BASVURU.md`.
+- **Kullanıcıda:** GitHub 2FA kontrolü, formu gönderme.
+- **Riskler:** YouTube imza çözümü/PO token "güvenlik önlemi aşma" sayılabilir; ilk açılışta imzasız araç indirme (uv, Python, yt-dlp, deno).
+- **Durum:** Başvuru bekliyor.

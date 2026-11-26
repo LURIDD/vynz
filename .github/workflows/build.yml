@@ -37,6 +37,10 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    env:
+      # Kod imzası yalnız sürüm etiketlerinde ve SignPath ayarlandıysa (depo değişkeni
+      # SIGNPATH_ORGANIZATION_ID + gizli SIGNPATH_API_TOKEN). Ayarlı değilse derleme imzasız sürer.
+      SIGN: ${{ startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -80,6 +84,31 @@ jobs:
         run: cargo test --bin vynz
       - name: Build release
         run: cargo build --release --bin vynz
+      - name: Upload unsigned vynz.exe for signing
+        if: env.SIGN == 'true'
+        id: upload-unsigned-exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-vynz-exe
+          path: target/release/vynz.exe
+      - name: Sign vynz.exe (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: vynz
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: exe
+          github-artifact-id: ${{ steps.upload-unsigned-exe.outputs.artifact-id }}
+          wait-for-completion: true
+          # Her imza isteği elle onaylanır; onay için süre tanı
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed-exe
+      - name: Use signed vynz.exe
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: Copy-Item signed-exe/vynz.exe target/release/vynz.exe -Force
       - name: Package Windows portable zip
         shell: pwsh
         run: |
@@ -100,6 +129,30 @@ jobs:
           & $iscc "/DAppVersion=$ver" packaging\windows\vynz.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC basarisiz: $LASTEXITCODE" }
           Copy-Item dist/vynz-windows-x86_64-setup.exe .
+      - name: Upload unsigned installer for signing
+        if: env.SIGN == 'true'
+        id: upload-unsigned-setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-vynz-setup
+          path: vynz-windows-x86_64-setup.exe
+      - name: Sign installer (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: vynz
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: setup
+          github-artifact-id: ${{ steps.upload-unsigned-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed-setup
+      - name: Use signed installer
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: Copy-Item signed-setup/vynz-windows-x86_64-setup.exe . -Force
       - uses: actions/upload-artifact@v4
         with:
           name: vynz-windows-x86_64

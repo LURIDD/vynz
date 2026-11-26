@@ -39,12 +39,26 @@ playlists, and shows time-synced karaoke lyrics. The UI is in Turkish.*
 Hazır derlemeler [Releases](https://github.com/LURIDD/vynz/releases) sayfasında
 paylaşılır:
 
-- **Windows (x86_64):** `vynz-windows-x86_64.zip` arşivini bir klasöre açıp
+- **Windows (x86_64), kurulum:** `vynz-windows-x86_64-setup.exe`'yi çalıştırın.
+  Yönetici izni istemez, yalnız sizin kullanıcınıza kurulur.
+- **Windows (x86_64), taşınabilir:** `vynz-windows-x86_64.zip` arşivini bir klasöre açıp
   `vynz.exe`'yi çalıştırın (`libmpv-2.dll` pakete dahildir). İlk açılışta
   çözücü ortamı `%LOCALAPPDATA%\vynz\runtime` klasörüne kendiliğinden kurulur.
 - **Linux (x86_64):** `vynz-linux-x86_64.tar.gz` arşivini açıp `vynz` ikilisini
   çalıştırın. Sistemde `libmpv` kurulu olmalıdır (Arch: `mpv`, Debian/Ubuntu:
   `libmpv2`).
+
+### Windows SmartScreen uyarısı
+
+Vynz'nin Windows dosyaları henüz kod imzalı değildir (bkz.
+[Code signing policy](#code-signing-policy)). Bu yüzden Windows ilk açılışta
+"Windows kişisel bilgisayarınızı korudu" uyarısı gösterebilir: **Ek bilgi →
+Yine de çalıştır** ile devam edebilirsiniz. İndirdiğiniz dosyanın sürüm
+sayfasındakiyle aynı olduğunu `SHA256SUMS` ile doğrulayabilirsiniz:
+
+```powershell
+Get-FileHash .\vynz-windows-x86_64-setup.exe -Algorithm SHA256
+```
 
 ### Sürümler
 
@@ -89,6 +103,16 @@ Vynz kişisel kullanım için geliştirilmiş, bağımsız ve ücretsiz bir proj
 YouTube, SoundCloud ya da Spotify ile bağlantısı yoktur. Bu servislerin kendi
 kullanım koşulları geçerlidir. Şarkı sözlerinin hakları yazarlarına ve
 yayıncılarına aittir.
+
+## Code signing policy
+
+Windows sürümleri GitHub Actions üzerinde bu depodan derlenir ve imzalanır;
+ayrıntılar, ekip rolleri ve gizlilik bilgisi
+[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) dosyasındadır.
+
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org) *(başvuru
+aşamasında; v0.3.3 ve öncesi imzasızdır)*.
 
 ## Lisans
 

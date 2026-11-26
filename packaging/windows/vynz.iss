@@ -27,6 +27,13 @@ ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\..\dist
 OutputBaseFilename=vynz-windows-x86_64-setup
 SetupIconFile=..\..\design\logo\vynz.ico
+; Kod imzası (SignPath) ürün adı ve sürümünü dosya meta verisinden denetler
+VersionInfoProductName=Vynz
+VersionInfoDescription=Vynz Setup
+VersionInfoVersion={#AppVersion}
+VersionInfoProductVersion={#AppVersion}
+VersionInfoProductTextVersion={#AppVersion}
+VersionInfoCompany=LURID
 UninstallDisplayIcon={app}\vynz.exe
 UninstallDisplayName=Vynz
 Compression=lzma2/max
