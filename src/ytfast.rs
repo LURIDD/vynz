@@ -20,13 +20,13 @@ const CLIENT_ID: &str = "101";
 const CLIENT_VERSION: &str = "1.02";
 const DEVICE_MODEL: &str = "RealityDevice17,1";
 const OS_VERSION: &str = "26.5.23O471";
-const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
+pub(crate) const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
 /// visitorData bu süreden eskiyse yenilenir.
 const VD_MAX_AGE: u64 = 3 * 24 * 3600;
 
 static VISITOR: Mutex<Option<(String, u64)>> = Mutex::new(None);
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
@@ -34,7 +34,7 @@ fn vd_file() -> std::path::PathBuf {
     crate::paths::cache_dir().join("yt-visitor.json")
 }
 
-fn load_visitor() -> Option<String> {
+pub(crate) fn load_visitor() -> Option<String> {
     let mut g = VISITOR.lock().unwrap();
     if g.is_none() {
         if let Ok(raw) = std::fs::read(vd_file()) {
@@ -48,19 +48,19 @@ fn load_visitor() -> Option<String> {
     g.as_ref().filter(|(_, t)| now().saturating_sub(*t) < VD_MAX_AGE).map(|(vd, _)| vd.clone())
 }
 
-fn store_visitor(vd: &str) {
+pub(crate) fn store_visitor(vd: &str) {
     let t = now();
     *VISITOR.lock().unwrap() = Some((vd.to_string(), t));
     let _ = std::fs::create_dir_all(crate::paths::cache_dir());
     let _ = std::fs::write(vd_file(), json!({"vd": vd, "t": t}).to_string());
 }
 
-fn forget_visitor() {
+pub(crate) fn forget_visitor() {
     *VISITOR.lock().unwrap() = None;
     let _ = std::fs::remove_file(vd_file());
 }
 
-/// Kapalıysa (VYNZ_YT_FAST=0) yalnız yt-dlp kullanılır.
+/// VYNZ_YT_FAST=0 visionOS yolunu kapatır (web yedeği ve yt-dlp yine denenir).
 pub fn enabled() -> bool {
     std::env::var("VYNZ_YT_FAST").map(|v| v != "0").unwrap_or(true)
 }
@@ -167,7 +167,7 @@ fn pick_audio(v: &Value) -> Option<(String, String, u64)> {
     Some((url, ext, expire))
 }
 
-fn status_of(v: &Value) -> (&str, &str) {
+pub(crate) fn status_of(v: &Value) -> (&str, &str) {
     let ps = &v["playabilityStatus"];
     (ps["status"].as_str().unwrap_or(""), ps["reason"].as_str().unwrap_or(""))
 }

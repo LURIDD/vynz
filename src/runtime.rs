@@ -153,6 +153,17 @@ fn fallback_runtime() -> Runtime {
     }
 }
 
+/// deno yolu: önce yönetilen ortamdaki, yoksa PATH'teki.
+pub fn deno_bin() -> Option<PathBuf> {
+    let managed = deno_path();
+    if managed.is_file() {
+        return Some(managed);
+    }
+    let name = if cfg!(windows) { "deno.exe" } else { "deno" };
+    std::env::var_os("PATH")
+        .and_then(|p| std::env::split_paths(&p).map(|d| d.join(name)).find(|f| f.is_file()))
+}
+
 pub fn is_ready() -> bool {
     managed_runtime_if_ready().is_some()
 }

@@ -33,6 +33,7 @@ mod tray;
 mod updater;
 mod viz;
 mod ytfast;
+mod ytweb;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};

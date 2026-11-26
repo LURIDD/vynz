@@ -141,7 +141,7 @@ impl Resolver {
             }
             return;
         }
-        let fast = crate::ytfast::enabled() && crate::ytfast::video_id(page_url).is_some();
+        let fast = (crate::ytfast::enabled() || crate::ytweb::enabled()) && crate::ytfast::video_id(page_url).is_some();
         let mut g = self.inner.lock().unwrap();
         g.last_used = Some(Instant::now());
         if let Some(list) = g.waiting.get_mut(key) {
@@ -162,13 +162,29 @@ impl Resolver {
             let (key, page_url) = (key.to_string(), page_url.to_string());
             let _ = thread::Builder::new().name("vynz-ytfast".into()).spawn(move || {
                 let t0 = Instant::now();
-                match crate::ytfast::resolve(&page_url) {
+                let first = if crate::ytfast::enabled() {
+                    crate::ytfast::resolve(&page_url)
+                } else {
+                    Err("visionOS kapalı (VYNZ_YT_FAST=0)".to_string())
+                };
+                match first {
                     Ok(r) => {
                         crate::dbg(&format!("ytfast {key}: {} ms", t0.elapsed().as_millis()));
                         me.finish(&key, Ok(r));
                     }
                     Err(e) => {
-                        crate::dbg(&format!("ytfast {key}: {e}; yt-dlp'ye düşülüyor"));
+                        crate::dbg(&format!("ytfast {key}: {e}; web istemcisi deneniyor"));
+                        if crate::ytweb::enabled() {
+                            let t1 = Instant::now();
+                            match crate::ytweb::resolve(&page_url) {
+                                Ok(r) => {
+                                    crate::dbg(&format!("ytweb {key}: {} ms", t1.elapsed().as_millis()));
+                                    me.finish(&key, Ok(r));
+                                    return;
+                                }
+                                Err(e) => crate::dbg(&format!("ytweb {key}: {e}; yt-dlp'ye düşülüyor")),
+                            }
+                        }
                         let g = me.inner.lock().unwrap();
                         me.send_helper(g, &key, &page_url, prio);
                     }
@@ -362,6 +378,7 @@ impl Resolver {
 
     /// Program kapanırken yardımcıyı kapat ve önbelleği yaz.
     pub fn shutdown(&self) {
+        crate::ytweb::shutdown();
         let mut g = self.inner.lock().unwrap();
         if let Some(mut p) = g.proc.take() {
             let _ = p.child.kill();
