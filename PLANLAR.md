@@ -149,3 +149,10 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **İlgili kod:** `HaloGlow` zaten `spread` özelliğine sahip (`ui/parts.slint`, varsayılan 2.6 = kapağın 2.6 katı); şu an sabit. Ayara (`settings.json`, örn. `halo_spread`) bağlanıp üç çizim yerine (`ui/app.slint` ~1106, ~2684, ~3057) aktarılması yeterli olabilir.
 - **Düşünülecek:** Aralık (örn. 1.5–5×), büyük değerde ışığın içerik kenarında kesilmesi (bkz. Y2, birlikte ele alınabilir), sürgü sürüklenirken canlı önizleme.
 - **Durum:** Açık.
+
+### Y4. Hale renk seçicisinin geliştirilmesi (26 Kas 2026)
+- **Görünüm:** Belirgin mor/beyaz kapakta (MONTAGEM ENTROPIA, duraklatılmış) Hale neredeyse hiç görünmüyor; vurgu rengi mor seçilmiş ama kapağın arkasında ışık yok denecek kadar sönük. Ekran görüntüsü: `notes/fix/hale-renk.png`. Karşılaştırma: turuncu/kırmızı kapakta (`notes/fix/hale-katman.jpg`) güçlü görünüyor.
+- **İlgili kod:** `src/art.rs` `blur2` üretimi (~satır 64-88): bulanık kapağın her pikseli ters çevrilip HSL'de doygunluk ×1.15 (≤0.9), açıklık 0.42+l·0.4 bandına alınıyor. Renk kapağın ortalamasından geliyor, ayrı bir renk seçimi yok.
+- **Analiz (Tahmin, doğrulanmadı):** Kapak çoğunlukla siyah + ince beyaz/mor ayrıntıdan oluşunca bulanıklık bunları gri-koyu mora ortalıyor; doygunluk düşük kaldığı için ışık zeminle kayboluyor. Duraklatılmışken `level`/`pulse` düşüyor olabilir, ayrıca kontrol edilmeli.
+- **Geliştirme yönü:** Işığı ortalama yerine kapak paletinden (`palette`, accent) baskın + canlı renklerle kurmak; düşük doygunlukta vurgu rengine yaslanmak; isteğe bağlı elle renk seçimi (Otomatik / Vurgu / Özel). Y3 (yayılma sürgüsü) ile aynı ayar grubunda olabilir.
+- **Durum:** Açık.
