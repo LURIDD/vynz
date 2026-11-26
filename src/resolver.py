@@ -241,11 +241,37 @@ def find_artist(y, name, vid):
     raise ValueError("sanatçı bulunamadı")
 
 
+def get_artist_any(y, key):
+    """get_artist; plak şirketi/kanal sayfalarında da (NCS gibi) çalışır.
+
+    Bu sayfalar musicImmersiveHeaderRenderer yerine musicVisualHeaderRenderer döner ve
+    ytmusicapi (1.12.4) KeyError ile düşer. Başlığı yeniden adlandırıp bir kez daha dene.
+    YTMusic örneği iş parçacığına özel, geçici değişiklik başka isteği etkilemez.
+    """
+    try:
+        return y.get_artist(key)
+    except KeyError:
+        orig = y._send_request
+
+        def patched(endpoint, body, *a, **k):
+            r = orig(endpoint, body, *a, **k)
+            h = r.get("header") or {}
+            if "musicVisualHeaderRenderer" in h and "musicImmersiveHeaderRenderer" not in h:
+                h["musicImmersiveHeaderRenderer"] = h.pop("musicVisualHeaderRenderer")
+            return r
+
+        y._send_request = patched
+        try:
+            return y.get_artist(key)
+        finally:
+            del y._send_request
+
+
 def artist_page(y, key):
     if key.startswith("find:"):
         name, _, vid = key[5:].partition("\t")
         key = find_artist(y, name, vid)
-    a = y.get_artist(key)
+    a = get_artist_any(y, key)
     songs = a.get("songs") or {}
     res = []
     if songs.get("browseId"):
@@ -255,6 +281,9 @@ def artist_page(y, key):
             res = []
     if not res:
         res = songs.get("results") or []
+    if not res:
+        # Kanal/plak şirketi sayfalarında (NCS) şarkı bölümü yok, yalnız videolar var.
+        res = (a.get("videos") or {}).get("results") or []
     name = a.get("name") or ""
     tracks = [x for x in (track_of(t) for t in res) if x][:50]
     for t in tracks:
