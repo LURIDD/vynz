@@ -166,4 +166,4 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Hazır:** `CODE_SIGNING_POLICY.md`, README'de "Code signing policy" + SmartScreen notu, CI'da etikete bağlı iki imza adımı (vynz.exe, sonra setup.exe; `SIGNPATH_ORGANIZATION_ID` yoksa atlanır), `packaging/windows/signpath/` artifact yapılandırmaları, Inno'da sürüm meta verisi. Form cevapları depo dışında: `~/Projeler/vynz-arastirma/signpath/BASVURU.md`.
 - **Kullanıcıda:** GitHub 2FA kontrolü, formu gönderme.
 - **Riskler:** YouTube imza çözümü/PO token "güvenlik önlemi aşma" sayılabilir; ilk açılışta imzasız araç indirme (uv, Python, yt-dlp, deno).
-- **Durum:** Başvuru bekliyor.
+- **Durum:** Başvuru gönderildi (27 Kas 2026, ad LURID Imura); yanıt bekleniyor. Zayıf nokta: itibar (≈50 indirme, 3 yıldız).
