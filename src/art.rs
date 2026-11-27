@@ -81,7 +81,10 @@ pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
             // kontrast artırmak haleyi zeminle aynı karanlığa gömüyordu).
             let (h, sat, l) = rgb_to_hsl(src[0] as f64 / 255.0, src[1] as f64 / 255.0, src[2] as f64 / 255.0);
             let (h, sat) = halo_tint(h, sat, vivid);
-            let (r2, g2, b2) = hsl_to_rgb(h, (sat * 1.15).min(0.9), 0.42 + l * 0.4);
+            // Renksiz (gri/beyaz) kapakta ışık beyaz bir sise dönüşüp üstündeki yazıların
+            // kontrastını düşürüyordu: açıklık tavanı daha alçak.
+            let light = if vivid.is_none() { 0.34 + l * 0.28 } else { 0.42 + l * 0.4 };
+            let (r2, g2, b2) = hsl_to_rgb(h, (sat * 1.15).min(0.9), light);
             for (c, v) in [r2, g2, b2].into_iter().enumerate() {
                 let d = rng.unit() - rng.unit();
                 blur2[i + c] = (v as f32 * 255.0 + d).round().clamp(0.0, 255.0) as u8;

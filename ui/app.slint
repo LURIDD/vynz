@@ -3283,10 +3283,12 @@ export component AppWindow inherits Window {
         }
         TouchArea { }
 
-        // Sağ ince ayırıcı çizgi
+        // Sağ ince ayırıcı çizgi; ana sayfa halesi sol çubuğa taşarken ışığı bölmesin diye gizlenir
         Rectangle {
             x: parent.width - 1px; y: 0; width: 1px; height: parent.height;
             background: Theme.border;
+            opacity: !lyrics-open && bg-style == 4 && view == "home" && sheet == "" && has-now && has-blur2 ? 0 : 1;
+            animate opacity { duration: 300ms; }
         }
 
         VerticalLayout {
