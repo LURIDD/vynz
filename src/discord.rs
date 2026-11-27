@@ -251,7 +251,7 @@ fn activity(n: &Now, no_type: bool, plain: bool) -> Value {
         assets.insert("large_text".into(), json!(field(text)));
     }
     if !n.playing {
-        assets.insert("small_text".into(), json!("Duraklatıldı"));
+        assets.insert("small_text".into(), json!(tr!("Duraklatıldı")));
     }
     if !assets.is_empty() {
         a["assets"] = Value::Object(assets);

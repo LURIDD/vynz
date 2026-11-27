@@ -31,10 +31,10 @@ mod imp {
             let (w, h) = img.dimensions();
             let icon = Icon::from_rgba(img.into_raw(), w, h).ok()?;
 
-            let show = MenuItem::new("Vynz'i göster", true, None);
+            let show = MenuItem::new(tr!("Vynz'i göster"), true, None);
             let play = MenuItem::new("Oynat / Duraklat", true, None);
-            let next = MenuItem::new("Sonraki şarkı", true, None);
-            let quit = MenuItem::new("Çıkış", true, None);
+            let next = MenuItem::new(tr!("Sonraki şarkı"), true, None);
+            let quit = MenuItem::new(tr!("Çıkış"), true, None);
 
             let show_id = show.id().clone();
             let play_id = play.id().clone();

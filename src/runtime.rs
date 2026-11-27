@@ -170,11 +170,11 @@ pub fn is_ready() -> bool {
 
 pub fn status_text() -> String {
     if managed_runtime_if_ready().is_some() {
-        "Hazır (izole uv + deno + yt-dlp)".into()
+        tr!("Hazır (izole uv + deno + yt-dlp)")
     } else if system_python_has_deps() {
-        "Sistem Python (izole ortam arka planda hazırlanıyor)".into()
+        tr!("Sistem Python (izole ortam arka planda hazırlanıyor)")
     } else {
-        "İlk kurulum bekleniyor…".into()
+        tr!("İlk kurulum bekleniyor…")
     }
 }
 
@@ -185,7 +185,7 @@ pub fn update_now(on_done: impl FnOnce(Result<String, String>) + Send + 'static)
         .spawn(move || {
             let _g = lock();
             let res = if managed_runtime_if_ready().is_none() {
-                bootstrap().map(|_| "Çözücü ortamı kuruldu ve güncel".into())
+                bootstrap().map(|_| tr!("Çözücü ortamı kuruldu ve güncel"))
             } else {
                 let mut cmd = Command::new(uv_path());
                 hide_window(&mut cmd);
@@ -199,7 +199,7 @@ pub fn update_now(on_done: impl FnOnce(Result<String, String>) + Send + 'static)
                 {
                     Ok(out) if out.status.success() => {
                         let _ = std::fs::write(stamp_path(), now_secs().to_string());
-                        Ok("yt-dlp ve ytmusicapi güncellendi".into())
+                        Ok(tr!("yt-dlp ve ytmusicapi güncellendi"))
                     }
                     Ok(out) => Err(String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("güncellenemedi").into()),
                     Err(e) => Err(e.to_string()),

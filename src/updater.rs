@@ -106,7 +106,7 @@ pub fn check() -> Result<Option<Update>, String> {
             .map(str::to_string)
     };
     let Some(asset_url) = find(asset_name()) else { return Ok(None) };
-    let notes: String = plain_notes(v["body"].as_str().unwrap_or("")).chars().take(600).collect();
+    let notes: String = plain_notes(&localized_body(v["body"].as_str().unwrap_or(""))).chars().take(600).collect();
     Ok(Some(Update {
         version: tag.trim_start_matches('v').to_string(),
         notes,
@@ -117,6 +117,17 @@ pub fn check() -> Result<Option<Update>, String> {
 }
 
 /// Sürüm notlarındaki markdown işaretlerini sadeleştir (başlık #, kalın **, madde -/*).
+/// Sürüm notu iki dilliyse (`<!-- en -->` ayracı) arayüz diline uyan bölüm.
+fn localized_body(body: &str) -> String {
+    match body.split_once("<!-- en -->") {
+        Some((tr, en)) => {
+            let part = if crate::i18n::is_en() { en } else { tr };
+            part.trim().trim_end_matches("---").trim().to_string()
+        }
+        None => body.to_string(),
+    }
+}
+
 fn plain_notes(md: &str) -> String {
     md.lines()
         .map(|l| {
@@ -182,11 +193,11 @@ pub fn install(u: &Update, cancel: &AtomicBool, progress: impl Fn(f32)) -> Resul
             .lines()
             .find(|l| l.split_whitespace().last().map(|n| n.trim_start_matches('*')) == Some(u.asset_name.as_str()))
             .and_then(|l| l.split_whitespace().next())
-            .ok_or("SHA256SUMS içinde paket yok")?
+            .ok_or_else(|| tr!("SHA256SUMS içinde paket yok"))?
             .to_ascii_lowercase();
         let have: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
         if want != have {
-            return Err("indirilen dosya doğrulanamadı (SHA-256 tutmuyor)".into());
+            return Err(tr!("indirilen dosya doğrulanamadı (SHA-256 tutmuyor)"));
         }
     }
     if cancel.load(Ordering::Relaxed) {

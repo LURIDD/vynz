@@ -99,11 +99,25 @@ def resolve(url, cookies):
     raise RuntimeError(str(last).splitlines()[0][:300] if last else "çözülemedi")
 
 
+# Arayüz İngilizceyse kart alt yazıları (raf başlıkları Rust'ta çevrilir)
+EN = {"Şarkı": "Song", "Sanatçı": "Artist", "Albüm": "Album", "Liste": "Playlist", "Single": "Single"}
+
+
+def L(s):
+    return EN.get(s, s) if (os.environ.get("VYNZ_HL") or "tr") != "tr" else s
+
+
 def ytmusic():
     y = getattr(local, "ytm", None)
     if y is None:
         from ytmusicapi import YTMusic
-        y = local.ytm = YTMusic(language="tr", location="TR")
+        hl = os.environ.get("VYNZ_HL") or "tr"
+        gl = os.environ.get("VYNZ_GL") or "TR"
+        try:
+            y = YTMusic(language=hl, location=gl)
+        except Exception:  # noqa: BLE001 - desteklenmeyen bölge
+            y = YTMusic(language=hl if hl in ("tr", "en") else "en", location="US" if hl != "tr" else "TR")
+        local.ytm = y
     return y
 
 
@@ -184,7 +198,7 @@ def explore():
         if m.get("params"):
             out["moods"].append({"kind": "mood", "key": m["params"], "title": m.get("title") or "", "sub": "", "thumb": ""})
     try:
-        c = y.get_charts(country="TR")
+        c = y.get_charts(country=os.environ.get("VYNZ_GL") or "TR")
         for a in items(c.get("artists"))[:30]:
             if a.get("browseId"):
                 out["artists"].append({"kind": "artist", "key": a["browseId"], "title": a.get("title") or "", "sub": a.get("subscribers") or "", "thumb": thumb_of(a)})
@@ -304,14 +318,18 @@ def artist_page(y, key):
             related.append({"kind": "artist", "key": r["browseId"], "title": r.get("title") or "", "sub": r.get("subscribers") or "", "thumb": thumb_of(r)})
     shelves = []
     for title, style, cards in (
-        ("Albümler", 2, releases(a.get("albums"), "Albüm")),
-        ("Single ve EP'ler", 2, releases(a.get("singles"), "Single")),
+        ("Albümler", 2, releases(a.get("albums"), L("Albüm"))),
+        ("Single ve EP'ler", 2, releases(a.get("singles"), L("Single"))),
         ("Benzer sanatçılar", 3, related),
     ):
         if cards:
             shelves.append({"title": title, "style": style, "cards": cards})
     listeners = (a.get("monthlyListeners") or "").replace("Aylık kitle:", "").strip()
-    sub = f"Aylık {listeners} dinleyici" if listeners else (f"{a['subscribers']} abone" if a.get("subscribers") else "")
+    if L("Şarkı") == "Song":
+        listeners = re.sub(r"(?i)\s*monthly (audience|listeners)\s*", "", listeners)
+        sub = f"{listeners} monthly listeners" if listeners else (f"{a['subscribers']} subscribers" if a.get("subscribers") else "")
+    else:
+        sub = f"Aylık {listeners} dinleyici" if listeners else (f"{a['subscribers']} abone" if a.get("subscribers") else "")
     desc = " ".join((a.get("description") or "").split())
     if len(desc) > 420:
         desc = desc[:420].rsplit(" ", 1)[0] + "…"
@@ -361,11 +379,11 @@ def search(q, limit=20):
             if not t:
                 continue
             if top:
-                out["top"] = {"kind": "song", "track": t, "title": t["title"], "sub": "Şarkı · " + t["artist"]}
+                out["top"] = {"kind": "song", "track": t, "title": t["title"], "sub": L("Şarkı") + " · " + t["artist"]}
             # videolar (klipler) de çalınabilir ama şarkılardan sonra gelsin
             out["songs"].append(t) if rt == "song" else out.setdefault("videos", []).append(t)
         elif rt == "album" and r.get("browseId"):
-            c = {"kind": "album", "key": r["browseId"], "title": r.get("title") or "", "sub": " · ".join(x for x in [r.get("type") or "Albüm", names(r), str(r.get("year") or "")] if x), "thumb": thumb_of(r)}
+            c = {"kind": "album", "key": r["browseId"], "title": r.get("title") or "", "sub": " · ".join(x for x in [r.get("type") or L("Albüm"), names(r), str(r.get("year") or "")] if x), "thumb": thumb_of(r)}
             out["albums"].append(c)
             if top:
                 out["top"] = {**c, "card": c}
@@ -374,13 +392,13 @@ def search(q, limit=20):
             key = r.get("browseId") or a.get("id")
             if not key:
                 continue
-            c = {"kind": "artist", "key": key, "title": r.get("artist") or a.get("name") or "", "sub": "Sanatçı", "thumb": thumb_of(r)}
+            c = {"kind": "artist", "key": key, "title": r.get("artist") or a.get("name") or "", "sub": L("Sanatçı"), "thumb": thumb_of(r)}
             out["artists"].append(c)
             if top:
                 out["top"] = {**c, "card": c}
         elif rt == "playlist" and r.get("browseId"):
             key = r["browseId"][2:] if r["browseId"].startswith("VL") else r["browseId"]
-            c = {"kind": "playlist", "key": key, "title": r.get("title") or "", "sub": "Liste · " + (r.get("author") or ""), "thumb": thumb_of(r)}
+            c = {"kind": "playlist", "key": key, "title": r.get("title") or "", "sub": L("Liste") + " · " + (r.get("author") or ""), "thumb": thumb_of(r)}
             out["playlists"].append(c)
             if top:
                 out["top"] = {**c, "card": c}

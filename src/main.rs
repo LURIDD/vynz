@@ -7,6 +7,8 @@
 //   3. Çözücü yardımcısı ("şimdi" önceliği)                       ~3-5 sn
 //   4. Yedek: mpv'nin yt-dlp kancası                              ~8-10 sn
 
+#[macro_use]
+mod i18n;
 mod ambience;
 mod art;
 mod cache;
@@ -574,7 +576,7 @@ fn apply_undo(ui: &AppWindow) {
             load_home(ui);
         }
     }
-    toast(ui, "Geri alındı");
+    toast(ui, &tr!("Geri alındı"));
 }
 
 // ---------- Kapaklar ----------
@@ -935,7 +937,7 @@ fn request_translation(ui: &AppWindow) {
         Some(l.lines.iter().map(|x| x.text.clone()).collect::<Vec<_>>())
     });
     let Some(lines) = lines else { return };
-    ui.set_lyric_tr_note("Çevriliyor…".into());
+    ui.set_lyric_tr_note(tr!("Çevriliyor…").into());
     let weak = ui.as_weak();
     thread::spawn(move || {
         let res = lyrics::translate(&lines, TR_TARGET[mode as usize]).ok();
@@ -978,10 +980,10 @@ fn render_lyrics(ui: &AppWindow) {
             (Vec::new(), String::new())
         } else {
             match st.translations.get(&(key.clone(), mode)) {
-                Some(Some((src, v))) if v.is_empty() => (Vec::new(), if src == "tr" { "Şarkı zaten Türkçe".into() } else { "Şarkı zaten bu dilde".into() }),
+                Some(Some((src, v))) if v.is_empty() => (Vec::new(), if src == "tr" { tr!("Şarkı zaten Türkçe") } else { tr!("Şarkı zaten bu dilde") }),
                 Some(Some((_, v))) => (v.clone(), String::new()),
-                Some(None) => (Vec::new(), "Çeviri alınamadı".into()),
-                None => (Vec::new(), "Çevriliyor…".into()),
+                Some(None) => (Vec::new(), tr!("Çeviri alınamadı")),
+                None => (Vec::new(), tr!("Çevriliyor…")),
             }
         };
         let join = lyric_joiner(style);
@@ -1217,7 +1219,7 @@ fn on_resolved_now(ui: &AppWindow, seq: u64, key: String, res: Result<resolve::R
         if is_age_gate(e) {
             eprintln!("yaş doğrulaması gerekiyor ({key}): {e}");
             let title = with_state(|st| st.index.and_then(|i| st.queue.get(i)).map(|t| t.title.clone())).unwrap_or_default();
-            toast(ui, &format!("Yaş doğrulaması gerekiyor, atlandı: {title}"));
+            toast(ui, &tr!("Yaş doğrulaması gerekiyor, atlandı: {}", title));
             // Aramadan tek şarkı çalınınca kuyruk radyoyla arkadan doluyor: dolunca atla.
             let wait = with_state(|st| {
                 let last = st.index.is_none_or(|i| i + 1 >= st.queue.len());
@@ -1593,7 +1595,7 @@ fn watchdog_check(ui: &AppWindow) {
     if let Some(key) = stuck {
         dbg(&format!("takıldı {key}: adres unutuldu, yedek yol"));
         with_state(|st| st.resolver.invalidate(&key));
-        on_error(ui, "akış ilerlemedi".into());
+        on_error(ui, tr!("akış ilerlemedi"));
     }
 }
 
@@ -1617,7 +1619,7 @@ fn on_error(ui: &AppWindow, e: String) {
     if retried {
         eprintln!("akış açılamadı ({e}), yedek yol deneniyor");
     } else {
-        toast(ui, &format!("Çalınamadı: {e}"));
+        toast(ui, &tr!("Çalınamadı: {}", e));
         step(ui, 1);
     }
 }
@@ -1815,7 +1817,7 @@ fn fetch_radio(seed: TrackInfo, done: impl FnOnce(Result<Vec<TrackInfo>, String>
             ytm.and_then(|p| p.search(&format!("{} {}", seed.title, seed.artist), 1).ok()).and_then(|r| r.into_iter().next()).map(|t| t.id)
         };
         let Some(id) = id else {
-            done(Err("YouTube Music'te karşılığı bulunamadı".into()));
+            done(Err(tr!("YouTube Music'te karşılığı bulunamadı")));
             return;
         };
         let (tx, rx) = mpsc::channel();
@@ -1825,7 +1827,7 @@ fn fetch_radio(seed: TrackInfo, done: impl FnOnce(Result<Vec<TrackInfo>, String>
         match rx.recv_timeout(Duration::from_secs(20)) {
             Ok(Ok(list)) => done(Ok(list.into_iter().map(radio_track).collect())),
             Ok(Err(e)) => done(Err(e)),
-            Err(_) => done(Err("radyo zaman aşımı".into())),
+            Err(_) => done(Err(tr!("radyo zaman aşımı"))),
         }
     });
 }
@@ -1835,7 +1837,7 @@ fn start_radio(ui: &AppWindow, seed: TrackInfo) {
     let playing_same = ui.get_has_now() && ui.get_now().key == seed.key().as_str();
     with_state(|st| st.radio_busy = true);
     ui.set_radio_busy(true);
-    toast(ui, &format!("“{}” radyosu hazırlanıyor…", seed.title));
+    toast(ui, &tr!("“{}” radyosu hazırlanıyor…", seed.title));
     let weak = ui.as_weak();
     let seed2 = seed.clone();
     fetch_radio(seed, move |res| {
@@ -1862,7 +1864,7 @@ fn start_radio(ui: &AppWindow, seed: TrackInfo) {
                     }
                     toast(&ui, &format!("Radyo: {}", seed2.title));
                 }
-                Err(e) => toast(&ui, &format!("Radyo alınamadı: {e}")),
+                Err(e) => toast(&ui, &tr!("Radyo alınamadı: {}", e)),
             }
         });
     });
@@ -1952,7 +1954,7 @@ fn queue_remove(ui: &AppWindow, i: usize) {
             play_index(ui, i);
         }
         queue_changed(ui);
-        toast_undo(ui, "Kuyruktan çıkarıldı", Undo::QueueItem { pos: i, t });
+        toast_undo(ui, &tr!("Kuyruktan çıkarıldı"), Undo::QueueItem { pos: i, t });
         return;
     }
     let removed = with_state(|st| {
@@ -1969,7 +1971,7 @@ fn queue_remove(ui: &AppWindow, i: usize) {
     });
     queue_changed(ui);
     if let Some(t) = removed {
-        toast_undo(ui, "Kuyruktan çıkarıldı", Undo::QueueItem { pos: i, t });
+        toast_undo(ui, &tr!("Kuyruktan çıkarıldı"), Undo::QueueItem { pos: i, t });
     }
 }
 
@@ -2017,7 +2019,7 @@ fn queue_clear(ui: &AppWindow) {
     });
     queue_changed(ui);
     if old.len() > 1 {
-        toast_undo(ui, &format!("Kuyruk temizlendi ({} şarkı)", old.len() - 1), Undo::Queue { queue: old, index: old_index });
+        toast_undo(ui, &tr!("Kuyruk temizlendi ({} şarkı)", old.len() - 1), Undo::Queue { queue: old, index: old_index });
     }
 }
 
@@ -2155,7 +2157,7 @@ fn download_tracks(ui: &AppWindow, tracks: Vec<TrackInfo>) {
                 Some(Box::new(move |res| {
                     let _ = weak.upgrade_in_event_loop(move |ui| match res {
                         Ok(r) if !r.stream.contains(".m3u8") => with_state(|st| st.downloader.enqueue(tt, r.stream)),
-                        Ok(_) => on_download_event(&ui, downloads::Event::Failed(tt, "akış indirilemez".into())),
+                        Ok(_) => on_download_event(&ui, downloads::Event::Failed(tt, tr!("akış indirilemez"))),
                         Err(e) => on_download_event(&ui, downloads::Event::Failed(tt, e)),
                     });
                 })),
@@ -2163,11 +2165,11 @@ fn download_tracks(ui: &AppWindow, tracks: Vec<TrackInfo>) {
         });
     }
     if added > 0 {
-        toast(ui, &if added == 1 { "İndiriliyor…".to_string() } else { format!("{added} şarkı indiriliyor…") });
+        toast(ui, &if added == 1 { tr!("İndiriliyor…") } else { tr!("{} şarkı indiriliyor…", added) });
     } else if sc > 0 {
-        toast(ui, "SoundCloud şarkıları şimdilik indirilemiyor");
+        toast(ui, &tr!("SoundCloud şarkıları şimdilik indirilemiyor"));
     } else {
-        toast(ui, "Zaten indirilmiş");
+        toast(ui, &tr!("Zaten indirilmiş"));
     }
     refresh_downloads(ui);
 }
@@ -2199,7 +2201,7 @@ fn on_download_event(ui: &AppWindow, ev: downloads::Event) {
         downloads::Event::Failed(t, e) => {
             eprintln!("indirilemedi {}: {e}", t.key());
             with_state(|st| st.dl_pending.retain(|(x, _)| x.key() != t.key()));
-            toast(ui, &format!("İndirilemedi: {}", t.title));
+            toast(ui, &tr!("İndirilemedi: {}", t.title));
         }
     }
     refresh_downloads(ui);
@@ -2211,7 +2213,7 @@ fn remove_download(ui: &AppWindow, key: &str) {
         downloads::save(&st.dl_list);
     });
     downloads::remove_files(key);
-    toast(ui, "İndirilenlerden kaldırıldı");
+    toast(ui, &tr!("İndirilenlerden kaldırıldı"));
     refresh_downloads(ui);
 }
 
@@ -2223,7 +2225,7 @@ fn toggle_like_current(ui: &AppWindow) {
     if let Some(l) = liked {
         ui.set_liked(l);
         refresh_liked(ui);
-        toast(ui, if l { "Beğendiklerine eklendi" } else { "Beğendiklerinden çıkarıldı" });
+        toast(ui, &if l { tr!("Beğendiklerine eklendi") } else { tr!("Beğendiklerinden çıkarıldı") });
     }
 }
 
@@ -2254,11 +2256,11 @@ fn menu_action(ui: &AppWindow, action: i32) {
     match action {
         0 => play_list(ui, vec![t], 0),
         1 => {
-            toast(ui, &format!("Sıradaki: {}", t.title));
+            toast(ui, &tr!("Sıradaki: {}", t.title));
             play_next(ui, t);
         }
         2 => {
-            toast(ui, &format!("Kuyruğa eklendi: {}", t.title));
+            toast(ui, &tr!("Kuyruğa eklendi: {}", t.title));
             add_to_queue(ui, t);
         }
         3 => start_radio(ui, t),
@@ -2271,7 +2273,7 @@ fn menu_action(ui: &AppWindow, action: i32) {
         }
         9 => {
             let on = with_state(|st| st.history.toggle_boost(&t));
-            toast(ui, if on { "Benzerleri daha sık önerilecek; ana sayfa yenilenince görünür" } else { "Artık öne çıkarılmıyor" });
+            toast(ui, &if on { tr!("Benzerleri daha sık önerilecek; ana sayfa yenilenince görünür") } else { tr!("Artık öne çıkarılmıyor") });
         }
         4 => {
             let l = with_state(|st| st.history.toggle_like(&t));
@@ -2279,7 +2281,7 @@ fn menu_action(ui: &AppWindow, action: i32) {
                 ui.set_liked(l);
             }
             refresh_liked(ui);
-            toast(ui, if l { "Beğendiklerine eklendi" } else { "Beğendiklerinden çıkarıldı" });
+            toast(ui, &if l { tr!("Beğendiklerine eklendi") } else { tr!("Beğendiklerinden çıkarıldı") });
         }
         5 => {
             let artist = t.artist.split(',').next().unwrap_or("").trim().to_string();
@@ -2300,7 +2302,7 @@ fn menu_action(ui: &AppWindow, action: i32) {
             if let Some((pi, pos, t)) = removed {
                 open_playlist(ui, pi);
                 refresh_playlists(ui);
-                toast_undo(ui, "Listeden çıkarıldı", Undo::PlaylistTrack { pl: pi, pos, t });
+                toast_undo(ui, &tr!("Listeden çıkarıldı"), Undo::PlaylistTrack { pl: pi, pos, t });
             }
         }
         7 => {
@@ -2318,7 +2320,7 @@ fn menu_action(ui: &AppWindow, action: i32) {
                 ui.set_liked(false);
             }
             purge_disliked(ui);
-            let msg = format!("Artık önerilmeyecek: {}", t.title);
+            let msg = tr!("Artık önerilmeyecek: {}", t.title);
             toast_undo(ui, &msg, Undo::Dislike { t, liked: was_liked });
         }
         8 => {
@@ -2336,9 +2338,9 @@ fn menu_action(ui: &AppWindow, action: i32) {
             }
             let n = purge_disliked(ui);
             let msg = if n > 0 {
-                format!("Artık önerilmeyecek sanatçı: {artist} · kuyruktan {n} şarkı çıkarıldı")
+                tr!("Artık önerilmeyecek sanatçı: {} · kuyruktan {} şarkı çıkarıldı", artist, n)
             } else {
-                format!("Artık önerilmeyecek sanatçı: {artist}")
+                tr!("Artık önerilmeyecek sanatçı: {}", artist)
             };
             toast_undo(ui, &msg, Undo::DislikeArtist(artist.clone()));
         }
@@ -2393,7 +2395,7 @@ fn purge_disliked(ui: &AppWindow) -> usize {
         Some(Some(i)) => play_index(ui, i),
         Some(None) => {
             ui.set_playing(false);
-            toast(ui, "Kuyrukta başka uygun şarkı kalmadı");
+            toast(ui, &tr!("Kuyrukta başka uygun şarkı kalmadı"));
         }
         None => {}
     }
@@ -2443,7 +2445,7 @@ fn create_playlist_with_track(ui: &AppWindow, name: String) {
             ui.set_current_playlist(ui.get_current_playlist() + 1);
         }
         refresh_playlists(ui);
-        toast(ui, &format!("'{name}' oluşturuldu ve şarkı eklendi"));
+        toast(ui, &tr!("'{}' oluşturuldu ve şarkı eklendi", name));
     }
 }
 
@@ -2464,24 +2466,40 @@ fn add_menu_track_to_playlist(ui: &AppWindow, pl_idx: usize) {
         if with_state(|st| st.current_pl) == Some(pl_idx) {
             open_playlist(ui, pl_idx);
         }
-        toast(ui, &if added { format!("'{name}' listesine eklendi") } else { format!("Zaten '{name}' listesinde") });
+        toast(ui, &if added { tr!("'{}' listesine eklendi", name) } else { tr!("Zaten '{}' listesinde", name) });
     }
 }
 
 // ---------- Veri yükleme ----------
 
+/// Tür adının arayüz dilindeki karşılığı (GENRES sabit olduğu için çalışma anında).
+fn tr_genre(label: &str) -> String {
+    i18n::t(label)
+}
+
+/// Raf başlığı: içeride Türkçe anahtar olarak kalır (find_title, ends_with), ekranda çevrilir.
+fn shelf_title(t: &str) -> String {
+    if let Some(name) = t.strip_suffix(" ve benzerleri") {
+        return tr!("{} ve benzerleri", name);
+    }
+    if let Some(name) = t.strip_prefix("Çünkü ").and_then(|x| x.strip_suffix(" dinliyorsun")) {
+        return tr!("Çünkü {} dinliyorsun", name);
+    }
+    i18n::t(t)
+}
+
 fn home_cache() -> std::path::PathBuf {
     cache::dir().parent().map(|p| p.join("home.json")).unwrap_or_default()
 }
 
-fn greeting() -> &'static str {
+fn greeting() -> String {
     let h = std::process::Command::new("date").arg("+%H").output().ok()
         .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok()).unwrap_or(12);
     match h {
-        5..=11 => "Günaydın",
-        12..=17 => "İyi günler",
-        18..=22 => "İyi akşamlar",
-        _ => "İyi geceler",
+        5..=11 => tr!("Günaydın"),
+        12..=17 => tr!("İyi günler"),
+        18..=22 => tr!("İyi akşamlar"),
+        _ => tr!("İyi geceler"),
     }
 }
 
@@ -2536,9 +2554,9 @@ fn artists_summary(tracks: &[TrackInfo]) -> String {
         }
     }
     if names.is_empty() {
-        format!("{} şarkı", tracks.len())
+        trn!("{n} şarkı", tracks.len())
     } else {
-        format!("{} ve daha fazlası", names.join(", "))
+        tr!("{} ve daha fazlası", names.join(", "))
     }
 }
 
@@ -2583,7 +2601,7 @@ fn compose(st: &State, h: &HomeData) -> Vec<Section> {
             feature_cards.push(Card {
                 kind: "mix".into(),
                 key: "mix".into(),
-                title: m.title.clone(),
+                title: shelf_title(&m.title),
                 sub: artists_summary(&m.items),
                 thumb: m.items[0].thumb.clone(),
             });
@@ -2594,7 +2612,7 @@ fn compose(st: &State, h: &HomeData) -> Vec<Section> {
             feature_cards.push(Card {
                 kind: "discover".into(),
                 key: "discover".into(),
-                title: "Yeni keşifler".into(),
+                title: tr!("Yeni keşifler"),
                 sub: artists_summary(&d.items),
                 thumb: d.items[0].thumb.clone(),
             });
@@ -2726,7 +2744,7 @@ fn show_home(ui: &AppWindow, data: HomeData) {
     let mix_shelf = all.iter().position(|s| s.title.ends_with("için karışım")).map(|i| i as i32).unwrap_or(-1);
     let shelves: Vec<Shelf> = all
         .iter()
-        .map(|s| Shelf { title: s.title.as_str().into(), items: model_of(&s.items), cards: cards_of(&s.cards), style: s.style })
+        .map(|s| Shelf { title: shelf_title(&s.title).into(), items: model_of(&s.items), cards: cards_of(&s.cards), style: s.style })
         .collect();
     ui.set_mix_shelf(mix_shelf);
     ui.set_shelves(ModelRc::new(VecModel::from(shelves)));
@@ -2823,7 +2841,7 @@ fn load_home(ui: &AppWindow) {
             }
             for gid in taste_genres.iter().take(2) {
                 if let Some((_, name, _)) = recommend::GENRES.iter().find(|(g, _, _)| g == gid) {
-                    queries.push(format!("{name} karışım"));
+                    queries.push(tr!("{} karışım", name));
                 }
             }
         }
@@ -2871,7 +2889,7 @@ fn load_home(ui: &AppWindow) {
             ui.set_home_loading(false);
             if let Some(e) = errors.first() {
                 if empty {
-                    toast(&ui, &format!("Öneriler alınamadı: {e}"));
+                    toast(&ui, &tr!("Öneriler alınamadı: {}", e));
                 }
             }
         });
@@ -2949,7 +2967,7 @@ fn open_artist(ui: &AppWindow, c: Card) {
             let d = match res {
                 Ok(d) => d,
                 Err(e) => {
-                    toast(&ui, &format!("Sanatçı açılamadı: {e}"));
+                    toast(&ui, &tr!("Sanatçı açılamadı: {}", e));
                     return;
                 }
             };
@@ -3002,7 +3020,7 @@ fn open_artist(ui: &AppWindow, c: Card) {
                 });
             }
             ui.set_artist_tracks(model_of(&tracks));
-            let sh: Vec<Shelf> = shelves.iter().map(|s| Shelf { title: s.title.as_str().into(), items: model_of(&s.items), cards: cards_of(&s.cards), style: s.style }).collect();
+            let sh: Vec<Shelf> = shelves.iter().map(|s| Shelf { title: shelf_title(&s.title).into(), items: model_of(&s.items), cards: cards_of(&s.cards), style: s.style }).collect();
             ui.set_artist_shelves(ModelRc::new(VecModel::from(sh)));
             // Test kancası: sanal masaüstünde tekerlek Slint'e ulaşmıyor.
             if let Some(px) = std::env::var("VYNZ_SHEET_SCROLL").ok().and_then(|v| v.parse::<f32>().ok()) {
@@ -3119,7 +3137,7 @@ fn open_card(ui: &AppWindow, c: Card) {
             let d = match res {
                 Ok(d) => d,
                 Err(e) => {
-                    toast(&ui, &format!("Açılamadı: {e}"));
+                    toast(&ui, &tr!("Açılamadı: {}", e));
                     return;
                 }
             };
@@ -3164,13 +3182,13 @@ fn save_collection(ui: &AppWindow) {
     });
     if saved.is_some() {
         refresh_playlists(ui);
-        toast(ui, &format!("“{}” Listelerim'e kaydedildi", ui.get_coll_title()));
+        toast(ui, &tr!("“{}” Listelerim'e kaydedildi", ui.get_coll_title()));
     }
 }
 
 fn top_ui(t: &Top) -> TopResult {
     let (kind, title, sub, key) = match t {
-        Top::Song(t) => (0, t.title.clone(), format!("Şarkı · {}", t.artist), t.key()),
+        Top::Song(t) => (0, t.title.clone(), tr!("Şarkı · {}", t.artist), t.key()),
         Top::Card(c) => (card_kind(&c.kind).min(3), c.title.clone(), c.sub.clone(), c.art_key()),
     };
     let (art, has_art) = ARTS.with(|a| a.borrow().get(&key).map(|(i, _)| (i.clone(), true))).unwrap_or_default();
@@ -3204,7 +3222,7 @@ fn search(ui: &AppWindow, query: String) {
             let d = match res {
                 Ok(d) => d,
                 Err(e) => {
-                    toast(&ui, &format!("Arama hatası: {e}"));
+                    toast(&ui, &tr!("Arama hatası: {}", e));
                     return;
                 }
             };
@@ -3255,7 +3273,7 @@ fn search(ui: &AppWindow, query: String) {
             if let Some(t) = &top {
                 ui.set_search_top(top_ui(t));
             }
-            let sh: Vec<Shelf> = shelves.iter().map(|s| Shelf { title: s.title.as_str().into(), items: model_of(&s.items), cards: cards_of(&s.cards), style: s.style }).collect();
+            let sh: Vec<Shelf> = shelves.iter().map(|s| Shelf { title: shelf_title(&s.title).into(), items: model_of(&s.items), cards: cards_of(&s.cards), style: s.style }).collect();
             ui.set_search_shelves(ModelRc::new(VecModel::from(sh)));
         });
     }));
@@ -3336,12 +3354,12 @@ fn refresh_import(ui: &AppWindow) {
         for r in &f.rows {
             counts[r.status as usize] += 1;
         }
-        let mut note = format!("{} · {} şarkı", f.source_label, f.rows.len());
+        let mut note = format!("{} · {}", f.source_label, trn!("{n} şarkı", f.rows.len()));
         if f.truncated {
-            note.push_str(" · Spotify ilk 100 şarkıyı verdi");
+            note.push_str(&tr!(" · Spotify ilk 100 şarkıyı verdi"));
         }
         if f.unavailable > 0 {
-            note.push_str(&format!(" · {} şarkı kaynakta artık yok, atlandı", f.unavailable));
+            note.push_str(&tr!(" · {} şarkı kaynakta artık yok, atlandı", f.unavailable));
         }
         let rows: Vec<ImportRow> = f.rows.iter().map(import_row_ui).collect();
         let picks: Vec<TrackInfo> = f.rows.iter().filter_map(|r| r.pick().cloned()).collect();
@@ -3369,7 +3387,7 @@ fn pick_file(ui: &AppWindow) {
     let weak = ui.as_weak();
     thread::spawn(move || {
         let path = rfd::FileDialog::new()
-            .set_title("Liste dosyası seç")
+            .set_title(tr!("Liste dosyası seç"))
             .add_filter("Listeler", &["json", "csv"])
             .pick_file()
             .map(|p| p.to_string_lossy().into_owned());
@@ -3397,7 +3415,7 @@ fn start_file_import(ui: &AppWindow, path: String) {
             }
             Ok(lists) => {
                 ui.set_import_busy(false);
-                let labels: Vec<slint::SharedString> = lists.iter().map(|l| format!("{} · {} şarkı", l.name, l.tracks.len()).into()).collect();
+                let labels: Vec<slint::SharedString> = lists.iter().map(|l| format!("{} · {}", l.name, trn!("{n} şarkı", l.tracks.len())).into()).collect();
                 with_state(|st| {
                     st.import_origin = format!("dosya: {path}");
                     st.file_lists = lists;
@@ -3526,7 +3544,7 @@ fn import_remove(ui: &AppWindow, i: usize) {
         return;
     }
     let title = row.wanted.title.clone();
-    toast_undo(ui, &format!("Aktarımdan çıkarıldı: {title}"), Undo::ImportRow { pos: i, row });
+    toast_undo(ui, &tr!("Aktarımdan çıkarıldı: {}", title), Undo::ImportRow { pos: i, row });
     let model = ui.get_import_rows();
     match model.as_any().downcast_ref::<VecModel<ImportRow>>() {
         // Yerinde sil: kaydırma konumu korunur.
@@ -3540,7 +3558,7 @@ fn import_remove(ui: &AppWindow, i: usize) {
                 c
             });
             ui.set_import_counts(ModelRc::new(VecModel::from(counts)));
-            let note = with_state(|st| st.imported.as_ref().map(|f| format!("{} · {} şarkı", f.source_label, f.rows.len())).unwrap_or_default());
+            let note = with_state(|st| st.imported.as_ref().map(|f| format!("{} · {}", f.source_label, trn!("{n} şarkı", f.rows.len()))).unwrap_or_default());
             ui.set_import_note(note.into());
         }
         _ => refresh_import(ui),
@@ -3556,7 +3574,7 @@ fn import_clear(ui: &AppWindow) {
     ui.set_import_note("".into());
     ui.set_import_filter(-1);
     if let Some(f) = old {
-        let msg = format!("“{}” aktarımı temizlendi", f.name);
+        let msg = tr!("“{}” aktarımı temizlendi", f.name);
         toast_undo(ui, &msg, Undo::Import(f));
     }
 }
@@ -3580,7 +3598,7 @@ fn import_save(ui: &AppWindow) {
     let Some((name, n, idx)) = saved else { return };
     ui.set_import_rows(ModelRc::new(VecModel::from(Vec::<ImportRow>::new())));
     refresh_playlists(ui);
-    toast(ui, &format!("“{name}” kaydedildi: {n} şarkı"));
+    toast(ui, &tr!("“{}” kaydedildi: {} şarkı", name, n));
     open_playlist(ui, idx);
     ui.set_view("playlist".into());
 }
@@ -3596,11 +3614,11 @@ fn format_total_duration(tracks: &[TrackInfo]) -> String {
     let m = (total % 3600) / 60;
     let s = total % 60;
     if h > 0 {
-        format!("{h} sa {m} dk")
+        tr!("{} sa {} dk", h, m)
     } else if m > 0 {
-        format!("{m} dk {s} sn")
+        tr!("{} dk {} sn", m, s)
     } else {
-        format!("{s} sn")
+        tr!("{} sn", s)
     }
 }
 
@@ -3690,7 +3708,7 @@ fn pick_playlist_image(ui: &AppWindow, i: usize) {
     let weak = ui.as_weak();
     thread::spawn(move || {
         let Some(path) = rfd::FileDialog::new()
-            .set_title("Liste kapağı seç")
+            .set_title(tr!("Liste kapağı seç"))
             .add_filter("Resimler", &["png", "jpg", "jpeg", "webp"])
             .pick_file()
         else {
@@ -3709,7 +3727,7 @@ fn pick_playlist_image(ui: &AppWindow, i: usize) {
                     PL_COVERS.with(|m| m.borrow_mut().remove(&old));
                     art::remove_playlist_cover(&old);
                     refresh_playlists_ui_only(&ui);
-                    toast(&ui, "Liste kapağı güncellendi");
+                    toast(&ui, &tr!("Liste kapağı güncellendi"));
                 }
             }
             Err(e) => toast(&ui, &e),
@@ -3729,7 +3747,7 @@ fn clear_playlist_image(ui: &AppWindow, i: usize) {
         PL_COVERS.with(|m| m.borrow_mut().remove(&old));
         art::remove_playlist_cover(&old);
         refresh_playlists_ui_only(ui);
-        toast(ui, "Özel kapak kaldırıldı");
+        toast(ui, &tr!("Özel kapak kaldırıldı"));
     }
 }
 
@@ -3758,29 +3776,29 @@ fn create_new_playlist(ui: &AppWindow, name: String) {
     refresh_playlists(ui);
     open_playlist(ui, 0);
     ui.invoke_go("playlist".into());
-    toast(ui, &format!("'{name}' oluşturuldu"));
+    toast(ui, &tr!("'{}' oluşturuldu", name));
 }
 
 // ---------- Zevkler (ilk açılış & Ayarlar) ----------
 
 fn refresh_taste_summary(ui: &AppWindow) {
     let summary = with_state(|st| {
-        let names: Vec<&str> = recommend::GENRES
+        let names: Vec<String> = recommend::GENRES
             .iter()
             .filter(|(id, _, _)| st.settings.taste_genres.iter().any(|g| g == id))
-            .map(|(_, label, _)| *label)
+            .map(|(_, label, _)| tr_genre(label))
             .collect();
         let mut parts = Vec::new();
         if !names.is_empty() {
             parts.push(names.join(", "));
         }
         if !st.settings.taste_tracks.is_empty() {
-            parts.push(format!("{} örnek şarkı", st.settings.taste_tracks.len()));
+            parts.push(tr!("{} örnek şarkı", st.settings.taste_tracks.len()));
         }
         if !st.settings.blocked_genres.is_empty() {
-            parts.push(format!("{} engelli tür", st.settings.blocked_genres.len()));
+            parts.push(tr!("{} engelli tür", st.settings.blocked_genres.len()));
         }
-        if parts.is_empty() { "Henüz seçilmedi".into() } else { parts.join(" · ") }
+        if parts.is_empty() { tr!("Henüz seçilmedi") } else { parts.join(" · ") }
     });
     ui.set_taste_summary(summary.into());
 }
@@ -3791,7 +3809,7 @@ fn sync_taste_genres_ui(ui: &AppWindow) {
             .iter()
             .map(|(id, label, _)| TasteGenre {
                 id: (*id).into(),
-                label: (*label).into(),
+                label: tr_genre(label).into(),
                 selected: st.taste_draft_genres.iter().any(|g| g == id),
                 blocked: st.taste_draft_blocked.iter().any(|g| g == id),
             })
@@ -3817,7 +3835,8 @@ fn sync_taste_samples_ui(ui: &AppWindow) {
 }
 
 fn load_genre_samples(ui: &AppWindow, gid: String, show_in_ui: bool) {
-    let label = recommend::GENRES.iter().find(|(id, _, _)| *id == gid).map(|(_, l, _)| *l).unwrap_or("");
+    let label = recommend::GENRES.iter().find(|(id, _, _)| *id == gid).map(|(_, l, _)| tr_genre(l)).unwrap_or_default();
+    let label = label.as_str();
     let cached = with_state(|st| st.taste_cache.get(&gid).cloned());
     if let Some(list) = cached {
         if show_in_ui {
@@ -3937,7 +3956,7 @@ fn taste_save(ui: &AppWindow) {
     });
     ui.set_tastes_step(1);
     refresh_taste_summary(ui);
-    toast(ui, "Zevkler kaydedildi; ana sayfa yenileniyor…");
+    toast(ui, &tr!("Zevkler kaydedildi; ana sayfa yenileniyor…"));
     load_home(ui);
 }
 
@@ -3970,7 +3989,7 @@ fn reset_recs(ui: &AppWindow, with_history: bool) {
     if with_history {
         refresh_profile(ui);
     }
-    toast_undo(ui, if with_history { "Geçmiş ve öneri profili sıfırlandı" } else { "Öneri profili sıfırlandı" }, undo);
+    toast_undo(ui, &if with_history { tr!("Geçmiş ve öneri profili sıfırlandı") } else { tr!("Öneri profili sıfırlandı") }, undo);
     load_home(ui);
     // Boş kalmasın: yeni zevkleri seçmeye yönlendir (vitrin yedek olarak arkada dolar).
     open_tastes(ui);
@@ -4044,7 +4063,7 @@ fn rename_playlist(ui: &AppWindow, i: usize, name: String) {
     });
     if ok.is_some() {
         refresh_playlists(ui);
-        toast(ui, &format!("Liste adı güncellendi: {name}"));
+        toast(ui, &tr!("Liste adı güncellendi: {}", name));
     }
 }
 
@@ -4084,7 +4103,7 @@ fn remove_from_playlist(ui: &AppWindow, vis_i: usize) {
     if let Some(u) = ok {
         sync_playlist_view(ui);
         refresh_playlists_ui_only(ui);
-        toast_undo(ui, "Listeden çıkarıldı", u);
+        toast_undo(ui, &tr!("Listeden çıkarıldı"), u);
     }
 }
 
@@ -4154,9 +4173,9 @@ fn refresh_profile(ui: &AppWindow) {
     ui.set_prof_hours(ModelRc::new(VecModel::from(s.hours.iter().map(|h| h / max_h).collect::<Vec<f32>>())));
     let peak = s.hours.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map(|(h, _)| h).unwrap_or(0);
     ui.set_prof_peak(if s.total_secs > 0.0 {
-        format!("En çok {:02}:00 civarında dinliyorsun.", peak).into()
+        tr!("En çok {} civarında dinliyorsun.", format!("{:02}:00", peak)).into()
     } else {
-        "Dinledikçe burası dolacak.".into()
+        tr!("Dinledikçe burası dolacak.").into()
     });
 }
 
@@ -4297,6 +4316,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_theme_accent(s.theme_accent);
     ui.set_theme_backdrop(s.theme_backdrop);
     ui.set_auto_update(s.auto_update);
+    ui.set_lang_index(match s.lang.as_str() { "tr" => 1, "en" => 2, _ => 0 });
     ui.set_bg_style(s.bg_style.clamp(0, 4));
     ui.set_bg_level(s.bg_level.clamp(0, 2));
     ui.set_bg_motion(s.bg_motion);
@@ -4379,6 +4399,7 @@ fn apply_settings(ui: &AppWindow) {
         bg_motion: ui.get_bg_motion(),
         bg_reactive: ui.get_bg_reactive(),
         bg_grain: ui.get_bg_grain(),
+        lang: ["", "tr", "en"][ui.get_lang_index().clamp(0, 2) as usize].to_string(),
         ..prev
     };
     with_state(|st| {
@@ -4405,6 +4426,17 @@ fn apply_settings(ui: &AppWindow) {
         st.settings = s;
     });
     let s = with_state(|st| st.settings.clone());
+    if s.lang != prev.lang {
+        let was = i18n::is_en();
+        i18n::set(i18n::resolve(&s.lang));
+        if was != i18n::is_en() {
+            // Slint metinleri hemen değişir; Rust'ta kurulan metinler (raflar, bildirimler)
+            // yenilenir, YouTube Music içerik dili çözücü yeniden açılınca.
+            ui.set_greeting(greeting().into());
+            refresh_taste_summary(ui);
+            toast(ui, &tr!("Dil değişti; bazı bölümler yeniden açılınca tamamen güncellenir"));
+        }
+    }
     apply_theme(ui, &s);
     update_viz(ui);
     update_amb_timer(ui);
@@ -4501,6 +4533,12 @@ fn restore_session(ui: &AppWindow) {
 // ---------- Yenilikler ----------
 
 const NOTES: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/notes/v", env!("CARGO_PKG_VERSION"), ".md"));
+/// İngilizce not (notes/en/vX.Y.Z.md); yoksa boş, Türkçesi gösterilir.
+const NOTES_EN: &str = include_str!(concat!(env!("OUT_DIR"), "/notes_en.md"));
+
+fn notes() -> &'static str {
+    if i18n::is_en() && !NOTES_EN.trim().is_empty() { NOTES_EN } else { NOTES }
+}
 const CUR_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn clean_md(s: &str) -> String {
@@ -4535,7 +4573,7 @@ fn parse_news(md: &str) -> Vec<NewsRow> {
         if let Some(h) = line.strip_prefix("## ") {
             rows.push(NewsRow {
                 kind: 1,
-                title: tr_upper(&clean_md(h.trim())).into(),
+                title: if i18n::is_en() { clean_md(h.trim()).to_uppercase() } else { tr_upper(&clean_md(h.trim())) }.into(),
                 text: "".into(),
             });
         } else if let Some(rest) = line.strip_prefix("- ") {
@@ -4583,7 +4621,7 @@ fn mark_news_seen() {
 fn check_update(ui: &AppWindow, manual: bool) {
     if updater::is_dev_build() {
         if manual {
-            toast(ui, "Geliştirici derlemesi: kendini güncellemez (cargo build ile güncelle)");
+            toast(ui, &tr!("Geliştirici derlemesi: kendini güncellemez (cargo build ile güncelle)"));
         }
         return;
     }
@@ -4600,13 +4638,13 @@ fn check_update(ui: &AppWindow, manual: bool) {
                 Ok(Some(u)) if manual || u.version != skip => start_update(&ui, u),
                 Ok(_) => {
                     if manual {
-                        toast(&ui, &format!("Vynz güncel ({})", updater::current()));
+                        toast(&ui, &tr!("Vynz güncel ({})", updater::current()));
                     }
                 }
                 Err(e) => {
                     eprintln!("güncelleme denetlenemedi: {e}");
                     if manual {
-                        toast(&ui, "Güncelleme denetlenemedi (bağlantı?)");
+                        toast(&ui, &tr!("Güncelleme denetlenemedi (bağlantı?)"));
                     }
                 }
             }
@@ -4636,7 +4674,7 @@ fn start_update(ui: &AppWindow, u: updater::Update) {
             // Kurulum bitti ama kullanıcı bu arada vazgeçtiyse yeniden başlatma; yeni sürüm sonraki açılışta.
             Ok(()) if updater::CANCEL.load(Ordering::Relaxed) => {
                 ui.set_update_state(0);
-                toast(&ui, "Güncelleme kuruldu; bir sonraki açılışta geçerli olur");
+                toast(&ui, &tr!("Güncelleme kuruldu; bir sonraki açılışta geçerli olur"));
             }
             Ok(()) => {
                 ui.set_update_state(2);
@@ -4787,6 +4825,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let ui = AppWindow::new()?;
+    // Dil: Slint çevirisi platform hazır olunca seçilebiliyor (AppWindow::new sonrası)
+    i18n::set(i18n::resolve(&Settings::load().lang));
     if single::enabled() {
         let w = ui.as_weak();
         single::listen(move || {
@@ -4953,7 +4993,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     refresh_taste_summary(&ui);
     ui.set_runtime_status(runtime::status_text().into());
     if !runtime::is_ready() {
-        ui.set_setup_banner("Çözücü ortamı arka planda hazırlanıyor…".into());
+        ui.set_setup_banner(tr!("Çözücü ortamı arka planda hazırlanıyor…").into());
         let weak = weak.clone();
         thread::spawn(move || {
             let _ = runtime::ensure_ready();
@@ -5082,7 +5122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(ui) = weak.upgrade() else { return };
             thread::spawn(cache::clear);
             ui.set_cache_usage("0 MB".into());
-            toast(&ui, "Önbellek temizlendi");
+            toast(&ui, &tr!("Önbellek temizlendi"));
         }
     });
 
@@ -5316,7 +5356,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = weak.clone();
         move || {
             if let Some(ui) = weak.upgrade() {
-                toast(&ui, "Öneriler yenileniyor…");
+                toast(&ui, &tr!("Öneriler yenileniyor…"));
                 load_home(&ui);
             }
         }
@@ -5374,7 +5414,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = st.settings.save();
                 }
             });
-            toast(&ui, "Bu sürüm atlanacak; Ayarlar'dan yine kurabilirsin");
+            toast(&ui, &tr!("Bu sürüm atlanacak; Ayarlar'dan yine kurabilirsin"));
         }
     });
     ui.on_update_retry({
@@ -5511,7 +5551,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move || {
             let Some(ui) = weak.upgrade() else { return };
             let now = ui.get_now();
-            let q = format!("{} {} şarkı sözleri", now.artist, now.title);
+            let q = tr!("{} {} şarkı sözleri", now.artist, now.title);
             let enc: String = q
                 .bytes()
                 .map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else if b == b' ' { "+".into() } else { format!("%{b:02X}") })
@@ -5821,7 +5861,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ui.set_runtime_status(status.into());
                     match res {
                         Ok(msg) => toast(&ui, &msg),
-                        Err(e) => toast(&ui, &format!("Güncelleme hatası: {e}")),
+                        Err(e) => toast(&ui, &tr!("Güncelleme hatası: {}", e)),
                     }
                 });
             });
@@ -5905,7 +5945,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(d) = home_data {
                 show_home(&ui, d);
             }
-            toast(&ui, "Sanatçı engeli kaldırıldı");
+            toast(&ui, &tr!("Sanatçı engeli kaldırıldı"));
         }
     });
     ui.on_unhide_track({
@@ -5922,7 +5962,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(d) = home_data {
                 show_home(&ui, d);
             }
-            toast(&ui, "Şarkı engeli kaldırıldı");
+            toast(&ui, &tr!("Şarkı engeli kaldırıldı"));
         }
     });
 
@@ -6156,7 +6196,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     refresh_usage(&ui);
     load_home(&ui);
     if std::env::var_os("VYNZ_UPDATED").is_some() {
-        toast(&ui, &format!("Vynz {} sürümüne güncellendi", updater::current()));
+        toast(&ui, &tr!("Vynz {} sürümüne güncellendi", updater::current()));
     }
     if ui.get_auto_update() && !updater::is_dev_build() {
         // Açılışı yavaşlatmasın: biraz sonra, arka planda.
@@ -6171,7 +6211,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         open_tastes(&ui);
     }
     ui.set_news_version(CUR_VERSION.into());
-    ui.set_news_rows(ModelRc::new(VecModel::from(parse_news(NOTES))));
+    ui.set_news_rows(ModelRc::new(VecModel::from(parse_news(notes()))));
     if std::env::var("VYNZ_SHOW_NEWS").is_ok_and(|v| v == "1") {
         ui.set_news_open(true);
     } else {

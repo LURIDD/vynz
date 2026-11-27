@@ -545,7 +545,7 @@ export component PillButton inherits Rectangle {
 // (PillButton'dan sonra tanımlı olmalı: Slint öne bildirim kabul etmiyor.)
 export component ConfirmPill inherits HorizontalLayout {
     in property <string> text;
-    in property <string> confirm-text: "Emin misin?";
+    in property <string> confirm-text: @tr("Emin misin?");
     in property <length> pill-height: 32px;
     in property <bool> enabled: true;
     callback confirmed;
@@ -766,7 +766,7 @@ export component TrackRow inherits Rectangle {
 }
 
 export global Status {
-    out property <[string]> names: ["Eşleşti", "Emin değil", "Bulunamadı", "Hazır"];
+    out property <[string]> names: [@tr("Eşleşti"), @tr("Emin değil"), @tr("Bulunamadı"), @tr("Hazır")];
     out property <[color]> colors: [#34D399, #FBBF24, #FB7185, #34D399];
 }
 
@@ -809,7 +809,7 @@ export component ImportLine inherits Rectangle {
         }
         if root.line.status == 2: Text {
             horizontal-stretch: 1; vertical-alignment: center;
-            text: "Karşılığı bulunamadı"; font-size: 13px; color: Status.colors[2];
+            text: @tr("Karşılığı bulunamadı"); font-size: 13px; color: Status.colors[2];
         }
         Rectangle {
             width: 120px;
@@ -825,7 +825,7 @@ export component ImportLine inherits Rectangle {
         Rectangle {
             width: 84px;
             if root.line.alts > 1: PillButton {
-                x: 0; y: (root.height - self.height) / 2; pill-height: 30px; text: "Değiştir";
+                x: 0; y: (root.height - self.height) / 2; pill-height: 30px; text: @tr("Değiştir");
                 clicked => { root.change(); }
             }
         }

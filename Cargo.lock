@@ -6446,7 +6446,7 @@ dependencies = [
 
 [[package]]
 name = "vynz"
-version = "0.3.5"
+version = "0.4.0"
 dependencies = [
  "async-channel",
  "async-io",
@@ -6468,6 +6468,7 @@ dependencies = [
  "slint-build",
  "souvlaki",
  "starship-battery",
+ "sys-locale",
  "sysinfo",
  "tar",
  "tray-icon",

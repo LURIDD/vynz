@@ -76,5 +76,5 @@ pub fn compute(h: &History) -> Stats {
 /// "3 sa 12 dk" / "45 dk"
 pub fn human(secs: f32) -> String {
     let m = (secs / 60.0).round() as u64;
-    if m >= 60 { format!("{} sa {} dk", m / 60, m % 60) } else { format!("{m} dk") }
+    if m >= 60 { tr!("{} sa {} dk", m / 60, m % 60) } else { tr!("{} dk", m) }
 }

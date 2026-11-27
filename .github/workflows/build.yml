@@ -183,7 +183,13 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           if [ -f "notes/${TAG}.md" ]; then
-            FLAGS="--notes-file notes/${TAG}.md"
+            cp "notes/${TAG}.md" release-notes.md
+            # İngilizce not varsa ayraçla eklenir; uygulama içi güncelleyici arayüz diline uyanı gösterir.
+            if [ -f "notes/en/${TAG}.md" ]; then
+              printf '\n\n---\n<!-- en -->\n\n' >> release-notes.md
+              cat "notes/en/${TAG}.md" >> release-notes.md
+            fi
+            FLAGS="--notes-file release-notes.md"
           else
             FLAGS="--generate-notes"
           fi

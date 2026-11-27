@@ -104,6 +104,8 @@ pub struct Settings {
     pub bg_reactive: bool,
     /// Ortam zemininde ince kumlanma dokusu
     pub bg_grain: bool,
+    /// Arayüz dili: "" sistem dili, "tr", "en"
+    pub lang: String,
 }
 
 impl Default for Settings {
@@ -144,6 +146,7 @@ impl Default for Settings {
             bg_motion: true,
             bg_reactive: false,
             bg_grain: true,
+            lang: String::new(),
         }
     }
 }

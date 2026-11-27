@@ -188,7 +188,7 @@ pub fn resolve(page_url: &str) -> Result<Resolved, String> {
                     store_visitor(r);
                 }
             }
-            let (stream, ext, expire) = pick_audio(&v).ok_or("uygun ses akışı yok")?;
+            let (stream, ext, expire) = pick_audio(&v).ok_or_else(|| tr!("uygun ses akışı yok"))?;
             return Ok(Resolved { stream, expire, ext: Some(ext) });
         }
         if status == "LOGIN_REQUIRED" {
@@ -202,7 +202,7 @@ pub fn resolve(page_url: &str) -> Result<Resolved, String> {
         }
         return Err(format!("{status}: {reason}"));
     }
-    Err("çözülemedi".into())
+    Err(tr!("çözülemedi"))
 }
 
 #[cfg(test)]

@@ -96,19 +96,19 @@ fn spotify(kind: &str, id: &str) -> Result<(String, Vec<Wanted>, bool), String> 
     let mut resp = ureq::get(&url)
         .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0")
         .call()
-        .map_err(|e| format!("Spotify sayfası açılamadı: {e}"))?;
+        .map_err(|e| tr!("Spotify sayfası açılamadı: {}", e))?;
     let html = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
     let start_tag = "<script id=\"__NEXT_DATA__\" type=\"application/json\">";
-    let a = html.find(start_tag).ok_or("Spotify sayfa biçimi değişmiş (veri yok); liste gizli olabilir")? + start_tag.len();
+    let a = html.find(start_tag).ok_or_else(|| tr!("Spotify sayfa biçimi değişmiş (veri yok); liste gizli olabilir"))? + start_tag.len();
     let b = html[a..].find("</script>").ok_or("Spotify verisi eksik")? + a;
     let data: Value = serde_json::from_str(&html[a..b]).map_err(|e| e.to_string())?;
-    let entity = find_key(&data, "trackList").ok_or("Liste boş ya da gizli")?;
+    let entity = find_key(&data, "trackList").ok_or_else(|| tr!("Liste boş ya da gizli"))?;
     let name = entity
         .get("name")
         .or_else(|| entity.get("title"))
         .and_then(Value::as_str)
-        .unwrap_or("Spotify listesi")
-        .to_string();
+        .map(str::to_string)
+        .unwrap_or_else(|| tr!("Spotify listesi"));
     let items: Vec<Wanted> = entity["trackList"]
         .as_array()
         .map(|a| {
@@ -144,7 +144,7 @@ fn find_key<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
 /// Üçüncü değer: atlanan, artık bulunmayan öğe sayısı.
 fn flat_list(url: &str, source: Source, resolver: &Resolver) -> Result<(String, Vec<TrackInfo>, usize), String> {
     let d = resolver.request_sync(serde_json::json!({"op": "flat", "url": url}), Prio::Soon)?;
-    let name = d.get("title").and_then(Value::as_str).unwrap_or("Aktarılan liste").to_string();
+    let name = d.get("title").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| tr!("Aktarılan liste"));
     let entries = d.get("entries").and_then(Value::as_array).cloned().unwrap_or_default();
     let total = entries.len();
     let tracks: Vec<TrackInfo> = entries
@@ -323,7 +323,7 @@ pub fn run(
     resolver: &Resolver,
     progress: impl Fn(usize, usize) + Send + Sync,
 ) -> Result<Fetched, String> {
-    match detect(url).ok_or("Bu bağlantı tanınmadı. Spotify, YouTube Music ya da SoundCloud liste bağlantısı yapıştır.")? {
+    match detect(url).ok_or_else(|| tr!("Bu bağlantı tanınmadı. Spotify, YouTube Music ya da SoundCloud liste bağlantısı yapıştır."))? {
         Link::YouTube(u) => {
             let u = if u.contains("list=") && !u.contains("/playlist") {
                 // izleme bağlantısındaki listeyi aç
@@ -392,20 +392,20 @@ pub struct FileList {
 pub fn read_file(path: &str) -> Result<Vec<FileList>, String> {
     let path = path.trim().trim_start_matches("file://");
     let path = crate::paths::expand_tilde(path);
-    let raw = std::fs::read(&path).map_err(|e| format!("Dosya okunamadı: {e}"))?;
+    let raw = std::fs::read(&path).map_err(|e| tr!("Dosya okunamadı: {}", e))?;
     let text = String::from_utf8_lossy(&raw);
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Liste").to_string();
     let is_json = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("json"));
     let lists = if is_json { from_json(&text)? } else { from_csv(&text, &stem)? };
     let lists: Vec<FileList> = lists.into_iter().filter(|l| !l.tracks.is_empty()).collect();
     if lists.is_empty() {
-        return Err("Dosyada şarkı bulunamadı. Spotify dışa aktarımındaki Playlist/YourLibrary JSON dosyalarını ya da bir CSV seç.".into());
+        return Err(tr!("Dosyada şarkı bulunamadı. Spotify dışa aktarımındaki Playlist/YourLibrary JSON dosyalarını ya da bir CSV seç."));
     }
     Ok(lists)
 }
 
 fn from_json(text: &str) -> Result<Vec<FileList>, String> {
-    let v: Value = serde_json::from_str(text).map_err(|e| format!("JSON okunamadı: {e}"))?;
+    let v: Value = serde_json::from_str(text).map_err(|e| tr!("JSON okunamadı: {}", e))?;
     let mut out = Vec::new();
     // Playlist1.json: {"playlists":[{"name":..,"items":[{"track":{"trackName","artistName","albumName"}}]}]}
     if let Some(pls) = v.get("playlists").and_then(Value::as_array) {
@@ -443,10 +443,10 @@ fn from_json(text: &str) -> Result<Vec<FileList>, String> {
                 })
             })
             .collect();
-        out.push(FileList { name: "Beğenilen Şarkılar (Spotify)".into(), tracks });
+        out.push(FileList { name: tr!("Beğenilen Şarkılar (Spotify)"), tracks });
     }
     if out.is_empty() {
-        return Err("Bu JSON dosyası tanınmadı (Spotify Playlist ya da YourLibrary dosyası değil).".into());
+        return Err(tr!("Bu JSON dosyası tanınmadı (Spotify Playlist ya da YourLibrary dosyası değil)."));
     }
     Ok(out)
 }
@@ -484,9 +484,9 @@ fn csv_rows(text: &str) -> Vec<Vec<String>> {
 
 fn from_csv(text: &str, name: &str) -> Result<Vec<FileList>, String> {
     let rows = csv_rows(text);
-    let header: Vec<String> = rows.first().ok_or("CSV boş")?.iter().map(|h| h.trim().to_lowercase()).collect();
+    let header: Vec<String> = rows.first().ok_or_else(|| tr!("CSV boş"))?.iter().map(|h| h.trim().to_lowercase()).collect();
     let find = |names: &[&str]| header.iter().position(|h| names.iter().any(|n| h == n));
-    let ti = find(&["track name", "track", "title", "name", "song", "şarkı", "şarkı adı"]).ok_or("CSV'de şarkı adı sütunu bulunamadı")?;
+    let ti = find(&["track name", "track", "title", "name", "song", "şarkı", "şarkı adı"]).ok_or_else(|| tr!("CSV'de şarkı adı sütunu bulunamadı"))?;
     let ai = find(&["artist name(s)", "artist name", "artist", "artists", "sanatçı"]);
     let di = find(&["duration (ms)", "duration_ms", "duration", "süre"]);
     let tracks = rows

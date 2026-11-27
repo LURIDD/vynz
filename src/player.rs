@@ -528,7 +528,7 @@ fn handle(en: &mut Engine, k: usize, active: bool, ev: Raw, on_event: &impl Fn(E
             if eof {
                 on_event(Ev::Ended);
             } else if err {
-                on_event(Ev::Error("parça açılamadı".into()));
+                on_event(Ev::Error(tr!("parça açılamadı")));
             }
         }
         Raw::End(_, true) if !active && matches!(en.fade, Fade::Armed) => {

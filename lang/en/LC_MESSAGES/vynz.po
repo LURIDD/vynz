@@ -1,0 +1,1493 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Lyrics from Unison"
+msgstr "Lyrics from Unison"
+
+msgid "gönderen {}"
+msgstr "submitted by {}"
+
+msgid "KİŞİSEL KARIŞIM"
+msgstr "PERSONAL MIX"
+
+msgid "KEŞİF"
+msgstr "DISCOVER"
+
+msgid "Tümünü çal"
+msgstr "Play all"
+
+msgid "Henüz seçilmedi"
+msgstr "Not chosen yet"
+
+msgid "Merhaba"
+msgstr "Hello"
+
+msgid "Şarkı, sanatçı, albüm ya da bağlantı"
+msgstr "Song, artist, album or link"
+
+msgid "Esc"
+msgstr "Esc"
+
+msgid "Ctrl K"
+msgstr "Ctrl K"
+
+msgid "Kuyruk"
+msgstr "Queue"
+
+msgid "Yükleniyor"
+msgstr "Loading"
+
+msgid "Şimdi Çalıyor"
+msgstr "Now Playing"
+
+msgid "Duraklatıldı"
+msgstr "Paused"
+
+msgid "Senin için karışım hazır"
+msgstr "Your mix is ready"
+
+msgid "Ne dinlemek istersin?"
+msgstr "What do you want to listen to?"
+
+msgid "Dinlediklerine göre seçildi; ne kadar dinlersen o kadar sana benzer."
+msgstr "Picked from what you listen to; the more you listen, the more it feels like you."
+
+msgid "Bir şarkı seç ya da yukarıda ara; dinledikçe öneriler sana göre şekillenir."
+msgstr "Pick a song or search above; recommendations adapt to you as you listen."
+
+msgid "Karışımı çal"
+msgstr "Play mix"
+
+msgid "Sözleri kapat"
+msgstr "Close lyrics"
+
+msgid "Sözler"
+msgstr "Lyrics"
+
+msgid "Radyo hazırlanıyor…"
+msgstr "Preparing radio…"
+
+msgid "Bu şarkıdan radyo"
+msgstr "Radio from this song"
+
+msgid "Önerileri yenile"
+msgstr "Refresh recommendations"
+
+msgid "Önerilerin yükleniyor…"
+msgstr "Loading your recommendations…"
+
+msgid "Ara"
+msgstr "Search"
+
+msgid "Aranıyor…"
+msgstr "Searching…"
+
+msgid "Yazmaya başla; durduğunda sonuçlar gelir. Ctrl+K ya da / ile buraya, Esc ile geri."
+msgstr "Start typing; results appear when you pause. Ctrl+K or / to jump here, Esc to go back."
+
+msgid "Tümü"
+msgstr "All"
+
+msgid "Şarkılar"
+msgstr "Songs"
+
+msgid "Albümler"
+msgstr "Albums"
+
+msgid "Sanatçılar"
+msgstr "Artists"
+
+msgid "Listeler"
+msgstr "Playlists"
+
+msgid "SoundCloud…"
+msgstr "SoundCloud…"
+
+msgid "Tüm kaynaklar"
+msgstr "All sources"
+
+msgid "YTM"
+msgstr "YTM"
+
+msgid "SC"
+msgstr "SC"
+
+msgid "En iyi sonuç"
+msgstr "Top result"
+
+msgid "EN İYİ SONUÇ"
+msgstr "TOP RESULT"
+
+msgid "Şarkı bulunamadı. Başka bir şekilde yazmayı dene."
+msgstr "No songs found. Try a different spelling."
+
+msgid "Frekans & Profil"
+msgstr "Frequency & Profile"
+
+msgid "Dinleme profilin"
+msgstr "Your listening profile"
+
+msgid "Toplam dinleme"
+msgstr "Total listening"
+
+msgid "Bu hafta"
+msgstr "This week"
+
+msgctxt "profil"
+msgid "Şarkı"
+msgstr "Songs"
+
+msgctxt "profil"
+msgid "Sanatçı"
+msgstr "Artists"
+
+msgctxt "profil"
+msgid "Beğeni"
+msgstr "Likes"
+
+msgid "Canlı spektrum"
+msgstr "Live spectrum"
+
+msgid "Çalan sesin frekansları, kapağın renginde"
+msgstr "Frequencies of what's playing, in the cover's colors"
+
+msgid "Müzik çalınca burada canlanır"
+msgstr "Comes alive when music plays"
+
+msgid "En çok dinlediğin sanatçılar"
+msgstr "Your top artists"
+
+msgid "Henüz yok."
+msgstr "Nothing yet."
+
+msgid "Günün saatlerine göre"
+msgstr "By time of day"
+
+msgid "En çok dinlediğin şarkılar"
+msgstr "Your top songs"
+
+msgid "Liste Aktarma"
+msgstr "Import Playlist"
+
+msgid "Spotify, YouTube Music ya da SoundCloud liste bağlantısını yapıştır. Spotify şarkıları YouTube Music'te (bulunamazsa SoundCloud'da) eşleştirilir."
+msgstr "Paste a Spotify, YouTube Music or SoundCloud playlist link. Spotify songs are matched on YouTube Music (or SoundCloud if not found)."
+
+msgid "https://open.spotify.com/playlist/…"
+msgstr "https://open.spotify.com/playlist/…"
+
+msgid "Aktarılıyor…"
+msgstr "Importing…"
+
+msgid "Aktar"
+msgstr "Import"
+
+msgid "Dosyadan aktar"
+msgstr "Import from file"
+
+msgid "Dosyada birden çok liste var; aktarmak istediğini seç:"
+msgstr "The file contains several playlists; choose the one to import:"
+
+msgid "Bağlantıyla Spotify'ın herkese açık listelerinden ilk 100 şarkı alınır. Gizli listeler, Beğenilen Şarkılar ve uzun listeler için: Spotify → Hesap → Gizlilik → \"Verilerini indir\"; gelen dosyadaki Playlist…json ya da YourLibrary.json'u \"Dosyadan aktar\" ile seç. Exportify / TuneMyMusic CSV dosyaları da olur."
+msgstr "A link imports the first 100 songs of a public Spotify playlist. For private playlists, Liked Songs and long playlists: Spotify → Account → Privacy → \"Download your data\", then pick Playlist…json or YourLibrary.json from that download with \"Import from file\". Exportify / TuneMyMusic CSV files work too."
+
+msgid "Eşleştiriliyor: {} / {}"
+msgstr "Matching: {} / {}"
+
+msgid "Liste okunuyor…"
+msgstr "Reading playlist…"
+
+msgid "Temizle"
+msgstr "Clear"
+
+msgid "Aktarım silinsin mi?"
+msgstr "Discard the import?"
+
+msgid "Kütüphaneye kaydet ({})"
+msgstr "Save to library ({})"
+
+msgid "Tümü ({})"
+msgstr "All ({})"
+
+msgid "Eşleşti ({})"
+msgstr "Matched ({})"
+
+msgid "Emin değil ({})"
+msgstr "Unsure ({})"
+
+msgid "Bulunamadı ({})"
+msgstr "Not found ({})"
+
+msgid "Kapağı değiştir"
+msgstr "Change cover"
+
+msgid "Kapak seç"
+msgstr "Choose cover"
+
+msgid "ÇALMA LİSTESİ"
+msgstr "PLAYLIST"
+
+msgid "Kaydet"
+msgstr "Save"
+
+msgid "İptal"
+msgstr "Cancel"
+
+msgid "{n} şarkı"
+msgid_plural "{n} şarkı"
+msgstr[0] "{n} song"
+msgstr[1] "{n} songs"
+
+msgid "Çal"
+msgstr "Play"
+
+msgid "Karıştır"
+msgstr "Shuffle"
+
+msgid "İndir"
+msgstr "Download"
+
+msgid "Yeniden adlandır"
+msgstr "Rename"
+
+msgid "Sil"
+msgstr "Delete"
+
+msgid "Liste içinde ara…"
+msgstr "Search in playlist…"
+
+msgid "Satır üzerine gel: ↑/↓ sırala · × çıkar"
+msgstr "Hover a row: ↑/↓ reorder · × remove"
+
+msgid "{n} eşleşme"
+msgid_plural "{n} eşleşme"
+msgstr[0] "{n} match"
+msgstr[1] "{n} matches"
+
+msgid "Bu listede henüz şarkı yok. Şarkılara sağ tıklayıp \"Listeye ekle…\" diyebilirsin."
+msgstr "No songs in this playlist yet. Right-click a song and choose \"Add to playlist…\"."
+
+msgid "“{}” ile eşleşen şarkı bulunamadı."
+msgstr "No songs match “{}”."
+
+msgid "ÇEVRİMDIŞI"
+msgstr "OFFLINE"
+
+msgid "İndirilenler"
+msgstr "Downloads"
+
+msgid " · internet olmadan da çalar"
+msgstr " · plays without internet"
+
+msgid "İndiriliyor ({})"
+msgstr "Downloading ({})"
+
+msgid "Henüz indirdiğin şarkı yok. Bir şarkıya sağ tıklayıp \"İndir\" de, ya da bir listede \"İndir\" düğmesini kullan."
+msgstr "No downloads yet. Right-click a song and choose \"Download\", or use the \"Download\" button on a playlist."
+
+msgid "KÜTÜPHANE"
+msgstr "LIBRARY"
+
+msgid "Beğendiklerim"
+msgstr "Liked Songs"
+
+msgid "Tümünü indir"
+msgstr "Download all"
+
+msgid "Henüz beğendiğin şarkı yok. Çalarken kalp simgesine basarak ekleyebilirsin."
+msgstr "No liked songs yet. Tap the heart while a song is playing to add it."
+
+msgid "Ayarlar"
+msgstr "Settings"
+
+msgid "Çalma & Ses"
+msgstr "Playback & Audio"
+
+msgid "Görünüm"
+msgstr "Appearance"
+
+msgid "Zevkler"
+msgstr "Tastes"
+
+msgid "Önbellek & Ağ"
+msgstr "Cache & Network"
+
+msgid "Kaynaklar & Hakkında"
+msgstr "Sources & About"
+
+msgid "Liste bitince"
+msgstr "When the queue ends"
+
+msgid "Kuyruk bittiğinde çalan şarkının radyosundan (benzer şarkılar) devam et."
+msgstr "When the queue runs out, continue with a radio of the last song (similar songs)."
+
+msgid "Radyo"
+msgstr "Radio"
+
+msgid "Dur"
+msgstr "Stop"
+
+msgid "Ses seviyesi dengeleme"
+msgstr "Volume normalization"
+
+msgid "Farklı şarkılar arasındaki ani ses yüksekliği farklarını yumuşatır (dynaudnorm)."
+msgstr "Smooths out sudden loudness differences between songs (dynaudnorm)."
+
+msgid "Açık"
+msgstr "On"
+
+msgid "Kapalı"
+msgstr "Off"
+
+msgid "Çapraz geçiş"
+msgstr "Crossfade"
+
+msgid "Şarkı biterken sıradakiyle üst üste binerek yumuşakça geçer (Önceden hazırlama açık olmalı). Kapalıyken boşluksuz geçiş."
+msgstr "Blends into the next song as the current one ends (requires Preloading). When off, playback is gapless."
+
+msgid "3 sn"
+msgstr "3 s"
+
+msgid "5 sn"
+msgstr "5 s"
+
+msgid "8 sn"
+msgstr "8 s"
+
+msgid "12 sn"
+msgstr "12 s"
+
+msgid "Ekolayzır"
+msgstr "Equalizer"
+
+msgid "10 bant. Sürgüyü sürükle, çift tıkla sıfırla."
+msgstr "10 bands. Drag a slider, double-click to reset."
+
+msgid "Düz"
+msgstr "Flat"
+
+msgid "Bas"
+msgstr "Bass"
+
+msgid "Tiz"
+msgstr "Treble"
+
+msgid "Vokal"
+msgstr "Vocal"
+
+msgid "Rap"
+msgstr "Rap"
+
+msgid "Elektronik"
+msgstr "Electronic"
+
+msgid "Akustik"
+msgstr "Acoustic"
+
+msgid "Rock"
+msgstr "Rock"
+
+msgid "Gece"
+msgstr "Night"
+
+msgid "Özel"
+msgstr "Custom"
+
+msgid "1k"
+msgstr "1k"
+
+msgid "2k"
+msgstr "2k"
+
+msgid "4k"
+msgstr "4k"
+
+msgid "8k"
+msgstr "8k"
+
+msgid "16k"
+msgstr "16k"
+
+msgid "Discord'da göster"
+msgstr "Show on Discord"
+
+msgid "Çalan şarkıyı Discord profilinde \"Dinliyor\" olarak gösterir. Discord kapalıysa sessizce bekler."
+msgstr "Shows the current song as \"Listening\" on your Discord profile. Waits quietly if Discord is closed."
+
+msgid "Önceden hazırlama"
+msgstr "Preloading"
+
+msgid "Sıradaki ve üzerine gelinen şarkıları arka planda hazırlar (pilde/kotalıda sınırlı)."
+msgstr "Prepares the next and hovered songs in the background (limited on battery or metered connections)."
+
+msgid "İleri okuma"
+msgstr "Read-ahead"
+
+msgid "Çalan şarkının ne kadar önden tamponlanacağı."
+msgstr "How far ahead the current song is buffered."
+
+msgid "30 sn"
+msgstr "30 s"
+
+msgid "1 dk"
+msgstr "1 min"
+
+msgid "2 dk"
+msgstr "2 min"
+
+msgid "Sınırsız"
+msgstr "Unlimited"
+
+msgid "Kapatınca tepsiye in"
+msgstr "Minimize to tray on close"
+
+msgid "Çarpıya basınca müzik çalmaya devam eder; sistem tepsisinden geri açabilirsin."
+msgstr "Closing the window keeps the music playing; reopen it from the system tray."
+
+msgid "Arayüz dili. Sistem: bilgisayarın dili Türkçeyse Türkçe, değilse İngilizce."
+msgstr "Interface language. System: Turkish if your computer is set to Turkish, English otherwise."
+
+msgid "Sistem"
+msgstr "System"
+
+msgid "Vurgu rengi"
+msgstr "Accent color"
+
+msgid "Otomatik: çalan şarkının kapağından alınır. Ya da sabit bir renk seç."
+msgstr "Automatic: taken from the current song's cover. Or pick a fixed color."
+
+msgid "Otomatik"
+msgstr "Automatic"
+
+msgid "Zemin"
+msgstr "Background"
+
+msgid "OLED siyah"
+msgstr "OLED black"
+
+msgid "Lacivert"
+msgstr "Navy"
+
+msgid "Mor"
+msgstr "Purple"
+
+msgid "Grafit"
+msgstr "Graphite"
+
+msgid "Arka plan ışığı"
+msgstr "Background glow"
+
+msgid "Ana sayfada ve sözlerde, çalan şarkının kapak renklerinden süzülen yumuşak ışık."
+msgstr "A soft light drawn from the current song's cover colors, on the home page and in lyrics."
+
+msgid "Stil"
+msgstr "Style"
+
+msgid "Kapak"
+msgstr "Cover"
+
+msgid "Sıvı kapak"
+msgstr "Liquid cover"
+
+msgid "Hale"
+msgstr "Halo"
+
+msgid "Renk lekeleri"
+msgstr "Color blobs"
+
+msgid "Sade"
+msgstr "Minimal"
+
+msgid "Yoğunluk"
+msgstr "Intensity"
+
+msgid "Orta"
+msgstr "Medium"
+
+msgid "Canlı"
+msgstr "Vivid"
+
+msgid "Hareket"
+msgstr "Motion"
+
+msgid "Süzülsün"
+msgstr "Drift"
+
+msgid "Durgun"
+msgstr "Still"
+
+msgid "Kumlanma"
+msgstr "Grain"
+
+msgid "Müziğe tepki"
+msgstr "React to music"
+
+msgid "Baslarda ışık nabız atar (cava gerekir)"
+msgstr "The light pulses with the bass (requires cava)"
+
+msgid "Müzik zevklerin"
+msgstr "Your music tastes"
+
+msgid " · Yalnızca Ana Sayfa önerilerini besler; başlattığın radyoları etkilemez."
+msgstr " · Only feeds Home recommendations; doesn't affect radios you start."
+
+msgid "Zevkleri düzenle"
+msgstr "Edit tastes"
+
+msgid "Öneri profilini sıfırla"
+msgstr "Reset recommendation profile"
+
+msgid "Zevkleri, \"Bunu daha çok öner\" ve \"İlgilenmiyorum\" seçimlerini siler. Dinleme geçmişin ve beğenilerin korunur."
+msgstr "Clears your tastes and \"Recommend more like this\" / \"Not interested\" choices. Your listening history and likes are kept."
+
+msgid "Sıfırla"
+msgstr "Reset"
+
+msgid "Emin misin? Sıfırla"
+msgstr "Are you sure? Reset"
+
+msgid "Dinleme geçmişini de temizle"
+msgstr "Also clear listening history"
+
+msgid "Tamamen sıfırdan başla: öneri profiliyle birlikte dinleme geçmişi ve istatistikler silinir. Beğendiklerin korunur; 8 sn içinde geri alınabilir."
+msgstr "Start completely fresh: your listening history and stats are deleted along with the recommendation profile. Liked songs are kept; you can undo within 8 s."
+
+msgid "Evet, hepsini sil"
+msgstr "Yes, delete everything"
+
+msgid "Önerilmeyen sanatçılar ({})"
+msgstr "Hidden artists ({})"
+
+msgid "Kaldır"
+msgstr "Remove"
+
+msgid "İlgilenmediğin şarkılar ({})"
+msgstr "Songs you're not interested in ({})"
+
+msgid "Ses önbelleği ({})"
+msgstr "Audio cache ({})"
+
+msgid "20 sn üzeri dinlenen şarkılar diske kaydedilir; tekrar açılışta anında ve çevrimdışı çalar."
+msgstr "Songs played for more than 20 s are saved to disk, so they start instantly and play offline next time."
+
+msgid "1 GB"
+msgstr "1 GB"
+
+msgid "2 GB"
+msgstr "2 GB"
+
+msgid "5 GB"
+msgstr "5 GB"
+
+msgid "10 GB"
+msgstr "10 GB"
+
+msgid "Önbelleği sil?"
+msgstr "Clear the cache?"
+
+msgid "Dinlenmeyenleri sil"
+msgstr "Remove unplayed"
+
+msgid "Bu süre çalınmayan önbellek dosyaları otomatik temizlenir."
+msgstr "Cached files not played for this long are removed automatically."
+
+msgid "14 gün"
+msgstr "14 days"
+
+msgid "30 gün"
+msgstr "30 days"
+
+msgid "90 gün"
+msgstr "90 days"
+
+msgid "Silme"
+msgstr "Never"
+
+msgid "Arka plan indirme hızı"
+msgstr "Background download speed"
+
+msgid "Başka programlar ağı yoğun kullanıyorsa bekler; kotalı bağlantıda indirmez."
+msgstr "Waits while other programs use the network heavily; doesn't download on metered connections."
+
+msgid "256 KB/sn"
+msgstr "256 KB/s"
+
+msgid "512 KB/sn"
+msgstr "512 KB/s"
+
+msgid "1 MB/sn"
+msgstr "1 MB/s"
+
+msgid "Yeni sürüm çıkınca açılışta kendiliğinden indirilip kurulur, uygulama yeniden açılır."
+msgstr "When a new version is out, it's downloaded and installed at startup and the app restarts."
+
+msgid "Yenilikleri göster"
+msgstr "Show what's new"
+
+msgid "Denetleniyor…"
+msgstr "Checking…"
+
+msgid "Güncellemeleri denetle"
+msgstr "Check for updates"
+
+msgid "Elle"
+msgstr "Manual"
+
+msgid "YouTube Music girişi"
+msgstr "YouTube Music sign-in"
+
+msgid "Premium hesapta ~260 kbps ses kalitesi için Firefox çerezini kullanır; girişsiz ~140 kbps."
+msgstr "Uses your Firefox cookies for ~260 kbps audio with a Premium account; ~140 kbps without signing in."
+
+msgid "Girişsiz"
+msgstr "Signed out"
+
+msgid "Firefox oturumu"
+msgstr "Firefox session"
+
+msgid "Çözücü ortamı"
+msgstr "Resolver environment"
+
+msgid "Güncelleniyor…"
+msgstr "Updating…"
+
+msgid "yt-dlp güncelle"
+msgstr "Update yt-dlp"
+
+msgid "Aktif kaynaklar"
+msgstr "Active sources"
+
+msgid " · çalma"
+msgstr " · playback"
+
+msgid " · aktarma"
+msgstr " · import"
+
+msgid "Söz kaynakları: Unison (hece zamanlı TTML) → YouTube Music → LRCLIB · Vynz v0.1.0 (MIT)"
+msgstr "Lyrics sources: Unison (syllable-timed TTML) → YouTube Music → LRCLIB · Vynz (MIT)"
+
+msgid "Bu ekran sonraki aşamada"
+msgstr "This screen is coming later"
+
+msgid "Şu an ana sayfa, arama ve oynatma hazır."
+msgstr "Home, search and playback are ready for now."
+
+msgid "Albüm"
+msgstr "Album"
+
+msgid "Sanatçı"
+msgstr "Artist"
+
+msgid "Liste"
+msgstr "Playlist"
+
+msgid "Yükleniyor…"
+msgstr "Loading…"
+
+msgid "Listelerim'e kaydet"
+msgstr "Save to My Playlists"
+
+msgid "Ruh hâli ve türler"
+msgstr "Moods & genres"
+
+msgid "Listeler getiriliyor…"
+msgstr "Loading playlists…"
+
+msgid "Sanatçı radyosu"
+msgstr "Artist radio"
+
+msgid "Popüler"
+msgstr "Popular"
+
+msgid "Daha az"
+msgstr "Show less"
+
+msgid "Tümünü göster ({})"
+msgstr "Show all ({})"
+
+msgid "Hakkında"
+msgstr "About"
+
+msgid "Çalan yok"
+msgstr "Nothing playing"
+
+msgid "−0.5 sn"
+msgstr "−0.5 s"
+
+msgid "{} sn"
+msgstr "{} s"
+
+msgid "+0.5 sn"
+msgstr "+0.5 s"
+
+msgid "Kaynak: {}"
+msgstr "Source: {}"
+
+msgid " · satıra tıkla, oraya atla"
+msgstr " · click a line to jump to it"
+
+msgid "Kaldığı yere dön"
+msgstr "Back to current line"
+
+msgid "Bu şarkının sözleri zamanlı değil."
+msgstr "The lyrics for this song aren't synced."
+
+msgid "Bu şarkının sözleri bulunamadı"
+msgstr "No lyrics found for this song"
+
+msgid "Enstrümantal olabilir ya da söz kaynaklarında henüz yok. Arkana yaslan, müziğin tadını çıkar."
+msgstr "It may be an instrumental, or the lyrics sources don't have it yet. Sit back and enjoy the music."
+
+msgid "Sözleri web'de ara"
+msgstr "Search lyrics on the web"
+
+msgid "Sıradakine geç"
+msgstr "Skip to next"
+
+msgid "Sırada"
+msgstr "Up next"
+
+msgid "Bir şarkı çaldığında sözleri burada akar."
+msgstr "When a song plays, its lyrics flow here."
+
+msgid "Kelime kelime dolan satırlar, istersen çevirisiyle."
+msgstr "Lines that fill word by word, with a translation if you like."
+
+msgid "Beğenildi"
+msgstr "Liked"
+
+msgid "Beğen"
+msgstr "Like"
+
+msgid "Sözleri göster"
+msgstr "Show lyrics"
+
+msgid "Sözler hazır, görmek için tıkla"
+msgstr "Lyrics are ready, click to view"
+
+msgid "Yazı stili"
+msgstr "Font style"
+
+msgid "Modern"
+msgstr "Modern"
+
+msgid "Klasik"
+msgstr "Classic"
+
+msgid "Aa"
+msgstr "Aa"
+
+msgid "Boyut"
+msgstr "Size"
+
+msgid "Küçük"
+msgstr "Small"
+
+msgid "Büyük"
+msgstr "Large"
+
+msgid "Satır aralığı"
+msgstr "Line spacing"
+
+msgid "Sıkı"
+msgstr "Tight"
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Geniş"
+msgstr "Wide"
+
+msgid "Hizalama"
+msgstr "Alignment"
+
+msgid "Sola"
+msgstr "Left"
+
+msgid "Ortaya"
+msgstr "Center"
+
+msgid "Çeviri"
+msgstr "Translation"
+
+msgid "Türkçe"
+msgstr "Turkish"
+
+msgid "English"
+msgstr "English"
+
+msgid "Hareketli"
+msgstr "Animated"
+
+msgid "vynz"
+msgstr "vynz"
+
+msgid "Ana Sayfa"
+msgstr "Home"
+
+msgid "Listelerim"
+msgstr "My Playlists"
+
+msgid "Yeni liste"
+msgstr "New playlist"
+
+msgid "{} indiriliyor…"
+msgstr "Downloading {}…"
+
+msgid "{n} şarkı · çevrimdışı"
+msgid_plural "{n} şarkı · çevrimdışı"
+msgstr[0] "{n} song · offline"
+msgstr[1] "{n} songs · offline"
+
+msgid "+ ile oluştur ya da aktar"
+msgstr "Create or import with +"
+
+msgid "Mini oynatıcı"
+msgstr "Mini player"
+
+msgid "Profil"
+msgstr "Profile"
+
+msgid "Radyo…"
+msgstr "Radio…"
+
+msgid "Radyo başlat"
+msgstr "Start radio"
+
+msgid "Kuyruk silinsin mi?"
+msgstr "Clear the queue?"
+
+msgid "Sıralamak için sürükle"
+msgstr "Drag to reorder"
+
+msgid "Kuyruk boş."
+msgstr "The queue is empty."
+
+msgid "Geri al"
+msgstr "Undo"
+
+msgid "Sürgüyü sürükle, çift tıkla sıfırla."
+msgstr "Drag a slider, double-click to reset."
+
+msgid "Uyku zamanlayıcısı"
+msgstr "Sleep timer"
+
+msgid "Bu şarkı bitince duracak."
+msgstr "Playback will stop when this song ends."
+
+msgid "Kalan {} · ses yavaşça kısılıp durur."
+msgstr "{} left · the volume fades out, then playback stops."
+
+msgid "Süre dolunca ses yavaşça kısılır ve çalma durur."
+msgstr "When time is up, the volume fades out and playback stops."
+
+msgid "{} dk"
+msgstr "{} min"
+
+msgid "{} sa"
+msgstr "{} h"
+
+msgid "Şarkı bitince"
+msgstr "End of song"
+
+msgid "Kapat"
+msgstr "Close"
+
+msgid "Liste silinsin mi?"
+msgstr "Delete the playlist?"
+
+msgid "“{}” ({} şarkı) kütüphaneden kaldırılacak. Bu işlem geri alınamaz."
+msgstr "“{}” ({} songs) will be removed from your library. This can't be undone."
+
+msgid "Vazgeç"
+msgstr "Cancel"
+
+msgid "Listeye ekle"
+msgstr "Add to playlist"
+
+msgid "Liste adı, Enter ile oluştur"
+msgstr "Playlist name, Enter to create"
+
+msgid "Yeni liste oluştur"
+msgstr "Create new playlist"
+
+msgid "Oluştur"
+msgstr "Create"
+
+msgid "Bu şarkı zaten burada"
+msgstr "This song is already here"
+
+msgid "Yeni çalma listesi"
+msgstr "New playlist"
+
+msgid "Örn. Gece sürüşü…"
+msgstr "E.g. Night drive…"
+
+msgid "Müzik zevklerini seç"
+msgstr "Choose your music tastes"
+
+msgid "Bir türe tıkla, altta o türden örnek şarkılar gelsin; beğendiklerini seç. Yalnızca Ana Sayfa önerilerini besler, başlattığın radyoları etkilemez."
+msgstr "Click a genre to see sample songs below, then pick the ones you like. This only feeds Home recommendations and doesn't affect radios you start."
+
+msgid "{} · örnek şarkılar (beğendiklerini seç ya da dinle)"
+msgstr "{} · sample songs (pick the ones you like or listen)"
+
+msgid "Örnek şarkıları görmek için yukarıdan bir tür seç"
+msgstr "Pick a genre above to see sample songs"
+
+msgid "İstediğin zaman Ayarlar → Zevkler'den değiştirebilirsin."
+msgstr "You can change this anytime in Settings → Tastes."
+
+msgid "Şimdilik geç"
+msgstr "Skip for now"
+
+msgid "Görünümünü seç"
+msgstr "Choose your look"
+
+msgid "Ana sayfada ve söz ekranında arka planın nasıl görüneceğini seç."
+msgstr "Choose how the background looks on the home page and the lyrics screen."
+
+msgid "Çalan şarkının kapağı, bulanık ve canlı"
+msgstr "The current song's cover, blurred and vivid"
+
+msgid "Kapak renkleri akışkan katmanlarla karışır"
+msgstr "Cover colors blend in flowing layers"
+
+msgid "Kapağın arkasından taşan ışık"
+msgstr "Light spilling out from behind the cover"
+
+msgid "Kapak renklerinden süzülen ışık lekeleri"
+msgstr "Blobs of light drawn from the cover colors"
+
+msgid "Hareketsiz, tek renkli yumuşak degrade"
+msgstr "A still, single-color soft gradient"
+
+msgid "İstediğin zaman Ayarlar → Görünüm'den değiştirebilirsin."
+msgstr "You can change this anytime in Settings → Appearance."
+
+msgid "Geri"
+msgstr "Back"
+
+msgid "Devam"
+msgstr "Continue"
+
+msgid "YENİLİKLER"
+msgstr "WHAT'S NEW"
+
+msgid "Görünümü dene"
+msgstr "Try the look"
+
+msgid "Harika"
+msgstr "Great"
+
+msgid "Yeniden başlatılıyor…"
+msgstr "Restarting…"
+
+msgid "Güncelleme kurulamadı"
+msgstr "Update failed"
+
+msgid "Vynz güncelleniyor"
+msgstr "Updating Vynz"
+
+msgid "İndiriliyor… %{}"
+msgstr "Downloading… {}%"
+
+msgid "Doğrulanıyor ve kuruluyor…"
+msgstr "Verifying and installing…"
+
+msgid "Bu sürümü atla"
+msgstr "Skip this version"
+
+msgid "GitHub'da aç"
+msgstr "Open on GitHub"
+
+msgid "Yeniden dene"
+msgstr "Try again"
+
+msgid "Şimdi değil"
+msgstr "Not now"
+
+msgid "Sanatçıya git"
+msgstr "Go to artist"
+
+msgid "Şimdi çal"
+msgstr "Play now"
+
+msgid "Sıradaki çal"
+msgstr "Play next"
+
+msgid "Kuyruğa ekle"
+msgstr "Add to queue"
+
+msgid "İndirilenlerden kaldır"
+msgstr "Remove from downloads"
+
+msgid "Daha çok önermeyi bırak"
+msgstr "Stop recommending more"
+
+msgid "Bunu daha çok öner"
+msgstr "Recommend more like this"
+
+msgid "İlgilenmiyorum"
+msgstr "Not interested"
+
+msgid "Sanatçıyı önerme"
+msgstr "Don't recommend artist"
+
+msgid "Listeden çıkar"
+msgstr "Remove from playlist"
+
+msgid "Kuyruktan çıkar"
+msgstr "Remove from queue"
+
+msgid "Listeye ekle…"
+msgstr "Add to playlist…"
+
+msgid "Vynz Mini"
+msgstr "Vynz Mini"
+
+msgid "Çalan bir şey yok"
+msgstr "Nothing is playing"
+
+msgid "Emin misin?"
+msgstr "Are you sure?"
+
+msgid "Eşleşti"
+msgstr "Matched"
+
+msgid "Emin değil"
+msgstr "Unsure"
+
+msgid "Bulunamadı"
+msgstr "Not found"
+
+msgid "Hazır"
+msgstr "Ready"
+
+msgid "Karşılığı bulunamadı"
+msgstr "No match found"
+
+msgid "Değiştir"
+msgstr "Change"
+
+msgid "Spotify sayfası açılamadı: {}"
+msgstr "Couldn't open the Spotify page: {}"
+
+msgid "Spotify sayfa biçimi değişmiş (veri yok); liste gizli olabilir"
+msgstr "The Spotify page format has changed (no data); the playlist may be private"
+
+msgid "Liste boş ya da gizli"
+msgstr "The playlist is empty or private"
+
+msgid "Spotify listesi"
+msgstr "Spotify playlist"
+
+msgid "Aktarılan liste"
+msgstr "Imported playlist"
+
+msgid "Bu bağlantı tanınmadı. Spotify, YouTube Music ya da SoundCloud liste bağlantısı yapıştır."
+msgstr "This link wasn't recognized. Paste a Spotify, YouTube Music or SoundCloud playlist link."
+
+msgid "Dosya okunamadı: {}"
+msgstr "Couldn't read the file: {}"
+
+msgid "Dosyada şarkı bulunamadı. Spotify dışa aktarımındaki Playlist/YourLibrary JSON dosyalarını ya da bir CSV seç."
+msgstr "No songs found in the file. Choose a Playlist/YourLibrary JSON file from your Spotify data export, or a CSV."
+
+msgid "JSON okunamadı: {}"
+msgstr "Couldn't read the JSON: {}"
+
+msgid "Beğenilen Şarkılar (Spotify)"
+msgstr "Liked Songs (Spotify)"
+
+msgid "Bu JSON dosyası tanınmadı (Spotify Playlist ya da YourLibrary dosyası değil)."
+msgstr "This JSON file wasn't recognized (not a Spotify Playlist or YourLibrary file)."
+
+msgid "CSV boş"
+msgstr "The CSV is empty"
+
+msgid "CSV'de şarkı adı sütunu bulunamadı"
+msgstr "No song title column found in the CSV"
+
+msgid "Geri alındı"
+msgstr "Undone"
+
+msgid "Çevriliyor…"
+msgstr "Translating…"
+
+msgid "Şarkı zaten Türkçe"
+msgstr "The song is already in Turkish"
+
+msgid "Şarkı zaten bu dilde"
+msgstr "The song is already in this language"
+
+msgid "Çeviri alınamadı"
+msgstr "Translation failed"
+
+msgid "Yaş doğrulaması gerekiyor, atlandı: {}"
+msgstr "Age verification required, skipped: {}"
+
+msgid "akış ilerlemedi"
+msgstr "the stream stalled"
+
+msgid "Çalınamadı: {}"
+msgstr "Couldn't play: {}"
+
+msgid "YouTube Music'te karşılığı bulunamadı"
+msgstr "No match found on YouTube Music"
+
+msgid "radyo zaman aşımı"
+msgstr "radio timed out"
+
+msgid "“{}” radyosu hazırlanıyor…"
+msgstr "Preparing “{}” radio…"
+
+msgid "Radyo alınamadı: {}"
+msgstr "Couldn't load radio: {}"
+
+msgid "Kuyruktan çıkarıldı"
+msgstr "Removed from queue"
+
+msgid "Kuyruk temizlendi ({} şarkı)"
+msgstr "Queue cleared ({} songs)"
+
+msgid "akış indirilemez"
+msgstr "the stream can't be downloaded"
+
+msgid "İndiriliyor…"
+msgstr "Downloading…"
+
+msgid "{} şarkı indiriliyor…"
+msgstr "Downloading {} songs…"
+
+msgid "SoundCloud şarkıları şimdilik indirilemiyor"
+msgstr "SoundCloud songs can't be downloaded yet"
+
+msgid "Zaten indirilmiş"
+msgstr "Already downloaded"
+
+msgid "İndirilemedi: {}"
+msgstr "Download failed: {}"
+
+msgid "İndirilenlerden kaldırıldı"
+msgstr "Removed from downloads"
+
+msgid "Beğendiklerine eklendi"
+msgstr "Added to Liked Songs"
+
+msgid "Beğendiklerinden çıkarıldı"
+msgstr "Removed from Liked Songs"
+
+msgid "Sıradaki: {}"
+msgstr "Up next: {}"
+
+msgid "Kuyruğa eklendi: {}"
+msgstr "Added to queue: {}"
+
+msgid "Benzerleri daha sık önerilecek; ana sayfa yenilenince görünür"
+msgstr "Similar songs will be recommended more often; you'll see it when Home refreshes"
+
+msgid "Artık öne çıkarılmıyor"
+msgstr "No longer boosted"
+
+msgid "Listeden çıkarıldı"
+msgstr "Removed from playlist"
+
+msgid "Artık önerilmeyecek: {}"
+msgstr "Won't be recommended anymore: {}"
+
+msgid "Artık önerilmeyecek sanatçı: {} · kuyruktan {} şarkı çıkarıldı"
+msgstr "Artist won't be recommended anymore: {} · removed {} songs from the queue"
+
+msgid "Artık önerilmeyecek sanatçı: {}"
+msgstr "Artist won't be recommended anymore: {}"
+
+msgid "Kuyrukta başka uygun şarkı kalmadı"
+msgstr "No other suitable songs left in the queue"
+
+msgid "'{}' oluşturuldu ve şarkı eklendi"
+msgstr "Created '{}' and added the song"
+
+msgid "'{}' listesine eklendi"
+msgstr "Added to '{}'"
+
+msgid "Zaten '{}' listesinde"
+msgstr "Already in '{}'"
+
+msgid "{} ve benzerleri"
+msgstr "{} and similar"
+
+msgid "Çünkü {} dinliyorsun"
+msgstr "Because you listen to {}"
+
+msgid "Günaydın"
+msgstr "Good morning"
+
+msgid "İyi günler"
+msgstr "Good afternoon"
+
+msgid "İyi akşamlar"
+msgstr "Good evening"
+
+msgid "İyi geceler"
+msgstr "Good night"
+
+msgid "{} ve daha fazlası"
+msgstr "{} and more"
+
+msgid "Yeni keşifler"
+msgstr "New discoveries"
+
+msgid "{} karışım"
+msgstr "{} mix"
+
+msgid "Öneriler alınamadı: {}"
+msgstr "Couldn't load recommendations: {}"
+
+msgid "Sanatçı açılamadı: {}"
+msgstr "Couldn't open the artist: {}"
+
+msgid "Açılamadı: {}"
+msgstr "Couldn't open: {}"
+
+msgid "“{}” Listelerim'e kaydedildi"
+msgstr "Saved “{}” to My Playlists"
+
+msgid "Şarkı · {}"
+msgstr "Song · {}"
+
+msgid "Arama hatası: {}"
+msgstr "Search error: {}"
+
+msgid " · Spotify ilk 100 şarkıyı verdi"
+msgstr " · Spotify only returned the first 100 songs"
+
+msgid " · {} şarkı kaynakta artık yok, atlandı"
+msgstr " · {} songs no longer exist at the source and were skipped"
+
+msgid "Liste dosyası seç"
+msgstr "Choose a playlist file"
+
+msgid "Aktarımdan çıkarıldı: {}"
+msgstr "Removed from import: {}"
+
+msgid "“{}” aktarımı temizlendi"
+msgstr "Cleared the “{}” import"
+
+msgid "“{}” kaydedildi: {} şarkı"
+msgstr "Saved “{}”: {} songs"
+
+msgid "{} sa {} dk"
+msgstr "{} h {} min"
+
+msgid "{} dk {} sn"
+msgstr "{} min {} s"
+
+msgid "Liste kapağı seç"
+msgstr "Choose a playlist cover"
+
+msgid "Liste kapağı güncellendi"
+msgstr "Playlist cover updated"
+
+msgid "Özel kapak kaldırıldı"
+msgstr "Custom cover removed"
+
+msgid "'{}' oluşturuldu"
+msgstr "Created '{}'"
+
+msgid "{} örnek şarkı"
+msgstr "{} sample songs"
+
+msgid "{} engelli tür"
+msgstr "{} blocked genres"
+
+msgid "Zevkler kaydedildi; ana sayfa yenileniyor…"
+msgstr "Tastes saved; refreshing Home…"
+
+msgid "Geçmiş ve öneri profili sıfırlandı"
+msgstr "History and recommendation profile reset"
+
+msgid "Öneri profili sıfırlandı"
+msgstr "Recommendation profile reset"
+
+msgid "Liste adı güncellendi: {}"
+msgstr "Playlist renamed: {}"
+
+msgid "En çok {} civarında dinliyorsun."
+msgstr "You listen most around {}."
+
+msgid "Dinledikçe burası dolacak."
+msgstr "This fills up as you listen."
+
+msgid "Dil değişti; bazı bölümler yeniden açılınca tamamen güncellenir"
+msgstr "Language changed; some parts fully update after a restart"
+
+msgid "Geliştirici derlemesi: kendini güncellemez (cargo build ile güncelle)"
+msgstr "Developer build: doesn't update itself (update with cargo build)"
+
+msgid "Vynz güncel ({})"
+msgstr "Vynz is up to date ({})"
+
+msgid "Güncelleme denetlenemedi (bağlantı?)"
+msgstr "Couldn't check for updates (connection?)"
+
+msgid "Güncelleme kuruldu; bir sonraki açılışta geçerli olur"
+msgstr "Update installed; it takes effect next time you open Vynz"
+
+msgid "Çözücü ortamı arka planda hazırlanıyor…"
+msgstr "Setting up the resolver environment in the background…"
+
+msgid "Önbellek temizlendi"
+msgstr "Cache cleared"
+
+msgid "Öneriler yenileniyor…"
+msgstr "Refreshing recommendations…"
+
+msgid "Bu sürüm atlanacak; Ayarlar'dan yine kurabilirsin"
+msgstr "This version will be skipped; you can still install it from Settings"
+
+msgid "{} {} şarkı sözleri"
+msgstr "{} {} lyrics"
+
+msgid "Güncelleme hatası: {}"
+msgstr "Update error: {}"
+
+msgid "Sanatçı engeli kaldırıldı"
+msgstr "Artist unblocked"
+
+msgid "Şarkı engeli kaldırıldı"
+msgstr "Song unblocked"
+
+msgid "Vynz {} sürümüne güncellendi"
+msgstr "Vynz updated to {}"
+
+msgid "parça açılamadı"
+msgstr "couldn't open the track"
+
+msgid "çözücü zaman aşımı"
+msgstr "resolver timed out"
+
+msgid "radyo alınamadı"
+msgstr "couldn't load radio"
+
+msgid "çözülemedi"
+msgstr "couldn't resolve"
+
+msgid "Hazır (izole uv + deno + yt-dlp)"
+msgstr "Ready (isolated uv + deno + yt-dlp)"
+
+msgid "Sistem Python (izole ortam arka planda hazırlanıyor)"
+msgstr "System Python (isolated environment being set up in the background)"
+
+msgid "İlk kurulum bekleniyor…"
+msgstr "Waiting for first-time setup…"
+
+msgid "Çözücü ortamı kuruldu ve güncel"
+msgstr "Resolver environment installed and up to date"
+
+msgid "yt-dlp ve ytmusicapi güncellendi"
+msgstr "yt-dlp and ytmusicapi updated"
+
+msgid "Vynz'i göster"
+msgstr "Show Vynz"
+
+msgid "Sonraki şarkı"
+msgstr "Next song"
+
+msgid "Çıkış"
+msgstr "Quit"
+
+msgid "SHA256SUMS içinde paket yok"
+msgstr "Package not listed in SHA256SUMS"
+
+msgid "indirilen dosya doğrulanamadı (SHA-256 tutmuyor)"
+msgstr "couldn't verify the download (SHA-256 mismatch)"
+
+msgid "uygun ses akışı yok"
+msgstr "no suitable audio stream"
+
+msgid "Türkçe Rock"
+msgstr "Turkish Rock"
+
+msgid "Türkçe Pop"
+msgstr "Turkish Pop"
+
+msgid "Türkçe Rap"
+msgstr "Turkish Rap"
+
+msgid "Indie & Alternatif"
+msgstr "Indie & Alternative"
+
+msgid "Lo-Fi & Chill"
+msgstr "Lo-Fi & Chill"
+
+msgid "Elektronik & Synthwave"
+msgstr "Electronic & Synthwave"
+
+msgid "Metal & Hard Rock"
+msgstr "Metal & Hard Rock"
+
+msgid "Hip-Hop & R&B"
+msgstr "Hip-Hop & R&B"
+
+msgid "Caz & Blues"
+msgstr "Jazz & Blues"
+
+msgid "Klasik & Piyano"
+msgstr "Classical & Piano"
+
+msgid "Arabesk & Fantazi"
+msgstr "Arabesque & Fantasy"
+
+msgid "Phonk & Drift"
+msgstr "Phonk & Drift"
+
+msgid "Anime & Oyun"
+msgstr "Anime & Games"
+
+msgid "80'ler & 90'lar"
+msgstr "80s & 90s"
+
+msgid "Bugün için karışım"
+msgstr "Today's mix"
+
+msgid "Senin için karışım"
+msgstr "Your mix"
+
+msgid "Kaldığın yerden"
+msgstr "Pick up where you left off"
+
+msgid "En çok dinlediklerin"
+msgstr "Your most played"
+
+msgid "Beğendiklerin"
+msgstr "Your likes"
+
+msgid "Hızlı erişim"
+msgstr "Quick access"
+
+msgid "Sana özel"
+msgstr "Made for you"
+
+msgid "Trend şarkılar"
+msgstr "Trending songs"
+
+msgid "Yeni albümler"
+msgstr "New albums"
+
+msgid "Türkiye'de popüler sanatçılar"
+msgstr "Popular artists"
+
+msgid "Keşfet · Türkiye'de trend"
+msgstr "Explore · Trending"
+
+msgid "Zevkine göre çalma listeleri"
+msgstr "Playlists for your taste"
+
+msgid "Single ve EP'ler"
+msgstr "Singles & EPs"
+
+msgid "Benzer sanatçılar"
+msgstr "Similar artists"

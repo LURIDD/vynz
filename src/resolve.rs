@@ -283,6 +283,8 @@ impl Resolver {
                 cmd.env("PATH", joined);
             }
         }
+        let (hl, gl) = crate::i18n::content();
+        cmd.env("VYNZ_HL", hl).env("VYNZ_GL", gl);
         let mut child = cmd
             .spawn()
             .map_err(|e| format!("çözücü python başlatılamadı ({}): {e}", rt.python.display()))?;
@@ -378,7 +380,7 @@ impl Resolver {
         self.request(payload, prio, Box::new(move |r| {
             let _ = tx.send(r);
         }));
-        rx.recv_timeout(Duration::from_secs(30)).map_err(|_| "çözücü zaman aşımı".to_string())?
+        rx.recv_timeout(Duration::from_secs(30)).map_err(|_| tr!("çözücü zaman aşımı"))?
     }
 
     /// Program kapanırken yardımcıyı kapat ve önbelleği yaz.
@@ -430,7 +432,7 @@ fn read_loop(inner: Arc<Mutex<Inner>>, stdout: std::process::ChildStdout, genera
             drop(g);
             match (rep.ok, rep.tracks) {
                 (true, Some(t)) => done(Ok(t)),
-                _ => done(Err(rep.error.unwrap_or_else(|| "radyo alınamadı".into()))),
+                _ => done(Err(rep.error.unwrap_or_else(|| tr!("radyo alınamadı")))),
             }
             continue;
         }
@@ -442,7 +444,7 @@ fn read_loop(inner: Arc<Mutex<Inner>>, stdout: std::process::ChildStdout, genera
                 g.dirty = true;
                 Ok(r)
             }
-            _ => Err(rep.error.unwrap_or_else(|| "çözülemedi".into())),
+            _ => Err(rep.error.unwrap_or_else(|| tr!("çözülemedi"))),
         };
         // Aynı parça için öncelikli bir kopya da yoldaysa ilk yanıt herkesi bitirir.
         let waiters = g.waiting.remove(&key).unwrap_or_default();
