@@ -3278,7 +3278,7 @@ export component AppWindow inherits Window {
         drop-shadow-color: lyrics-open && sidebar-peek ? #00000099 : transparent;
         // Arka plan ışığı sol çubuğun altına taşar; yazılar okunsun diye ayarlanabilir koyuluk
         if !lyrics-open: Rectangle {
-            background: Theme.canvas.with-alpha([0, 0.5, 0.82][sidebar-dim]);
+            background: Theme.canvas.with-alpha([0, 0.32, 0.6][sidebar-dim]);
             animate background { duration: 200ms; }
         }
         TouchArea { }
