@@ -500,6 +500,15 @@ msgstr "Manchas de cor"
 msgid "Sade"
 msgstr "Simples"
 
+msgid "Hale rengi"
+msgstr "Cor do halo"
+
+msgid "Kapaktan"
+msgstr "Da capa"
+
+msgid "Yayılım"
+msgstr "Alcance"
+
 msgid "Yoğunluk"
 msgstr "Intensidade"
 
@@ -518,20 +527,14 @@ msgstr "Flutuar"
 msgid "Durgun"
 msgstr "Parado"
 
-msgid "Hale rengi"
-msgstr "Cor do halo"
-
-msgid "Kapaktan"
-msgstr "Da capa"
-
-msgid "Yayılım"
-msgstr "Alcance"
-
 msgid "Kumlanma"
 msgstr "Granulado"
 
 msgid "Müziğe tepki"
 msgstr "Reagir à música"
+
+msgid "Baslarda ışık nabız atar"
+msgstr "A luz pulsa com os graves"
 
 msgid "Baslarda ışık nabız atar (cava gerekir)"
 msgstr "A luz pulsa com os graves (requer cava)"

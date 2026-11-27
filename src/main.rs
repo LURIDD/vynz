@@ -6061,7 +6061,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ambience::GRAIN,
         ambience::GRAIN,
     )));
-    ui.set_can_react(cfg!(target_os = "linux"));
+    ui.set_can_react(cfg!(any(target_os = "linux", target_os = "windows")));
     if std::env::var_os("VYNZ_SLEEP_TEST").is_some() {
         ui.set_sleep_unit(1);
     }

@@ -500,6 +500,15 @@ msgstr "Color blobs"
 msgid "Sade"
 msgstr "Minimal"
 
+msgid "Hale rengi"
+msgstr "Halo color"
+
+msgid "Kapaktan"
+msgstr "From cover"
+
+msgid "Yayılım"
+msgstr "Spread"
+
 msgid "Yoğunluk"
 msgstr "Intensity"
 
@@ -518,20 +527,14 @@ msgstr "Drift"
 msgid "Durgun"
 msgstr "Still"
 
-msgid "Hale rengi"
-msgstr "Halo color"
-
-msgid "Kapaktan"
-msgstr "From cover"
-
-msgid "Yayılım"
-msgstr "Spread"
-
 msgid "Kumlanma"
 msgstr "Grain"
 
 msgid "Müziğe tepki"
 msgstr "React to music"
+
+msgid "Baslarda ışık nabız atar"
+msgstr "The light pulses with the bass"
 
 msgid "Baslarda ışık nabız atar (cava gerekir)"
 msgstr "The light pulses with the bass (requires cava)"

@@ -2291,7 +2291,7 @@ export component AppWindow inherits Window {
                                     Text { text: @tr("Müziğe tepki"); width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
                                     PillButton { pill-height: 30px; text: @tr("Açık"); active: bg-reactive; enabled: bg-style != 2; clicked => { bg-reactive = true; root.settings-changed(); } }
                                     PillButton { pill-height: 30px; text: @tr("Kapalı"); active: !bg-reactive; enabled: bg-style != 2; clicked => { bg-reactive = false; root.settings-changed(); } }
-                                    Text { text: @tr("Baslarda ışık nabız atar (cava gerekir)"); vertical-alignment: center; font-size: 11px; color: Theme.text-muted; }
+                                    Text { text: is-windows ? @tr("Baslarda ışık nabız atar") : @tr("Baslarda ışık nabız atar (cava gerekir)"); vertical-alignment: center; font-size: 11px; color: Theme.text-muted; }
                                 }
                             }
                         }
