@@ -194,7 +194,7 @@ fn accent_of(img: &image::RgbaImage) -> (u8, u8, u8) {
 }
 
 /// Hale için kapağın en canlı rengi (ton, doygunluk): paletten ya da vurgudan.
-/// Kapak tamamen griyse None (hale beyazımsı kalır).
+/// Kapakta belirgin renk yoksa None (hale beyazımsı kalır).
 fn halo_vivid(palette: &[(u8, u8, u8); 3], accent: (u8, u8, u8)) -> Option<(f64, f64)> {
     palette
         .iter()
@@ -203,7 +203,9 @@ fn halo_vivid(palette: &[(u8, u8, u8); 3], accent: (u8, u8, u8)) -> Option<(f64,
         // Çok koyu ya da çok açık renklerin doygunluğu yanıltıcı: orta açıklığa yakın olan önde
         .map(|(h, s, l)| (h, s, s * (1.0 - (l - 0.5).abs() * 1.2).max(0.0)))
         .max_by(|a, b| a.2.total_cmp(&b.2))
-        .filter(|v| v.1 >= 0.12)
+        // Gerçekten renkli bir ton yoksa (gri/siyah-beyaz kapak) hale tarafsız kalsın;
+        // hafif kâğıt/ışık tonunu "renk" sayıp abartmak kapakta olmayan bir renk üretiyordu.
+        .filter(|v| v.1 >= 0.25)
         .map(|(h, s, _)| (h, s))
 }
 
@@ -224,7 +226,8 @@ fn halo_tint(h: f64, sat: f64, vivid: Option<(f64, f64)>) -> (f64, f64) {
         d += 1.0;
     }
     let h2 = (h + d * w).rem_euclid(1.0);
-    let s2 = sat + (vs.max(0.55) - sat) * w;
+    // hedef: kapağın kendi canlı renginin biraz üstü (uydurma doygunluk yok)
+    let s2 = sat + ((vs * 1.2).min(0.85) - sat).max(0.0) * w;
     (h2, s2)
 }
 

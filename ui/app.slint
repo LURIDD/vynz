@@ -545,6 +545,8 @@ export component AppWindow inherits Window {
     // Hale: 0 kapaktan renk, 1 vurgu rengi; yayılım çarpanı 0.6–1.8
     in-out property <int> halo-color: 0;
     in-out property <float> halo-spread: 1.0;
+    // Sol çubuk zemini: 0 saydam, 1 yarı, 2 koyu
+    in-out property <int> sidebar-dim: 1;
     // Arayüz dili: 0 sistem, 1 Türkçe, 2 English, 3 Português (BR)
     in-out property <int> lang-index: 0;
     in property <string> app-version;
@@ -2275,6 +2277,14 @@ export component AppWindow inherits Window {
                                 }
                                 HorizontalLayout {
                                     spacing: 8px; alignment: start;
+                                    Text { text: @tr("Sol çubuk"); width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
+                                    for label[i] in [@tr("Saydam"), @tr("Yarı"), @tr("Koyu")]: PillButton {
+                                        pill-height: 30px; text: label; active: sidebar-dim == i;
+                                        clicked => { sidebar-dim = i; root.settings-changed(); }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px; alignment: start;
                                     Text { text: @tr("Yoğunluk"); width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
                                     for name[i] in [@tr("Sade"), @tr("Orta"), @tr("Canlı")]: PillButton { pill-height: 30px; text: name; active: bg-level == i; clicked => { bg-level = i; root.settings-changed(); } }
                                 }
@@ -3266,6 +3276,11 @@ export component AppWindow inherits Window {
         background: lyrics-open ? Theme.floating : Theme.surface-subtle;
         drop-shadow-blur: lyrics-open && sidebar-peek ? 40px : 0px;
         drop-shadow-color: lyrics-open && sidebar-peek ? #00000099 : transparent;
+        // Arka plan ışığı sol çubuğun altına taşar; yazılar okunsun diye ayarlanabilir koyuluk
+        if !lyrics-open: Rectangle {
+            background: Theme.canvas.with-alpha([0, 0.5, 0.82][sidebar-dim]);
+            animate background { duration: 200ms; }
+        }
         TouchArea { }
 
         // Sağ ince ayırıcı çizgi
