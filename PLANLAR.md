@@ -148,7 +148,9 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 ### Y1. Windows için cava benzeri görselleştirici (25 Kas 2026)
 - Linux'ta görselleştirici ve "müziğe tepki" `cava` ham çıktısına dayanıyor (`src/viz.rs`); Windows'ta cava yok.
 - Windows karşılığı gerekli: örn. WASAPI loopback ile ses yakalayıp FFT'yi Rust içinde yapmak (cava'ya bağımlılığı tamamen kaldırma seçeneği de var).
-- **Durum:** Fikir aşamasında.
+- **Yapılan (27 Kas, 8b7b2e1, yayınlanmadı):** `src/viz.rs` Windows modülü: cpal 0.15 ile varsayılan çıkış aygıtında giriş akışı (WASAPI loopback), mono, kendi radix-2 FFT'miz (2048, Hann), 50 Hz–12 kHz 32 log bant, autosens + yerçekimi (cava çıktısıyla aynı biçim). Profil spektrumu ve "Müziğe tepki" Windows'ta açıldı. FFT/bant birim testi Linux'ta geçti; CI Windows derlemesi geçti.
+- **Doğrulanmadı:** Windows'ta gerçek çalışma (kullanıcı/arkadaş denemeli: Profil → Canlı spektrum, Görünüm → Müziğe tepki). Sorun yoksa sonraki sürüme girer.
+- **Durum:** Kod hazır, Windows denemesi bekliyor.
 
 ### F5. Discord durumunun bazen "Dinliyor" yerine "Oynuyor"a düşmesi (26 Kas 2026)
 - **Görünüm:** Vynz çalarken Discord durumu zaman zaman "… dinliyor" yerine "… oynuyor" gösteriyor; ne zaman olduğu belli değil.
