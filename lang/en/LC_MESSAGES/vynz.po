@@ -226,6 +226,9 @@ msgstr "Change cover"
 msgid "Kapak seç"
 msgstr "Choose cover"
 
+msgid "Geri"
+msgstr "Back"
+
 msgid "ÇALMA LİSTESİ"
 msgstr "PLAYLIST"
 
@@ -257,6 +260,9 @@ msgstr "Delete"
 
 msgid "Liste içinde ara…"
 msgstr "Search in playlist…"
+
+msgid "Filtreyi temizle"
+msgstr "Clear filter"
 
 msgid "Satır üzerine gel: ↑/↓ sırala · × çıkar"
 msgstr "Hover a row: ↑/↓ reorder · × remove"
@@ -740,6 +746,39 @@ msgstr "About"
 msgid "Çalan yok"
 msgstr "Nothing playing"
 
+msgid "Beğenmekten vazgeç"
+msgstr "Unlike"
+
+msgid "Beğen"
+msgstr "Like"
+
+msgid "Karıştırmayı kapat"
+msgstr "Turn off shuffle"
+
+msgid "Tekrarla"
+msgstr "Repeat"
+
+msgid "Tekrar: tümü"
+msgstr "Repeat: all"
+
+msgid "Tekrar: bu şarkı"
+msgstr "Repeat: this song"
+
+msgid "Önceki"
+msgstr "Previous"
+
+msgid "Duraklat"
+msgstr "Pause"
+
+msgid "Sonraki"
+msgstr "Next"
+
+msgid "Sesi aç"
+msgstr "Unmute"
+
+msgid "Sesi kapat"
+msgstr "Mute"
+
 msgid "−0.5 sn"
 msgstr "−0.5 s"
 
@@ -785,14 +824,26 @@ msgstr "Lines that fill word by word, with a translation if you like."
 msgid "Beğenildi"
 msgstr "Liked"
 
-msgid "Beğen"
-msgstr "Like"
-
 msgid "Sözleri göster"
 msgstr "Show lyrics"
 
 msgid "Sözler hazır, görmek için tıkla"
 msgstr "Lyrics are ready, click to view"
+
+msgid "Menü"
+msgstr "Menu"
+
+msgid "Tam ekrandan çık"
+msgstr "Exit full screen"
+
+msgid "Tam ekran"
+msgstr "Full screen"
+
+msgid "Söz görünümü"
+msgstr "Lyrics style"
+
+msgid "Kapat"
+msgstr "Close"
 
 msgid "Yazı stili"
 msgstr "Font style"
@@ -860,6 +911,9 @@ msgstr "My Playlists"
 msgid "Yeni liste"
 msgstr "New playlist"
 
+msgid "İçe aktar"
+msgstr "Import"
+
 msgid "{} indiriliyor…"
 msgstr "Downloading {}…"
 
@@ -892,14 +946,17 @@ msgstr "Drag to reorder"
 msgid "Kuyruk boş."
 msgstr "The queue is empty."
 
+msgid "Kuyruktan çıkar"
+msgstr "Remove from queue"
+
 msgid "Geri al"
 msgstr "Undo"
 
-msgid "Sürgüyü sürükle, çift tıkla sıfırla."
-msgstr "Drag a slider, double-click to reset."
-
 msgid "Uyku zamanlayıcısı"
 msgstr "Sleep timer"
+
+msgid "Sürgüyü sürükle, çift tıkla sıfırla."
+msgstr "Drag a slider, double-click to reset."
 
 msgid "Bu şarkı bitince duracak."
 msgstr "Playback will stop when this song ends."
@@ -918,9 +975,6 @@ msgstr "{} h"
 
 msgid "Şarkı bitince"
 msgstr "End of song"
-
-msgid "Kapat"
-msgstr "Close"
 
 msgid "Liste silinsin mi?"
 msgstr "Delete the playlist?"
@@ -958,11 +1012,23 @@ msgstr "Choose your music tastes"
 msgid "Bir türe tıkla, altta o türden örnek şarkılar gelsin; beğendiklerini seç. Yalnızca Ana Sayfa önerilerini besler, başlattığın radyoları etkilemez."
 msgstr "Click a genre to see sample songs below, then pick the ones you like. This only feeds Home recommendations and doesn't affect radios you start."
 
+msgid "Atla"
+msgstr "Skip"
+
 msgid "{} · örnek şarkılar (beğendiklerini seç ya da dinle)"
 msgstr "{} · sample songs (pick the ones you like or listen)"
 
 msgid "Örnek şarkıları görmek için yukarıdan bir tür seç"
 msgstr "Pick a genre above to see sample songs"
+
+msgid "Örneği dinle"
+msgstr "Play sample"
+
+msgid "Seçimi kaldır"
+msgstr "Unselect"
+
+msgid "Seç"
+msgstr "Select"
 
 msgid "İstediğin zaman Ayarlar → Zevkler'den değiştirebilirsin."
 msgstr "You can change this anytime in Settings → Tastes."
@@ -993,9 +1059,6 @@ msgstr "A still, single-color soft gradient"
 
 msgid "İstediğin zaman Ayarlar → Görünüm'den değiştirebilirsin."
 msgstr "You can change this anytime in Settings → Appearance."
-
-msgid "Geri"
-msgstr "Back"
 
 msgid "Devam"
 msgstr "Continue"
@@ -1066,9 +1129,6 @@ msgstr "Don't recommend artist"
 msgid "Listeden çıkar"
 msgstr "Remove from playlist"
 
-msgid "Kuyruktan çıkar"
-msgstr "Remove from queue"
-
 msgid "Listeye ekle…"
 msgstr "Add to playlist…"
 
@@ -1077,6 +1137,9 @@ msgstr "Vynz Mini"
 
 msgid "Çalan bir şey yok"
 msgstr "Nothing is playing"
+
+msgid "Ana pencereyi aç"
+msgstr "Open main window"
 
 msgid "Emin misin?"
 msgstr "Are you sure?"
@@ -1179,6 +1242,9 @@ msgstr "Removed from queue"
 
 msgid "Kuyruk temizlendi ({} şarkı)"
 msgstr "Queue cleared ({} songs)"
+
+msgid "Karıştırma kapalı, özgün sıraya dönüldü"
+msgstr "Shuffle off, back to the original order"
 
 msgid "akış indirilemez"
 msgstr "the stream can't be downloaded"
@@ -1524,3 +1590,8 @@ msgstr "Singles & EPs"
 
 msgid "Benzer sanatçılar"
 msgstr "Similar artists"
+
+msgid "Sıradaki {n} şarkı karıştırıldı"
+msgid_plural "Sıradaki {n} şarkı karıştırıldı"
+msgstr[0] "Shuffled {n} upcoming song"
+msgstr[1] "Shuffled {n} upcoming songs"

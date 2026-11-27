@@ -489,8 +489,46 @@ export component NavButton inherits Rectangle {
     }
 }
 
+// Düğme ipucu: tek bir katman (TipLayer) pencerenin en üstünde çizer, kırpılmaz.
+export global Tip {
+    in-out property <string> text;
+    in-out property <length> cx;
+    in-out property <length> top;
+    in-out property <length> bottom;
+}
+
+export component TipLayer inherits Rectangle {
+    if Tip.text != "": Rectangle {
+        property <length> w: txt.preferred-width + 20px;
+        width: self.w;
+        height: txt.preferred-height + 12px;
+        x: Math.clamp(Tip.cx - self.w / 2, 6px, root.width - self.w - 6px);
+        y: Tip.top - self.height - 6px >= 4px ? Tip.top - self.height - 6px : Tip.bottom + 6px;
+        background: Theme.floating;
+        border-radius: 7px;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 14px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: #00000080;
+        opacity: 0;
+        init => { self.opacity = 1; }
+        animate opacity { duration: 120ms; }
+        txt := Text {
+            text: Tip.text;
+            font-size: 12px;
+            font-weight: 600;
+            color: Theme.text-primary;
+        }
+    }
+}
+
 export component IconButton inherits Rectangle {
     in property <string> icon;
+    // Üzerinde durunca görünen kısa açıklama (boşsa ipucu yok)
+    in property <string> tip;
+    // Açık durum noktası (karıştır/tekrar gibi aç-kapa düğmeleri)
+    in property <bool> dot;
     in property <bool> primary;
     in property <bool> enabled: true;
     in property <color> tint: Theme.text-secondary;
@@ -506,7 +544,30 @@ export component IconButton inherits Rectangle {
     background: primary ? (ta.has-hover && enabled ? #FFFFFF : Theme.text-primary) : (ta.has-hover && enabled ? Theme.surface-2 : transparent);
     animate background { duration: Theme.micro; }
 
-    ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } mouse-cursor: pointer; }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { Tip.text = ""; root.clicked(); }
+        changed has-hover => {
+            if !self.has-hover && Tip.text == root.tip { Tip.text = ""; }
+        }
+    }
+    Timer {
+        interval: 500ms;
+        running: ta.has-hover && root.tip != "" && !(Tip.text == root.tip && Tip.cx == root.absolute-position.x + root.width / 2);
+        triggered => {
+            Tip.cx = root.absolute-position.x + root.width / 2;
+            Tip.top = root.absolute-position.y;
+            Tip.bottom = root.absolute-position.y + root.height;
+            Tip.text = root.tip;
+        }
+    }
+    if root.dot: Rectangle {
+        width: 4px; height: 4px; border-radius: 2px;
+        x: (root.width - self.width) / 2;
+        y: root.height - 3px;
+        background: root.tint;
+    }
     Icon {
         commands: root.icon;
         stroke: root.primary ? Theme.on-primary : (ta.has-hover && !root.filled ? Theme.text-primary : root.tint);
@@ -1147,6 +1208,13 @@ export component HaloGlow inherits Rectangle {
     // Vurgu rengi kipi: kapak görüntüsü yerine tek renkli yumuşak ışık
     in property <bool> use-tint: false;
     in property <color> tint;
+    // Vurgu rengi ışığa uygun parlaklığa çekilir (çok koyu görünmez, çok açık göz alır), yumuşak geçer.
+    property <float> tint-v: root.tint.to-hsv().value;
+    property <float> tint-s: root.tint.to-hsv().saturation;
+    property <color> glow: hsv(root.tint.to-hsv().hue,
+        root.tint-s < 0.08 ? root.tint-s : Math.clamp(root.tint-s, 0.35, 0.8),
+        Math.clamp(root.tint-v, root.tint-s < 0.08 ? 0.55 : 0.6, 0.85));
+    animate glow { duration: 700ms; easing: ease-in-out; }
     property <float> pulse: root.beat;
     animate pulse { duration: 110ms; easing: ease-out; }
     property <float> breath: 1.0 + 0.03 * (1 - Math.cos((root.t * 45.0) * 1deg));
@@ -1159,9 +1227,13 @@ export component HaloGlow inherits Rectangle {
         transform-scale: root.breath;
         opacity: Math.min(1, root.level + root.pulse * 0.15);
 
+        // Gauss'a yakın sönüm: tek basamaklı geçiş halka gibi kenar bırakıyordu.
         if root.use-tint: Rectangle {
             width: parent.width; height: parent.height;
-            background: @radial-gradient(circle, root.tint.with-alpha(0.8) 0%, root.tint.with-alpha(0.35) 28%, root.tint.with-alpha(0) 50%);
+            background: @radial-gradient(circle,
+                root.glow.with-alpha(0.72) 0%, root.glow.with-alpha(0.62) 8%, root.glow.with-alpha(0.47) 16%,
+                root.glow.with-alpha(0.32) 24%, root.glow.with-alpha(0.19) 31%, root.glow.with-alpha(0.10) 37%,
+                root.glow.with-alpha(0.045) 42%, root.glow.with-alpha(0.015) 46%, root.glow.with-alpha(0) 50%);
         }
         if root.has-a && !root.use-tint: Image {
             width: parent.width; height: parent.height;

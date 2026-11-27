@@ -265,6 +265,7 @@ impl Resolver {
         let mut cmd = Command::new(&rt.python);
         crate::runtime::hide_window(&mut cmd);
         cmd.arg("-I")
+            .args(["-X", "utf8"])
             .arg(&script)
             .arg(warm_cookies)
             .current_dir(&dir)

@@ -17,6 +17,13 @@ import threading
 import time
 import urllib.parse
 
+# Windows'ta boru kodlaması yerel kod sayfasıdır (cp1252, cp1254...); Arapça/Türkçe sorgular bozulmasın.
+for _s in (sys.stdin, sys.stdout):
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 # Gömülü Python'da güncel yt-dlp veri klasöründeki katmandan gelir (kurulumdakini gölgeler).
 _overlay = os.environ.get("VYNZ_PYOVERLAY")
 if _overlay and os.path.isdir(_overlay):

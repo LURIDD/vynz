@@ -2117,6 +2117,13 @@ fn toggle_shuffle(ui: &AppWindow) {
     ui.set_shuffle_on(on);
     with_state(|st| st.mpris.send(mpris::Msg::Shuffle(on)));
     queue_changed(ui);
+    // Karıştırmanın olduğu belli olsun; ikinci tık özgün sıraya döner, bunu da söyle.
+    let left = with_state(|st| st.index.map(|i| st.queue.len().saturating_sub(i + 1)).unwrap_or(0));
+    if on {
+        toast(ui, &trn!("Sıradaki {n} şarkı karıştırıldı", left));
+    } else {
+        toast(ui, &tr!("Karıştırma kapalı, özgün sıraya dönüldü"));
+    }
 }
 
 fn cycle_repeat(ui: &AppWindow) {
@@ -4524,6 +4531,14 @@ struct Session {
 
 /// Kuyruk, çalan parça ve konumu kaydet (kapanışta ve çalarken arada bir).
 fn save_session(ui: &AppWindow) {
+    // Ses düzeyi de yazılsın: görev yöneticisiyle kapatılınca çıkıştaki kayıt hiç çalışmıyor.
+    let vol = ui.get_volume();
+    with_state(|st| {
+        if (st.settings.volume - vol).abs() > 0.001 {
+            st.settings.volume = vol;
+            let _ = st.settings.save();
+        }
+    });
     let s = with_state(|st| {
         st.last_session_save = std::time::Instant::now();
         let i = st.index?;

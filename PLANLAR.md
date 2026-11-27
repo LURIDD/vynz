@@ -6,6 +6,8 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 
 ## Önerilen Uygulama Sırası
 
+> **Durum (27 Kas 2026):** Aşağıdaki 1–12 maddelerinin hepsi 22–23 Kas commit'lerinde yapıldı (ff13a40, d99474b, ac02b9e). Not: 11'de küçük kapak 128 yerine 160 px seçildi.
+
 1. **Çözücü hızı & 8 sn bekleme düzeltmesi** *(en yüksek öncelik — doğrudan hissedilen darboğaz)*
 2. **Kuyrukta sağ tık menüsü + Chip dinamik boyut düzeltmesi** *(hızlı UI düzeltmeleri)*
 3. **Discord RPC** *(bağımsız, düşük riskli)*
@@ -150,7 +152,7 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - Windows karşılığı gerekli: örn. WASAPI loopback ile ses yakalayıp FFT'yi Rust içinde yapmak (cava'ya bağımlılığı tamamen kaldırma seçeneği de var).
 - **Yapılan (27 Kas, 8b7b2e1, yayınlanmadı):** `src/viz.rs` Windows modülü: cpal 0.15 ile varsayılan çıkış aygıtında giriş akışı (WASAPI loopback), mono, kendi radix-2 FFT'miz (2048, Hann), 50 Hz–12 kHz 32 log bant, autosens + yerçekimi (cava çıktısıyla aynı biçim). Profil spektrumu ve "Müziğe tepki" Windows'ta açıldı. FFT/bant birim testi Linux'ta geçti; CI Windows derlemesi geçti.
 - **Doğrulanmadı:** Windows'ta gerçek çalışma (kullanıcı/arkadaş denemeli: Profil → Canlı spektrum, Görünüm → Müziğe tepki). Sorun yoksa sonraki sürüme girer.
-- **Durum:** Kod hazır, Windows denemesi bekliyor.
+- **Durum:** YAPILDI (0.4.3), VM'de doğrulandı.
 
 ### F5. Discord durumunun bazen "Dinliyor" yerine "Oynuyor"a düşmesi (26 Kas 2026)
 - **Görünüm:** Vynz çalarken Discord durumu zaman zaman "… dinliyor" yerine "… oynuyor" gösteriyor; ne zaman olduğu belli değil.
@@ -163,7 +165,7 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Görünüm:** Hale (`bg_style 4`) ışığı yalnız içerik alanının içinde kalıyor; sol barın kenarında (ve ana sayfa kartlarının arkasında) keskin bir çizgiyle kesiliyor, kapaktan taşan ışık sol bara ve diğer katmanlara geçmiyor. Ekran görüntüsü: `notes/fix/hale-katman.jpg` (CANTA LALA, ana sayfa).
 - **İlgili kod:** `ui/parts.slint` `HaloGlow` (~satır 1122); `ui/app.slint` içinde üç ayrı yerde çiziliyor (~1106, ~2684, ~3057), her biri kendi kabının içinde kırpılıyor.
 - **Düşünülecek:** Işığı tek bir katman olarak pencere zemininde (sol bar + içerik + alt çubuk) çizip barların yarı saydam zeminle üstüne binmesi; ya da sol barın ve alt çubuğun da kendi Hale yansımasını alması. Performans (ek bulanık katman) ve okunabilirlik (sol bar yazıları) birlikte değerlendirilmeli.
-- **Durum:** Fikir aşamasında, karar verilmedi.
+- **Durum:** YAPILDI (0.4.3): hale pencere zemininde, sol çubuk karartması ayarlı (Saydam/Yarı/Koyu).
 
 ### Y3. Hale yayılma alanı sürgüsü (26 Kas 2026)
 - **İstek:** Görünüm > Arka plan'da Hale seçiliyken renklerin ne kadar geniş yayılacağını ayarlayan bir sürgü.
@@ -180,6 +182,7 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Yapılan (27 Kas):** `art.rs` `halo_vivid`/`halo_tint`: doygunluğu 0.35 altındaki pikseller kapak paletinin (ya da vurgunun) en canlı tonuna doğru boyanır; tamamen gri kapakta beyazımsı kalır. "Hale rengi": Kapaktan / Vurgu rengi (tek renkli radyal ışık). Ayrıca hata: kapak listede çok önce yüklendiyse bulanık sürümler LRU'dan (24) düşüyor, çalınca hale hiç çizilmiyordu → `set_now_ui` eksikse kapağı yeniden işletir.
 - **Doğrulama:** Test kopyasında yeşil kapak (Padme) önce gri, şimdi yeşil hale; "Sattın Kendini" hale yoktu → var; vurgu rengi pembe, yayılım %160/%90 kaydı.
 - **Durum:** YAPILDI (0.4.2). Elle renk seçici (Özel) yapılmadı; vurgu rengi paleti yeterli görüldü.
+- **27 Kas iyileştirmesi:** vurgu rengi kipinde ışık 3 duraklı geçiş yerine Gauss'a yakın 9 duraklı sönüyor (halka kenarı yok), renk ışığa uygun parlaklığa çekiliyor (koyu vurgu görünmez, açık vurgu göz almaz), şarkı değişince renk 700 ms yumuşak geçiyor.
 
 ### Y5. Çoklu dil: İngilizce + isteğe bağlı diller (26 Kas 2026)
 - **Kaynak:** GitHub issue #1 (nidego, Brezilya): arayüz yalnız Türkçe, İngilizce/Portekizce yok. 26 Kas'ta yanıtlandı: İngilizce "çok yakında", pt-BR listede, diğer diller istek üzerine; İngilizce çıkınca issue'ya haber verilecek.
@@ -212,3 +215,38 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 ### Y8. Spotify girişiyle çalma (yalnız soru, ileride değerlendirilecek) (27 Kas 2026)
 - librespot ile mümkün ama YALNIZ Premium hesapta; ücretsiz hesapta çalmaz. Spotify kullanım koşullarına aykırı, hesap riski ve Spotify'ın protokol değişikliklerinde kırılma riski var. Ücretsiz kullanıcılar için mevcut yol (meta veri alıp YTM'de eşleştirme) kalır.
 - **Durum:** Ertelendi.
+
+### F9. Arapça (ve Türkçe karakterli) aramada alakasız, ürkütücü listeler (27 Kas 2026)
+- **Kullanıcı bildirimi:** Arapça arayan kullanıcıda "Listeler" rafında saçma kapaklı, adı bozuk karakterli ("ø§ù…") listeler.
+- **Kök neden (doğrulandı):** Windows'ta Python boru (stdin) kodlaması sistem kod sayfası (cp1252/cp1254); UTF-8 sorgu bozuk metne dönüp ("Ø§Ù†Ù‡…") öyle aranıyordu. YTM, adında aynı çöp karakterler olan rastgele topluluk listelerini döndürüyordu. Türkçe Windows'ta ş/ğ/ı içeren aramalar da bozuluyordu.
+- **Durum:** DÜZELTİLDİ (27 Kas): resolver.py stdin/stdout'u UTF-8'e çeviriyor + `-X utf8`. cp1252 taklidiyle önce/sonra doğrulandı.
+
+### F10. Kurulumda Türkçe seçilince lisans İngilizce (issue #2, 27 Kas 2026)
+- **Durum:** DÜZELTİLDİ (27 Kas): Türkçe kurulumda `LICENSE.tr.txt` (Türkçe çeviri + bağlayıcı İngilizce özgün). Kurulum diline Brezilya Portekizcesi eklendi.
+
+### F11. Ses düzeyi yeniden açılışta sıfırlanıyor (issue #4, 27 Kas 2026)
+- **Kök neden (tahmin):** ses düzeyi yalnız düzgün çıkışta yazılıyordu; görev yöneticisiyle/oturum kapanırken kapatılınca kaybolur.
+- **Durum:** DÜZELTİLDİ (27 Kas): oturum kaydıyla birlikte (10 sn'de bir çalarken, duraklatınca, şarkı değişince) ayarlara da yazılıyor.
+
+### F12. İlk açılışta ana sayfa boş (issue #3, 27 Kas 2026)
+- **Durum:** 0.4.3'teki gömülü Python ile çözülmüş olmalı (VM'de temiz kurulumda doğrulandı); kullanıcının 0.4.3 ile denemesi bekleniyor.
+
+### F13. GoodbyeDPI açıkken şarkı geçişi ve kapaklar (issue #4, 27 Kas 2026)
+- **Durum:** Kayıt dosyaları (`vynz.log`, `resolver.log`) bekleniyor.
+
+### Y9. Düğme ipuçları ve belirgin karıştırma (issue #4, 27 Kas 2026)
+- **Durum:** YAPILDI (27 Kas): 42 simge düğmeye 0,5 sn bekleyince çıkan ipucu (tek katman, pencere kenarında kırpılmaz); karıştır/tekrar açıkken altta nokta; karıştırınca "Sıradaki N şarkı karıştırıldı", ikinci tıkta "özgün sıraya dönüldü" bildirimi (ikinci tık bilerek geri alır).
+
+### Y10. Ana sayfa düzenleyicisi (kullanıcı önerisi, 27 Kas 2026)
+- **Fikir:** Ana sayfada "Düzenle" kipi; raflar (Hızlı erişim, Sana özel, Çünkü X dinliyorsun, Zevkine göre listeler, Keşfet…) gizlenebilir, sıralanabilir, belki boyutu (tek/iki satır) seçilebilir.
+- **Değerlendirme:** Raflar zaten Rust'ta `Section` listesi olarak kuruluyor; düzen = raf kimliği + görünür + sıra listesi (settings.json). Sürükle-bırak Slint'te kuyrukta zaten var. Orta büyüklükte iş; rafların kalıcı kimliği gerekir (şu an başlık metniyle ayırt ediliyor, dile bağlı).
+- **Durum:** Planlandı, ileride.
+
+### Y11. Ayarlar açılır pencere (Discord tarzı) ve yeniden tasarım (27 Kas 2026)
+- **Fikir:** Ayarlar ayrı sayfa yerine uygulamanın üstünde açılan büyük kaplama: solda kategori listesi, sağda içerik, Esc ile kapanır; tasarım da elden geçer.
+- **Değerlendirme:** Kaplama Slint'te aynı pencerede yapılır (ayrı pencere değil); mevcut bölümler kategorilere taşınır. Kaydırma sorunu da çözülür (her kategori kısa).
+- **Durum:** Planlandı.
+
+### İptal
+- **Dinleme odaları:** kullanıcı iptal etti (27 Kas 2026).
+- **Windows "Kapak" zemininde çapraz çizgiler:** yalnız VM'de görülüyor (sanal GPU sürücüsü), gerçek Windows'ta yok; iş değil.

@@ -226,6 +226,9 @@ msgstr "Trocar capa"
 msgid "Kapak seç"
 msgstr "Escolher capa"
 
+msgid "Geri"
+msgstr "Voltar"
+
 msgid "ÇALMA LİSTESİ"
 msgstr "PLAYLIST"
 
@@ -257,6 +260,9 @@ msgstr "Excluir"
 
 msgid "Liste içinde ara…"
 msgstr "Buscar na playlist…"
+
+msgid "Filtreyi temizle"
+msgstr "Limpar filtro"
 
 msgid "Satır üzerine gel: ↑/↓ sırala · × çıkar"
 msgstr "Passe o mouse na linha: ↑/↓ reordenar · × remover"
@@ -740,6 +746,39 @@ msgstr "Sobre"
 msgid "Çalan yok"
 msgstr "Nada tocando"
 
+msgid "Beğenmekten vazgeç"
+msgstr "Descurtir"
+
+msgid "Beğen"
+msgstr "Curtir"
+
+msgid "Karıştırmayı kapat"
+msgstr "Desativar aleatório"
+
+msgid "Tekrarla"
+msgstr "Repetir"
+
+msgid "Tekrar: tümü"
+msgstr "Repetir: tudo"
+
+msgid "Tekrar: bu şarkı"
+msgstr "Repetir: esta música"
+
+msgid "Önceki"
+msgstr "Anterior"
+
+msgid "Duraklat"
+msgstr "Pausar"
+
+msgid "Sonraki"
+msgstr "Próxima"
+
+msgid "Sesi aç"
+msgstr "Ativar som"
+
+msgid "Sesi kapat"
+msgstr "Silenciar"
+
 msgid "−0.5 sn"
 msgstr "−0,5 s"
 
@@ -785,14 +824,26 @@ msgstr "Linhas que se preenchem palavra por palavra, com tradução se quiser."
 msgid "Beğenildi"
 msgstr "Curtida"
 
-msgid "Beğen"
-msgstr "Curtir"
-
 msgid "Sözleri göster"
 msgstr "Mostrar letra"
 
 msgid "Sözler hazır, görmek için tıkla"
 msgstr "A letra está pronta, clique para ver"
+
+msgid "Menü"
+msgstr "Menu"
+
+msgid "Tam ekrandan çık"
+msgstr "Sair da tela cheia"
+
+msgid "Tam ekran"
+msgstr "Tela cheia"
+
+msgid "Söz görünümü"
+msgstr "Estilo da letra"
+
+msgid "Kapat"
+msgstr "Fechar"
 
 msgid "Yazı stili"
 msgstr "Estilo da fonte"
@@ -860,6 +911,9 @@ msgstr "Minhas playlists"
 msgid "Yeni liste"
 msgstr "Nova playlist"
 
+msgid "İçe aktar"
+msgstr "Importar"
+
 msgid "{} indiriliyor…"
 msgstr "Baixando {}…"
 
@@ -892,14 +946,17 @@ msgstr "Arraste para reordenar"
 msgid "Kuyruk boş."
 msgstr "A fila está vazia."
 
+msgid "Kuyruktan çıkar"
+msgstr "Remover da fila"
+
 msgid "Geri al"
 msgstr "Desfazer"
 
-msgid "Sürgüyü sürükle, çift tıkla sıfırla."
-msgstr "Arraste o controle, clique duas vezes para zerar."
-
 msgid "Uyku zamanlayıcısı"
 msgstr "Timer para dormir"
+
+msgid "Sürgüyü sürükle, çift tıkla sıfırla."
+msgstr "Arraste o controle, clique duas vezes para zerar."
 
 msgid "Bu şarkı bitince duracak."
 msgstr "A reprodução para quando esta música terminar."
@@ -918,9 +975,6 @@ msgstr "{} h"
 
 msgid "Şarkı bitince"
 msgstr "Fim da música"
-
-msgid "Kapat"
-msgstr "Fechar"
 
 msgid "Liste silinsin mi?"
 msgstr "Excluir a playlist?"
@@ -958,11 +1012,23 @@ msgstr "Escolha seus gostos musicais"
 msgid "Bir türe tıkla, altta o türden örnek şarkılar gelsin; beğendiklerini seç. Yalnızca Ana Sayfa önerilerini besler, başlattığın radyoları etkilemez."
 msgstr "Clique num gênero para ver músicas de exemplo abaixo e escolha as que você curte. Isso só alimenta as recomendações do Início e não afeta as rádios que você inicia."
 
+msgid "Atla"
+msgstr "Pular"
+
 msgid "{} · örnek şarkılar (beğendiklerini seç ya da dinle)"
 msgstr "{} · músicas de exemplo (escolha as que curte ou ouça)"
 
 msgid "Örnek şarkıları görmek için yukarıdan bir tür seç"
 msgstr "Escolha um gênero acima para ver músicas de exemplo"
+
+msgid "Örneği dinle"
+msgstr "Ouvir amostra"
+
+msgid "Seçimi kaldır"
+msgstr "Desmarcar"
+
+msgid "Seç"
+msgstr "Selecionar"
 
 msgid "İstediğin zaman Ayarlar → Zevkler'den değiştirebilirsin."
 msgstr "Você pode mudar isso quando quiser em Configurações → Gostos."
@@ -993,9 +1059,6 @@ msgstr "Um degradê suave, parado e de uma cor só"
 
 msgid "İstediğin zaman Ayarlar → Görünüm'den değiştirebilirsin."
 msgstr "Você pode mudar isso quando quiser em Configurações → Aparência."
-
-msgid "Geri"
-msgstr "Voltar"
 
 msgid "Devam"
 msgstr "Continuar"
@@ -1066,9 +1129,6 @@ msgstr "Não recomendar o artista"
 msgid "Listeden çıkar"
 msgstr "Remover da playlist"
 
-msgid "Kuyruktan çıkar"
-msgstr "Remover da fila"
-
 msgid "Listeye ekle…"
 msgstr "Adicionar à playlist…"
 
@@ -1077,6 +1137,9 @@ msgstr "Vynz Mini"
 
 msgid "Çalan bir şey yok"
 msgstr "Nada está tocando"
+
+msgid "Ana pencereyi aç"
+msgstr "Abrir janela principal"
 
 msgid "Emin misin?"
 msgstr "Tem certeza?"
@@ -1179,6 +1242,9 @@ msgstr "Removida da fila"
 
 msgid "Kuyruk temizlendi ({} şarkı)"
 msgstr "Fila limpa ({} músicas)"
+
+msgid "Karıştırma kapalı, özgün sıraya dönüldü"
+msgstr "Aleatório desativado, ordem original restaurada"
 
 msgid "akış indirilemez"
 msgstr "o stream não pode ser baixado"
@@ -1524,3 +1590,8 @@ msgstr "Singles & EPs"
 
 msgid "Benzer sanatçılar"
 msgstr "Artistas parecidos"
+
+msgid "Sıradaki {n} şarkı karıştırıldı"
+msgid_plural "Sıradaki {n} şarkı karıştırıldı"
+msgstr[0] "{n} próxima música embaralhada"
+msgstr[1] "{n} próximas músicas embaralhadas"

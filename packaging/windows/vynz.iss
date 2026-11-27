@@ -44,8 +44,9 @@ RestartApplications=no
 LicenseFile=..\..\LICENSE
 
 [Languages]
-Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
+Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"; LicenseFile: "LICENSE.tr.txt"
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Tasks]
 ; İşaretli gelir; istemeyen kaldırır
