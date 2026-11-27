@@ -518,6 +518,15 @@ msgstr "Drift"
 msgid "Durgun"
 msgstr "Still"
 
+msgid "Hale rengi"
+msgstr "Halo color"
+
+msgid "Kapaktan"
+msgstr "From cover"
+
+msgid "Yayılım"
+msgstr "Spread"
+
 msgid "Kumlanma"
 msgstr "Grain"
 

@@ -542,6 +542,9 @@ export component AppWindow inherits Window {
     in-out property <int> theme-backdrop: 0;
     // Güncelleme: 0 yok, 1 indiriliyor, 2 yeniden başlatılıyor, 3 hata
     in-out property <bool> auto-update: true;
+    // Hale: 0 kapaktan renk, 1 vurgu rengi; yayılım çarpanı 0.6–1.8
+    in-out property <int> halo-color: 0;
+    in-out property <float> halo-spread: 1.0;
     // Arayüz dili: 0 sistem, 1 Türkçe, 2 English, 3 Português (BR)
     in-out property <int> lang-index: 0;
     in property <string> app-version;
@@ -1109,7 +1112,8 @@ export component AppWindow inherits Window {
                             blur2-a: blur2-a; blur2-b: blur2-b;
                             has-a: blur2-has-a; has-b: blur2-has-b; slot-b: blur2-slot-b;
                             t: bg-motion ? amb-t : 0;
-                            level: [0.85, 1.0, 1.0][bg-level]; spread: 3.2;
+                            level: [0.85, 1.0, 1.0][bg-level]; spread: 3.2 * halo-spread;
+                            use-tint: halo-color == 1; tint: Theme.accent;
                             beat: bg-reactive ? beat : 0;
                         }
                         Cover {
@@ -2212,6 +2216,8 @@ export component AppWindow inherits Window {
                                                     blur2-a: blur2-a; blur2-b: blur2-b;
                                                     has-a: blur2-has-a; has-b: blur2-has-b; slot-b: blur2-slot-b;
                                                     t: 0; level: 0.85;
+                                                    spread: 2.6 * halo-spread;
+                                                    use-tint: halo-color == 1; tint: Theme.accent;
                                                 }
                                                 if !(has-blur2 && has-now): Rectangle {
                                                     width: parent.width * 2.6; height: parent.height * 2.6;
@@ -2235,6 +2241,31 @@ export component AppWindow inherits Window {
                                         }
                                         Text { text: item.name; font-size: 12px; horizontal-alignment: center; color: bg-style == item.id ? Theme.text-primary : Theme.text-secondary; }
                                     }
+                                }
+                                if bg-style == 4: HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    Text { text: @tr("Hale rengi"); width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
+                                    PillButton { pill-height: 30px; text: @tr("Kapaktan"); active: halo-color == 0; clicked => { halo-color = 0; root.settings-changed(); } }
+                                    PillButton { pill-height: 30px; text: @tr("Vurgu rengi"); active: halo-color == 1; clicked => { halo-color = 1; root.settings-changed(); } }
+                                }
+                                if bg-style == 4: HorizontalLayout {
+                                    spacing: 8px; alignment: start;
+                                    Text { text: @tr("Yayılım"); width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
+                                    Rectangle {
+                                        width: 220px; height: 30px;
+                                        spread-sl := Scrubber {
+                                            width: parent.width; y: (parent.height - self.height) / 2;
+                                            value: (halo-spread - 0.6) / 1.2;
+                                            live: true; wheel: true;
+                                            seek(v) => {
+                                                halo-spread = 0.6 + Math.round(v * 24) / 24 * 1.2;
+                                                if (!self.dragging) { root.settings-changed(); }
+                                            }
+                                            // sürükleme bitince kaydet (tekerlek seek içinde kaydeder)
+                                            changed dragging => { if (!self.dragging) { root.settings-changed(); } }
+                                        }
+                                    }
+                                    Text { text: Math.round(halo-spread * 100) + "%"; vertical-alignment: center; font-family: Theme.mono; font-size: 11.5px; color: Theme.text-muted; }
                                 }
                                 HorizontalLayout {
                                     spacing: 8px; alignment: start;
@@ -2697,6 +2728,8 @@ export component AppWindow inherits Window {
                             t: bg-motion && lyrics-motion ? amb-t : 0;
                             level: [0.60, 0.75, 0.90][bg-level];
                             beat: bg-reactive ? beat : 0;
+                            spread: 2.6 * halo-spread;
+                            use-tint: halo-color == 1; tint: Theme.accent;
                         }
                         cov-ta := TouchArea { }
                         Cover {
@@ -3071,6 +3104,8 @@ export component AppWindow inherits Window {
                                 t: bg-motion && lyrics-motion ? amb-t : 0;
                                 level: [0.60, 0.75, 0.90][bg-level];
                                 beat: bg-reactive ? beat : 0;
+                                spread: 2.6 * halo-spread;
+                                use-tint: halo-color == 1; tint: Theme.accent;
                             }
                             Cover {
                                 width: now-scene.cs; height: now-scene.cs; radius: Theme.r-xl;

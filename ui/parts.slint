@@ -1144,6 +1144,9 @@ export component HaloGlow inherits Rectangle {
     in property <float> beat: 0;
     // kapağa göre hale büyüklüğü
     in property <float> spread: 2.6;
+    // Vurgu rengi kipi: kapak görüntüsü yerine tek renkli yumuşak ışık
+    in property <bool> use-tint: false;
+    in property <color> tint;
     property <float> pulse: root.beat;
     animate pulse { duration: 110ms; easing: ease-out; }
     property <float> breath: 1.0 + 0.03 * (1 - Math.cos((root.t * 45.0) * 1deg));
@@ -1156,14 +1159,18 @@ export component HaloGlow inherits Rectangle {
         transform-scale: root.breath;
         opacity: Math.min(1, root.level + root.pulse * 0.15);
 
-        if root.has-a: Image {
+        if root.use-tint: Rectangle {
+            width: parent.width; height: parent.height;
+            background: @radial-gradient(circle, root.tint.with-alpha(0.8) 0%, root.tint.with-alpha(0.35) 28%, root.tint.with-alpha(0) 50%);
+        }
+        if root.has-a && !root.use-tint: Image {
             width: parent.width; height: parent.height;
             source: root.blur2-a; image-fit: cover;
             opacity: !root.slot-b ? 1 : 0;
             visible: self.opacity > 0.005;
             animate opacity { duration: 700ms; easing: ease-in-out; }
         }
-        if root.has-b: Image {
+        if root.has-b && !root.use-tint: Image {
             width: parent.width; height: parent.height;
             source: root.blur2-b; image-fit: cover;
             opacity: root.slot-b ? 1 : 0;

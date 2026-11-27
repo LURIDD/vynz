@@ -104,8 +104,12 @@ pub struct Settings {
     pub bg_reactive: bool,
     /// Ortam zemininde ince kumlanma dokusu
     pub bg_grain: bool,
-    /// Arayüz dili: "" sistem dili, "tr", "en"
+    /// Arayüz dili: "" sistem dili, "tr", "en", "pt_BR"
     pub lang: String,
+    /// Hale rengi: 0 kapaktan, 1 vurgu rengi
+    pub halo_color: i32,
+    /// Hale yayılımı çarpanı (0.6–1.8; her yerin kendi temel boyutuyla çarpılır)
+    pub halo_spread: f32,
 }
 
 impl Default for Settings {
@@ -147,6 +151,8 @@ impl Default for Settings {
             bg_reactive: false,
             bg_grain: true,
             lang: String::new(),
+            halo_color: 0,
+            halo_spread: 1.0,
         }
     }
 }

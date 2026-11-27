@@ -518,6 +518,15 @@ msgstr "Flutuar"
 msgid "Durgun"
 msgstr "Parado"
 
+msgid "Hale rengi"
+msgstr "Cor do halo"
+
+msgid "Kapaktan"
+msgstr "Da capa"
+
+msgid "Yayılım"
+msgstr "Alcance"
+
 msgid "Kumlanma"
 msgstr "Granulado"
 

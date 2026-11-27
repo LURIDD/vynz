@@ -856,12 +856,20 @@ fn set_now_ui(ui: &AppWindow, t: &TrackInfo, i: usize) {
         }
         None => ui.set_has_blur(false),
     }
-    match BLUR2S.with(|b| b.borrow().get(&t.key()).cloned()) {
+    let blur2 = BLUR2S.with(|b| b.borrow().get(&t.key()).cloned());
+    match &blur2 {
         Some(b) => {
-            ui.set_now_blur2(b);
+            ui.set_now_blur2(b.clone());
             ui.set_has_blur2(true);
         }
         None => ui.set_has_blur2(false),
+    }
+    // Kapak çok önce (listede) yüklendiyse bulanık sürümleri LRU'dan düşmüş olabilir:
+    // yeniden işlet (disk önbelleğinden), on_art çalan şarkı için hale ve zemini kurar.
+    if (blur2.is_none() || !BLURS.with(|b| b.borrow().contains_key(&t.key()))) && !t.thumb.is_empty() {
+        with_state(|st| {
+            let _ = st.art_tx.send((t.key(), t.thumb.clone()));
+        });
     }
     set_ambience(ui, PALETTES.with(|m| m.borrow().get(&t.key()).copied()));
     request_lyrics(ui, t);
@@ -4316,6 +4324,8 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_theme_accent(s.theme_accent);
     ui.set_theme_backdrop(s.theme_backdrop);
     ui.set_auto_update(s.auto_update);
+    ui.set_halo_color(s.halo_color.clamp(0, 1));
+    ui.set_halo_spread(s.halo_spread.clamp(0.6, 1.8));
     ui.set_lang_index(match s.lang.as_str() { "tr" => 1, "en" => 2, "pt_BR" => 3, _ => 0 });
     ui.set_bg_style(s.bg_style.clamp(0, 4));
     ui.set_bg_level(s.bg_level.clamp(0, 2));
@@ -4399,6 +4409,8 @@ fn apply_settings(ui: &AppWindow) {
         bg_motion: ui.get_bg_motion(),
         bg_reactive: ui.get_bg_reactive(),
         bg_grain: ui.get_bg_grain(),
+        halo_color: ui.get_halo_color().clamp(0, 1),
+        halo_spread: ui.get_halo_spread().clamp(0.6, 1.8),
         lang: ["", "tr", "en", "pt_BR"][ui.get_lang_index().clamp(0, 3) as usize].to_string(),
         ..prev
     };

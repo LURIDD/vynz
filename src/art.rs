@@ -62,6 +62,9 @@ pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
         p[3] = 255;
     }
     // blur2: 180° döndürülmüş, aydınlatılmış, merkez 1 → kenar 0 yumuşak radyal alfa.
+    // Siyah/gri ağırlıklı kapakta ortalama renk soluk kalıp zeminde kayboluyordu: soluk
+    // pikseller kapağın en canlı renginin tonuna doğru boyanır (Y4).
+    let vivid = halo_vivid(&palette, accent);
     let n = BLUR as usize;
     let mut blur2 = vec![0u8; n * n * 4];
     let center = (n as f32 - 1.0) / 2.0;
@@ -77,6 +80,7 @@ pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
             // Işık gibi parlasın: rengi koru, açıklığı 0.42–0.82 bandına kaldır (koyu kapakta
             // kontrast artırmak haleyi zeminle aynı karanlığa gömüyordu).
             let (h, sat, l) = rgb_to_hsl(src[0] as f64 / 255.0, src[1] as f64 / 255.0, src[2] as f64 / 255.0);
+            let (h, sat) = halo_tint(h, sat, vivid);
             let (r2, g2, b2) = hsl_to_rgb(h, (sat * 1.15).min(0.9), 0.42 + l * 0.4);
             for (c, v) in [r2, g2, b2].into_iter().enumerate() {
                 let d = rng.unit() - rng.unit();
@@ -187,6 +191,41 @@ fn accent_of(img: &image::RgbaImage) -> (u8, u8, u8) {
     let s = if s < 0.12 { s } else { s.max(0.45).min(0.85) };
     let (r, g, b) = hsl_to_rgb(h, s, 0.68);
     ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+}
+
+/// Hale için kapağın en canlı rengi (ton, doygunluk): paletten ya da vurgudan.
+/// Kapak tamamen griyse None (hale beyazımsı kalır).
+fn halo_vivid(palette: &[(u8, u8, u8); 3], accent: (u8, u8, u8)) -> Option<(f64, f64)> {
+    palette
+        .iter()
+        .chain(std::iter::once(&accent))
+        .map(|&(r, g, b)| rgb_to_hsl(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0))
+        // Çok koyu ya da çok açık renklerin doygunluğu yanıltıcı: orta açıklığa yakın olan önde
+        .map(|(h, s, l)| (h, s, s * (1.0 - (l - 0.5).abs() * 1.2).max(0.0)))
+        .max_by(|a, b| a.2.total_cmp(&b.2))
+        .filter(|v| v.1 >= 0.12)
+        .map(|(h, s, _)| (h, s))
+}
+
+/// Soluk pikseli canlı tona doğru çek: doygunluk 0.35'in altındaysa ton ve doygunluk
+/// canlı renge karışır (ağırlık soluklukla artar).
+fn halo_tint(h: f64, sat: f64, vivid: Option<(f64, f64)>) -> (f64, f64) {
+    const FLOOR: f64 = 0.35;
+    let Some((vh, vs)) = vivid else { return (h, sat) };
+    if sat >= FLOOR {
+        return (h, sat);
+    }
+    let w = (FLOOR - sat) / FLOOR;
+    // tonu kısa yoldan karıştır (0..1 çember)
+    let mut d = vh - h;
+    if d > 0.5 {
+        d -= 1.0;
+    } else if d < -0.5 {
+        d += 1.0;
+    }
+    let h2 = (h + d * w).rem_euclid(1.0);
+    let s2 = sat + (vs.max(0.55) - sat) * w;
+    (h2, s2)
 }
 
 fn rgb_to_hsl(r: f64, g: f64, b: f64) -> (f64, f64, f64) {
