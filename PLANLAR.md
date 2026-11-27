@@ -247,6 +247,15 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Değerlendirme:** Kaplama Slint'te aynı pencerede yapılır (ayrı pencere değil); mevcut bölümler kategorilere taşınır. Kaydırma sorunu da çözülür (her kategori kısa).
 - **Durum:** Planlandı.
 
+### F14. Hale "Kapaktan" kipinde bazı kapaklarda gökkuşağı (27 Kas 2026)
+- **Kök neden:** (1) solgun piksel kapağın canlı rengine ton çemberinde döndürülerek çekiliyordu, aradaki tonlar (mavi→kırmızı arası macenta vb.) kapakta olmayan renkler üretiyordu; (2) hale, doygunluğu 1.4× şişirilmiş görüntüden üretiliyordu, koyu/açık piksellerin yanıltıcı HSL doygunluğu ışıkta renkli lekelere dönüyordu.
+- **Durum:** DÜZELTİLDİ (27 Kas): hale işlenmemiş bulanık kapaktan, renk kroma düzleminde (vektör) karıştırılıyor, doygunluk gerçek kromadan. Önbellekteki 2277 kapakta ölçüldü: belirgin uydurma renkli kapak 728 → 10 (`art::tests::halo_rainbow_scan`, --ignored); en kötü 8 örnek gözle karşılaştırıldı.
+
+### Y12. Geçmiş sayfası (27 Kas 2026)
+- **Fikir:** En son dinlenen şarkılar için "Geçmiş": günlere göre gruplu (Bugün, Dün, Bu hafta…), satırdan çal/menü, şarkıyı geçmişten silme, tümünü temizle.
+- **Not:** Veri zaten var (`history.jsonl`: dinleme kayıtları); iş çoğunlukla arayüz. Sol çubukta ya da Profil altında giriş.
+- **Durum:** Planlandı.
+
 ### İptal
 - **Dinleme odaları:** kullanıcı iptal etti (27 Kas 2026).
 - **Windows "Kapak" zemininde çapraz çizgiler:** yalnız VM'de görülüyor (sanal GPU sürücüsü), gerçek Windows'ta yok; iş değil.

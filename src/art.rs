@@ -65,34 +65,10 @@ pub fn load(key: &str, url: &str, size: u32) -> Result<Art, String> {
     // Siyah/gri ağırlıklı kapakta ortalama renk soluk kalıp zeminde kayboluyordu: soluk
     // pikseller kapağın en canlı renginin tonuna doğru boyanır (Y4).
     let vivid = halo_vivid(&palette, accent);
-    let n = BLUR as usize;
-    let mut blur2 = vec![0u8; n * n * 4];
-    let center = (n as f32 - 1.0) / 2.0;
-    for y in 0..n {
-        for x in 0..n {
-            let src = blurred.get_pixel((n - 1 - x) as u32, (n - 1 - y) as u32);
-            let dx = (x as f32 - center) / center;
-            let dy = (y as f32 - center) / center;
-            let r = (dx * dx + dy * dy).sqrt();
-            let edge = (1.0 - r).clamp(0.0, 1.0);
-            let a = edge * edge * (3.0 - 2.0 * edge);
-            let i = (y * n + x) * 4;
-            // Işık gibi parlasın: rengi koru, açıklığı 0.42–0.82 bandına kaldır (koyu kapakta
-            // kontrast artırmak haleyi zeminle aynı karanlığa gömüyordu).
-            let (h, sat, l) = rgb_to_hsl(src[0] as f64 / 255.0, src[1] as f64 / 255.0, src[2] as f64 / 255.0);
-            let (h, sat) = halo_tint(h, sat, vivid);
-            // Renksiz (gri/beyaz) kapakta ışık beyaz bir sise dönüşüp üstündeki yazıların
-            // kontrastını düşürüyordu: açıklık tavanı daha alçak.
-            let light = if vivid.is_none() { 0.34 + l * 0.28 } else { 0.42 + l * 0.4 };
-            let (r2, g2, b2) = hsl_to_rgb(h, (sat * 1.15).min(0.9), light);
-            for (c, v) in [r2, g2, b2].into_iter().enumerate() {
-                let d = rng.unit() - rng.unit();
-                blur2[i + c] = (v as f32 * 255.0 + d).round().clamp(0.0, 255.0) as u8;
-            }
-            let da = rng.unit() - rng.unit();
-            blur2[i + 3] = (a * 255.0 + da).round().clamp(0.0, 255.0) as u8;
-        }
-    }
+    // Hale işlenmemiş (doygunluğu şişirilmemiş) bulanık kapaktan: koyu/açık piksellerin
+    // sahte doygunluğu ışıkta gökkuşağı lekeleri yapıyordu.
+    let raw = image::imageops::blur(&image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle), 10.0);
+    let blur2 = halo_layer(&raw, vivid, &mut rng);
     let (width, height) = img.dimensions();
     Ok(Art { rgba: img.into_raw(), width, height, accent, blur, blur2, palette })
 }
@@ -196,6 +172,59 @@ fn accent_of(img: &image::RgbaImage) -> (u8, u8, u8) {
     ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
+/// blur2: 180° döndürülmüş, ışık gibi aydınlatılmış, merkez 1 → kenar 0 yumuşak radyal alfa.
+fn halo_layer(src: &image::RgbaImage, vivid: Option<(f64, f64)>, rng: &mut crate::ambience::Rng) -> Vec<u8> {
+    let n = src.width() as usize;
+    let mut out = vec![0u8; n * n * 4];
+    let center = (n as f32 - 1.0) / 2.0;
+    for y in 0..n {
+        for x in 0..n {
+            let p = src.get_pixel((n - 1 - x) as u32, (n - 1 - y) as u32);
+            let dx = (x as f32 - center) / center;
+            let dy = (y as f32 - center) / center;
+            let edge = (1.0 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0);
+            let a = edge * edge * (3.0 - 2.0 * edge);
+            let i = (y * n + x) * 4;
+            let (r2, g2, b2) = halo_pixel(p[0] as f64 / 255.0, p[1] as f64 / 255.0, p[2] as f64 / 255.0, vivid);
+            for (c, v) in [r2, g2, b2].into_iter().enumerate() {
+                let d = rng.unit() - rng.unit();
+                out[i + c] = (v as f32 * 255.0 + d).round().clamp(0.0, 255.0) as u8;
+            }
+            let da = rng.unit() - rng.unit();
+            out[i + 3] = (a * 255.0 + da).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+    out
+}
+
+/// Tek hale pikseli. Renk, ton çemberinde değil kroma düzleminde (vektör) işlenir:
+/// solgun piksel kapağın canlı rengine karışırken ara tonlardan (gökkuşağı) geçmez,
+/// koyu/açık pikselin yanıltıcı HSL doygunluğu yerine gerçek kroma kullanılır.
+fn halo_pixel(r: f64, g: f64, b: f64, vivid: Option<(f64, f64)>) -> (f64, f64, f64) {
+    const GAIN: f64 = 1.6; // kroma → çıkış doygunluğu
+    let (h, _, l) = rgb_to_hsl(r, g, b);
+    let c = r.max(g).max(b) - r.min(g).min(b);
+    let ang = h * std::f64::consts::TAU;
+    let (mut u, mut v) = (c * ang.cos(), c * ang.sin());
+    if let Some((vh, vs)) = vivid {
+        // Kromu C0'ın altındaki pikseller canlı renge çekilir (ağırlık soluklukla artar).
+        const C0: f64 = 0.22;
+        if c < C0 {
+            let w = (C0 - c) / C0;
+            let tc = (vs * 1.2).min(0.85) / GAIN;
+            let va = vh * std::f64::consts::TAU;
+            u += (tc * va.cos() - u) * w;
+            v += (tc * va.sin() - v) * w;
+        }
+    }
+    let c2 = (u * u + v * v).sqrt();
+    let h2 = (v.atan2(u) / std::f64::consts::TAU).rem_euclid(1.0);
+    let sat = (c2 * GAIN).min(0.9);
+    // Işık gibi parlasın: açıklık 0.42–0.82 bandına; renksiz kapakta tavan alçak (beyaz sis olmasın).
+    let light = if vivid.is_none() { 0.34 + l * 0.28 } else { 0.42 + l * 0.4 };
+    hsl_to_rgb(h2, sat, light)
+}
+
 /// Hale için kapağın en canlı rengi (ton, doygunluk): paletten ya da vurgudan.
 /// Kapakta belirgin renk yoksa None (hale beyazımsı kalır).
 fn halo_vivid(palette: &[(u8, u8, u8); 3], accent: (u8, u8, u8)) -> Option<(f64, f64)> {
@@ -212,8 +241,9 @@ fn halo_vivid(palette: &[(u8, u8, u8); 3], accent: (u8, u8, u8)) -> Option<(f64,
         .map(|(h, s, _)| (h, s))
 }
 
-/// Soluk pikseli canlı tona doğru çek: doygunluk 0.35'in altındaysa ton ve doygunluk
+/// (Eski yöntem; yalnız karşılaştırma testinde.) Soluk pikseli canlı tona doğru çek: doygunluk 0.35'in altındaysa ton ve doygunluk
 /// canlı renge karışır (ağırlık soluklukla artar).
+#[cfg(test)]
 fn halo_tint(h: f64, sat: f64, vivid: Option<(f64, f64)>) -> (f64, f64) {
     const FLOOR: f64 = 0.35;
     let Some((vh, vs)) = vivid else { return (h, sat) };
@@ -334,6 +364,107 @@ pub fn prune(days: u64, limit: u64) {
         }
         if std::fs::remove_file(&p).is_ok() {
             total -= len;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hue_d(a: f64, b: f64) -> f64 {
+        let d = (a - b).abs().rem_euclid(1.0);
+        d.min(1.0 - d)
+    }
+
+    /// Eski hale piksel yöntemi (ton çemberinde karıştırma, şişirilmiş kaynak).
+    fn old_pixel(src: [u8; 3], vivid: Option<(f64, f64)>) -> (f64, f64, f64) {
+        let (h, sat, l) = rgb_to_hsl(src[0] as f64 / 255.0, src[1] as f64 / 255.0, src[2] as f64 / 255.0);
+        let (h, sat) = halo_tint(h, sat, vivid);
+        let light = if vivid.is_none() { 0.34 + l * 0.28 } else { 0.42 + l * 0.4 };
+        hsl_to_rgb(h, (sat * 1.15).min(0.9), light)
+    }
+
+    /// Kapakta olmayan renk oranı: belirgin renkli çıkış pikseli, ne kendi kaynağının
+    /// ne de kapağın canlı renginin tonuna yakın değilse "uydurma" sayılır.
+    fn invented(raw: &image::RgbaImage, out: &[(f64, f64, f64)], vivid: Option<(f64, f64)>) -> f64 {
+        let (mut bad, mut tot) = (0.0, 0.0);
+        for (i, p) in raw.pixels().enumerate() {
+            let (r, g, b) = (p[0] as f64 / 255.0, p[1] as f64 / 255.0, p[2] as f64 / 255.0);
+            let sc = r.max(g).max(b) - r.min(g).min(b);
+            let (sh, _, _) = rgb_to_hsl(r, g, b);
+            let (orr, og, ob) = out[i];
+            let oc = orr.max(og).max(ob) - orr.min(og).min(ob);
+            let (oh, _, _) = rgb_to_hsl(orr, og, ob);
+            tot += 1.0;
+            if oc < 0.12 {
+                continue;
+            }
+            let near_src = sc >= 0.06 && hue_d(oh, sh) < 0.11;
+            let near_viv = vivid.map(|(vh, _)| hue_d(oh, vh) < 0.11).unwrap_or(false);
+            if !near_src && !near_viv {
+                bad += oc;
+            }
+        }
+        bad / tot
+    }
+
+    /// Önbellekteki kapaklarda eski/yeni haleyi karşılaştırır.
+    /// VYNZ_COVERS=klasör VYNZ_HALO_OUT=klasör cargo test --release halo_rainbow_scan -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn halo_rainbow_scan() {
+        let dir = std::env::var("VYNZ_COVERS").expect("VYNZ_COVERS");
+        let outdir = std::env::var("VYNZ_HALO_OUT").ok();
+        let mut rows = Vec::new();
+        for e in std::fs::read_dir(&dir).unwrap().flatten() {
+            let Ok(bytes) = std::fs::read(e.path()) else { continue };
+            let Ok(img) = image::load_from_memory(&bytes) else { continue };
+            let img = img.to_rgba8();
+            let (x, y, w, h) = content_box(&img);
+            let img = image::DynamicImage::ImageRgba8(image::imageops::crop_imm(&img, x, y, w, h).to_image())
+                .resize_to_fill(160, 160, image::imageops::FilterType::Triangle)
+                .to_rgba8();
+            let accent = accent_of(&img);
+            let mut small = image::imageops::resize(&img, BLUR, BLUR, image::imageops::FilterType::Triangle);
+            let palette = crate::ambience::palette(&small, accent);
+            let vivid = halo_vivid(&palette, accent);
+            let raw = image::imageops::blur(&small, 10.0);
+            for p in small.pixels_mut() {
+                let (h, s, l) = rgb_to_hsl(p[0] as f64 / 255.0, p[1] as f64 / 255.0, p[2] as f64 / 255.0);
+                let (r, g, b) = hsl_to_rgb(h, (s * 1.4).min(0.9), 0.18 + l * 0.54);
+                *p = image::Rgba([(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255]);
+            }
+            let boosted = image::imageops::blur(&small, 10.0);
+            let old: Vec<_> = boosted.pixels().map(|p| old_pixel([p[0], p[1], p[2]], vivid)).collect();
+            let new: Vec<_> = raw.pixels().map(|p| halo_pixel(p[0] as f64 / 255.0, p[1] as f64 / 255.0, p[2] as f64 / 255.0, vivid)).collect();
+            let so = invented(&raw, &old, vivid);
+            let sn = invented(&raw, &new, vivid);
+            rows.push((so, sn, e.file_name().to_string_lossy().to_string(), img, old, new));
+        }
+        rows.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let n = rows.len() as f64;
+        let mo: f64 = rows.iter().map(|r| r.0).sum::<f64>() / n;
+        let mn: f64 = rows.iter().map(|r| r.1).sum::<f64>() / n;
+        let bo = rows.iter().filter(|r| r.0 > 0.02).count();
+        let bn = rows.iter().filter(|r| r.1 > 0.02).count();
+        println!("kapak {}: ortalama uydurma eski {:.4} yeni {:.4}; >0.02 eski {} yeni {}", rows.len(), mo, mn, bo, bn);
+        for (k, r) in rows.iter().take(16).enumerate() {
+            println!("{:2} {:.4} -> {:.4}  {}", k, r.0, r.1, r.2);
+            if let Some(od) = &outdir {
+                let b = BLUR;
+                let mut canvas = image::RgbaImage::from_pixel(160 + 2 * b * 2 + 20, 256, image::Rgba([9, 10, 13, 255]));
+                image::imageops::overlay(&mut canvas, &r.3, 0, 48);
+                for (j, px) in [&r.4, &r.5].iter().enumerate() {
+                    let big = image::RgbaImage::from_fn(b, b, |x, y| {
+                        let (rr, gg, bb) = px[(y * b + x) as usize];
+                        image::Rgba([(rr * 255.0) as u8, (gg * 255.0) as u8, (bb * 255.0) as u8, 255])
+                    });
+                    let big = image::imageops::resize(&big, b * 2, b * 2, image::imageops::FilterType::Triangle);
+                    image::imageops::overlay(&mut canvas, &big, (170 + j as u32 * (b * 2 + 10)) as i64, 0);
+                }
+                canvas.save(format!("{od}/{k:02}.png")).unwrap();
+            }
         }
     }
 }
