@@ -4316,7 +4316,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_theme_accent(s.theme_accent);
     ui.set_theme_backdrop(s.theme_backdrop);
     ui.set_auto_update(s.auto_update);
-    ui.set_lang_index(match s.lang.as_str() { "tr" => 1, "en" => 2, _ => 0 });
+    ui.set_lang_index(match s.lang.as_str() { "tr" => 1, "en" => 2, "pt_BR" => 3, _ => 0 });
     ui.set_bg_style(s.bg_style.clamp(0, 4));
     ui.set_bg_level(s.bg_level.clamp(0, 2));
     ui.set_bg_motion(s.bg_motion);
@@ -4399,7 +4399,7 @@ fn apply_settings(ui: &AppWindow) {
         bg_motion: ui.get_bg_motion(),
         bg_reactive: ui.get_bg_reactive(),
         bg_grain: ui.get_bg_grain(),
-        lang: ["", "tr", "en"][ui.get_lang_index().clamp(0, 2) as usize].to_string(),
+        lang: ["", "tr", "en", "pt_BR"][ui.get_lang_index().clamp(0, 3) as usize].to_string(),
         ..prev
     };
     with_state(|st| {
@@ -4427,9 +4427,9 @@ fn apply_settings(ui: &AppWindow) {
     });
     let s = with_state(|st| st.settings.clone());
     if s.lang != prev.lang {
-        let was = i18n::is_en();
+        let was = i18n::lang();
         i18n::set(i18n::resolve(&s.lang));
-        if was != i18n::is_en() {
+        if was != i18n::lang() {
             // Slint metinleri hemen değişir; Rust'ta kurulan metinler (raflar, bildirimler)
             // yenilenir, YouTube Music içerik dili çözücü yeniden açılınca.
             ui.set_greeting(greeting().into());
@@ -4533,11 +4533,17 @@ fn restore_session(ui: &AppWindow) {
 // ---------- Yenilikler ----------
 
 const NOTES: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/notes/v", env!("CARGO_PKG_VERSION"), ".md"));
-/// İngilizce not (notes/en/vX.Y.Z.md); yoksa boş, Türkçesi gösterilir.
+/// Çevrilmiş notlar (notes/<dil>/vX.Y.Z.md); yoksa boş.
 const NOTES_EN: &str = include_str!(concat!(env!("OUT_DIR"), "/notes_en.md"));
+const NOTES_PT_BR: &str = include_str!(concat!(env!("OUT_DIR"), "/notes_pt_BR.md"));
 
 fn notes() -> &'static str {
-    if i18n::is_en() && !NOTES_EN.trim().is_empty() { NOTES_EN } else { NOTES }
+    let pick = |x: &'static str| (!x.trim().is_empty()).then_some(x);
+    match i18n::lang() {
+        "tr" => NOTES,
+        "pt_BR" => pick(NOTES_PT_BR).or(pick(NOTES_EN)).unwrap_or(NOTES),
+        _ => pick(NOTES_EN).unwrap_or(NOTES),
+    }
 }
 const CUR_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -4573,7 +4579,7 @@ fn parse_news(md: &str) -> Vec<NewsRow> {
         if let Some(h) = line.strip_prefix("## ") {
             rows.push(NewsRow {
                 kind: 1,
-                title: if i18n::is_en() { clean_md(h.trim()).to_uppercase() } else { tr_upper(&clean_md(h.trim())) }.into(),
+                title: if i18n::is_tr() { tr_upper(&clean_md(h.trim())) } else { clean_md(h.trim()).to_uppercase() }.into(),
                 text: "".into(),
             });
         } else if let Some(rest) = line.strip_prefix("- ") {

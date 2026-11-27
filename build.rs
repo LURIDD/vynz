@@ -6,14 +6,18 @@ fn main() {
         .with_default_translation_context(slint_build::DefaultTranslationContext::None);
     slint_build::compile_with_config("ui/app.slint", cfg).expect("slint derlenemedi");
     println!("cargo:rerun-if-changed=lang");
-    // İngilizce sürüm notu isteğe bağlı: notes/en/vX.Y.Z.md yoksa boş gömülür (Türkçesi gösterilir).
+    // Çevrilmiş sürüm notları isteğe bağlı: notes/<dil>/vX.Y.Z.md yoksa boş gömülür
+    // (uygulama İngilizceye, o da yoksa Türkçeye düşer).
     let ver = std::env::var("CARGO_PKG_VERSION").unwrap();
-    let en = format!("notes/en/v{ver}.md");
-    println!("cargo:rerun-if-changed={en}");
-    println!("cargo:rerun-if-changed=notes/en");
-    let text = std::fs::read_to_string(&en).unwrap_or_default();
-    let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("notes_en.md");
-    std::fs::write(out, text).expect("notes_en.md yazılamadı");
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    for lang in ["en", "pt_BR"] {
+        let src = format!("notes/{lang}/v{ver}.md");
+        println!("cargo:rerun-if-changed={src}");
+        println!("cargo:rerun-if-changed=notes/{lang}");
+        let text = std::fs::read_to_string(&src).unwrap_or_default();
+        let out = std::path::Path::new(&out_dir).join(format!("notes_{lang}.md"));
+        std::fs::write(out, text).expect("sürüm notu yazılamadı");
+    }
     #[cfg(target_os = "windows")]
     {
         let mut res = winresource::WindowsResource::new();

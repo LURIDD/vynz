@@ -25,8 +25,18 @@ Untranslated strings fall back to Turkish.
 - `{n}` is the count in plural entries (`msgid_plural`, `msgstr[0]` singular, `msgstr[1]` plural).
 - Entries with `msgctxt` are the same Turkish word used in a different place.
 
+## Available languages
+
+| Code | Language |
+| --- | --- |
+| (source) | Turkish |
+| `en` | English |
+| `pt_BR` | Português (Brasil) |
+
 ## Adding a language
 
-Adding a language currently needs a small code change as well (language list in
-`src/i18n.rs` and the language picker in `ui/app.slint`). Open an issue, or a pull
+Adding a language needs a small code change as well: the `LANGS` list in
+`src/i18n.rs`, the picker in `ui/app.slint` (Settings → Appearance), the language
+list in `build.rs` and `.github/workflows/build.yml` (release notes), and optionally
+labels in `src/resolver.py`. Open an issue, or a pull
 request with the new `.po` file, and we'll wire it up.

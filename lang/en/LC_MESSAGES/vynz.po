@@ -446,8 +446,8 @@ msgstr "Minimize to tray on close"
 msgid "Çarpıya basınca müzik çalmaya devam eder; sistem tepsisinden geri açabilirsin."
 msgstr "Closing the window keeps the music playing; reopen it from the system tray."
 
-msgid "Arayüz dili. Sistem: bilgisayarın dili Türkçeyse Türkçe, değilse İngilizce."
-msgstr "Interface language. System: Turkish if your computer is set to Turkish, English otherwise."
+msgid "Arayüz dili. Sistem: bilgisayarın diline göre seçilir (desteklenmiyorsa İngilizce)."
+msgstr "Interface language. System: follows your computer's language (English if it isn't supported)."
 
 msgid "Sistem"
 msgstr "System"

@@ -117,15 +117,30 @@ pub fn check() -> Result<Option<Update>, String> {
 }
 
 /// Sürüm notlarındaki markdown işaretlerini sadeleştir (başlık #, kalın **, madde -/*).
-/// Sürüm notu iki dilliyse (`<!-- en -->` ayracı) arayüz diline uyan bölüm.
+/// Sürüm notu çok dilliyse (`<!-- en -->`, `<!-- pt_BR -->` ayraçları; baştaki bölüm
+/// Türkçe) arayüz diline uyan bölüm; yoksa İngilizce, o da yoksa Türkçe.
 fn localized_body(body: &str) -> String {
-    match body.split_once("<!-- en -->") {
-        Some((tr, en)) => {
-            let part = if crate::i18n::is_en() { en } else { tr };
-            part.trim().trim_end_matches("---").trim().to_string()
+    localized_for(body, crate::i18n::lang())
+}
+
+fn localized_for(body: &str, lang: &str) -> String {
+    let mut parts: Vec<(&str, &str)> = Vec::new();
+    let mut rest = body;
+    let mut cur = "tr";
+    while let Some(i) = rest.find("<!-- ") {
+        let Some(j) = rest[i..].find(" -->") else { break };
+        let code = &rest[i + 5..i + j];
+        if code.is_empty() || !code.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            break;
         }
-        None => body.to_string(),
+        parts.push((cur, &rest[..i]));
+        cur = code;
+        rest = &rest[i + j + 4..];
     }
+    parts.push((cur, rest));
+    let get = |l: &str| parts.iter().find(|(c, _)| *c == l).map(|(_, t)| *t);
+    let text = get(lang).or_else(|| if lang == "tr" { None } else { get("en") }).or_else(|| get("tr")).unwrap_or(body);
+    text.trim().trim_end_matches("---").trim().to_string()
 }
 
 fn plain_notes(md: &str) -> String {
@@ -367,6 +382,12 @@ mod tests {
         assert!(is_newer("0.2.0", "0.2.0-beta.1"));
         assert!(!is_newer("0.2.0-beta.1", "0.2.0"));
         assert!(!is_newer("çöp", "0.2.0"));
+        let b = "Türkçe\n\n---\n<!-- en -->\n\nEnglish\n\n---\n<!-- pt_BR -->\n\nPortuguês";
+        assert_eq!(localized_for(b, "tr"), "Türkçe");
+        assert_eq!(localized_for(b, "en"), "English");
+        assert_eq!(localized_for(b, "pt_BR"), "Português");
+        assert_eq!(localized_for("Türkçe\n<!-- en -->\nEnglish", "pt_BR"), "English");
+        assert_eq!(localized_for("Sadece Türkçe", "en"), "Sadece Türkçe");
         assert_eq!(plain_notes("## Yeni\n- **Ekolayzır** eklendi\n* geçiş"), "Yeni\n• Ekolayzır eklendi\n• geçiş");
     }
 }

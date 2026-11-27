@@ -542,7 +542,7 @@ export component AppWindow inherits Window {
     in-out property <int> theme-backdrop: 0;
     // Güncelleme: 0 yok, 1 indiriliyor, 2 yeniden başlatılıyor, 3 hata
     in-out property <bool> auto-update: true;
-    // Arayüz dili: 0 sistem, 1 Türkçe, 2 English
+    // Arayüz dili: 0 sistem, 1 Türkçe, 2 English, 3 Português (BR)
     in-out property <int> lang-index: 0;
     in property <string> app-version;
     in property <int> update-state: 0;
@@ -2117,8 +2117,8 @@ export component AppWindow inherits Window {
                         spacing: 10px;
                         SettingRow {
                             title: "Dil · Language";
-                            note: @tr("Arayüz dili. Sistem: bilgisayarın dili Türkçeyse Türkçe, değilse İngilizce.");
-                            for label[i] in [@tr("Sistem"), "Türkçe", "English"]: PillButton {
+                            note: @tr("Arayüz dili. Sistem: bilgisayarın diline göre seçilir (desteklenmiyorsa İngilizce).");
+                            for label[i] in [@tr("Sistem"), "Türkçe", "English", "Português (BR)"]: PillButton {
                                 pill-height: 30px; text: label; active: lang-index == i;
                                 clicked => { lang-index = i; root.settings-changed(); }
                             }

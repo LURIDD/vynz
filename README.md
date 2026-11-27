@@ -7,7 +7,7 @@ sözleri karaoke gibi gösterir. Linux ve Windows destekler.
 *A lightweight multi-source desktop music player written in Rust + Slint for
 Linux and Windows: plays from YouTube Music and SoundCloud, imports Spotify
 playlists, and shows time-synced karaoke lyrics. The interface is available in
-English and Turkish (it follows your system language; change it under Settings →
+English, Turkish and Brazilian Portuguese (it follows your system language; change it under Settings →
 Appearance → Language). Translations live in [`lang/`](lang/README.md).*
 
 ## Özellikler
@@ -88,8 +88,8 @@ cargo build --release
 
 ## Diller
 
-Arayüz Türkçe ve İngilizce. Varsayılan olarak sistem dilini izler (Türkçe değilse
-İngilizce); Ayarlar → Görünüm → Dil'den değiştirilebilir. Yeni bir dil eklemek ya da
+Arayüz Türkçe, İngilizce ve Brezilya Portekizcesi. Varsayılan olarak sistem dilini
+izler (desteklenmeyen dillerde İngilizce); Ayarlar → Görünüm → Dil'den değiştirilebilir. Yeni bir dil eklemek ya da
 çeviri düzeltmek için [`lang/README.md`](lang/README.md).
 
 ## Söz kaynakları

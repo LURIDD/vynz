@@ -184,11 +184,13 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           if [ -f "notes/${TAG}.md" ]; then
             cp "notes/${TAG}.md" release-notes.md
-            # İngilizce not varsa ayraçla eklenir; uygulama içi güncelleyici arayüz diline uyanı gösterir.
-            if [ -f "notes/en/${TAG}.md" ]; then
-              printf '\n\n---\n<!-- en -->\n\n' >> release-notes.md
-              cat "notes/en/${TAG}.md" >> release-notes.md
-            fi
+            # Çevrilmiş notlar ayraçla eklenir; uygulama içi güncelleyici arayüz diline uyanı gösterir.
+            for LANG_DIR in en pt_BR; do
+              if [ -f "notes/${LANG_DIR}/${TAG}.md" ]; then
+                printf '\n\n---\n<!-- %s -->\n\n' "$LANG_DIR" >> release-notes.md
+                cat "notes/${LANG_DIR}/${TAG}.md" >> release-notes.md
+              fi
+            done
             FLAGS="--notes-file release-notes.md"
           else
             FLAGS="--generate-notes"

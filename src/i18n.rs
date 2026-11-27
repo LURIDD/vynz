@@ -6,9 +6,15 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::OnceLock;
 
-const EN_PO: &str = include_str!("../lang/en/LC_MESSAGES/vynz.po");
+/// Desteklenen diller: (kod, gömülü .po). Kod Slint'in gömülü çeviri adıyla
+/// (lang/<kod>/) aynıdır; "tr" kaynak dildir, dosyası yok.
+const LANGS: &[(&str, &str)] = &[
+    ("tr", ""),
+    ("en", include_str!("../lang/en/LC_MESSAGES/vynz.po")),
+    ("pt_BR", include_str!("../lang/pt_BR/LC_MESSAGES/vynz.po")),
+];
 
-/// 0 Türkçe (kaynak), 1 İngilizce
+/// LANGS içindeki sıra (0 Türkçe, kaynak)
 static LANG: AtomicU8 = AtomicU8::new(0);
 
 struct Catalog {
@@ -17,33 +23,41 @@ struct Catalog {
     plural: HashMap<String, (String, String)>,
 }
 
-fn en() -> &'static Catalog {
-    static C: OnceLock<Catalog> = OnceLock::new();
-    C.get_or_init(|| parse_po(EN_PO))
+fn catalog(i: usize) -> &'static Catalog {
+    static C: OnceLock<Vec<Catalog>> = OnceLock::new();
+    &C.get_or_init(|| LANGS.iter().map(|(_, po)| parse_po(po)).collect())[i]
 }
 
-/// Ayardaki değer ("", "tr", "en") ve sistem dili ile etkin dili seç; "tr" ya da "en" döner.
+/// Ayardaki değer ("" sistem, ya da dil kodu) ve sistem dili ile etkin dil kodu.
 pub fn resolve(setting: &str) -> &'static str {
-    match setting {
-        "tr" => "tr",
-        "en" => "en",
-        _ => {
-            let sys = sys_locale::get_locale().unwrap_or_default().to_lowercase();
-            if sys.starts_with("tr") { "tr" } else { "en" }
-        }
+    if let Some((code, _)) = LANGS.iter().find(|(c, _)| *c == setting) {
+        return code;
+    }
+    let sys = sys_locale::get_locale().unwrap_or_default().to_lowercase();
+    if sys.starts_with("tr") {
+        "tr"
+    } else if sys.starts_with("pt") {
+        "pt_BR"
+    } else {
+        "en"
     }
 }
 
 /// Etkin dili ayarla (Slint çevirisi dahil).
 pub fn set(lang: &str) {
-    let en = lang == "en";
-    LANG.store(en as u8, Ordering::Relaxed);
-    // Slint: "" kaynak dil (Türkçe), "en" gömülü çeviri
-    let _ = slint::select_bundled_translation(if en { "en" } else { "" });
+    let i = LANGS.iter().position(|(c, _)| *c == lang).unwrap_or(1);
+    LANG.store(i as u8, Ordering::Relaxed);
+    // Slint: "" kaynak dil (Türkçe), diğerleri gömülü çeviri
+    let _ = slint::select_bundled_translation(if i == 0 { "" } else { LANGS[i].0 });
 }
 
-pub fn is_en() -> bool {
-    LANG.load(Ordering::Relaxed) == 1
+/// Etkin dil kodu ("tr", "en", "pt_BR").
+pub fn lang() -> &'static str {
+    LANGS[LANG.load(Ordering::Relaxed) as usize].0
+}
+
+pub fn is_tr() -> bool {
+    LANG.load(Ordering::Relaxed) == 0
 }
 
 /// Sistem bölgesi (iki harf, büyük): "en-US" -> "US". İçerik konumu için.
@@ -56,13 +70,18 @@ pub fn region() -> Option<String> {
 
 /// YouTube Music içerik dili ve bölgesi (ytmusicapi): Türkçede TR, diğerlerinde sistem bölgesi.
 pub fn content() -> (&'static str, String) {
-    if is_en() { ("en", region().unwrap_or_else(|| "US".into())) } else { ("tr", "TR".into()) }
+    match lang() {
+        "tr" => ("tr", "TR".into()),
+        "pt_BR" => ("pt", region().unwrap_or_else(|| "BR".into())),
+        _ => ("en", region().unwrap_or_else(|| "US".into())),
+    }
 }
 
 /// Tek metin çevirisi.
 pub fn t(s: &str) -> String {
-    if is_en() {
-        if let Some(x) = en().one.get(s) {
+    let i = LANG.load(Ordering::Relaxed) as usize;
+    if i > 0 {
+        if let Some(x) = catalog(i).one.get(s) {
             return x.clone();
         }
     }
@@ -71,8 +90,9 @@ pub fn t(s: &str) -> String {
 
 /// Çoğul metin: `{n}` sayıyla değişir.
 pub fn plural(s: &str, n: i64) -> String {
-    let f = if is_en() {
-        en().plural.get(s).map(|(a, b)| if n == 1 { a.as_str() } else { b.as_str() }).unwrap_or(s)
+    let i = LANG.load(Ordering::Relaxed) as usize;
+    let f = if i > 0 {
+        catalog(i).plural.get(s).map(|(a, b)| if n == 1 { a.as_str() } else { b.as_str() }).unwrap_or(s)
     } else {
         s
     };
@@ -220,11 +240,16 @@ mod tests {
     }
 
     #[test]
-    fn en_catalog_parses() {
-        let c = en();
-        assert!(c.one.len() > 300, "{}", c.one.len());
-        for (k, v) in &c.one {
-            assert_eq!(k.matches("{}").count(), v.matches("{}").count(), "yer tutucu: {k}");
+    fn catalogs_parse() {
+        for i in 1..LANGS.len() {
+            let c = catalog(i);
+            assert!(c.one.len() > 300, "{}: {}", LANGS[i].0, c.one.len());
+            for (k, v) in &c.one {
+                assert_eq!(k.matches("{}").count(), v.matches("{}").count(), "{} yer tutucu: {k}", LANGS[i].0);
+            }
+            for (k, (a, b)) in &c.plural {
+                assert!(a.contains("{n}") && b.contains("{n}"), "{} çoğul: {k}", LANGS[i].0);
+            }
         }
     }
 }

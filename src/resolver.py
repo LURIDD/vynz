@@ -99,12 +99,18 @@ def resolve(url, cookies):
     raise RuntimeError(str(last).splitlines()[0][:300] if last else "çözülemedi")
 
 
-# Arayüz İngilizceyse kart alt yazıları (raf başlıkları Rust'ta çevrilir)
-EN = {"Şarkı": "Song", "Sanatçı": "Artist", "Albüm": "Album", "Liste": "Playlist", "Single": "Single"}
+# Arayüz Türkçe değilse kart alt yazıları (raf başlıkları Rust'ta çevrilir)
+LABELS = {
+    "en": {"Şarkı": "Song", "Sanatçı": "Artist", "Albüm": "Album", "Liste": "Playlist", "Single": "Single",
+           "listeners": "{} monthly listeners", "subs": "{} subscribers"},
+    "pt": {"Şarkı": "Música", "Sanatçı": "Artista", "Albüm": "Álbum", "Liste": "Playlist", "Single": "Single",
+           "listeners": "{} ouvintes mensais", "subs": "{} inscritos"},
+    "tr": {"listeners": "Aylık {} dinleyici", "subs": "{} abone"},
+}
 
 
 def L(s):
-    return EN.get(s, s) if (os.environ.get("VYNZ_HL") or "tr") != "tr" else s
+    return LABELS.get(os.environ.get("VYNZ_HL") or "tr", LABELS["en"]).get(s, s)
 
 
 def ytmusic():
@@ -116,7 +122,7 @@ def ytmusic():
         try:
             y = YTMusic(language=hl, location=gl)
         except Exception:  # noqa: BLE001 - desteklenmeyen bölge
-            y = YTMusic(language=hl if hl in ("tr", "en") else "en", location="US" if hl != "tr" else "TR")
+            y = YTMusic(language=hl if hl in ("tr", "en", "pt") else "en", location="US" if hl != "tr" else "TR")
         local.ytm = y
     return y
 
@@ -325,11 +331,8 @@ def artist_page(y, key):
         if cards:
             shelves.append({"title": title, "style": style, "cards": cards})
     listeners = (a.get("monthlyListeners") or "").replace("Aylık kitle:", "").strip()
-    if L("Şarkı") == "Song":
-        listeners = re.sub(r"(?i)\s*monthly (audience|listeners)\s*", "", listeners)
-        sub = f"{listeners} monthly listeners" if listeners else (f"{a['subscribers']} subscribers" if a.get("subscribers") else "")
-    else:
-        sub = f"Aylık {listeners} dinleyici" if listeners else (f"{a['subscribers']} abone" if a.get("subscribers") else "")
+    listeners = re.sub(r"(?i)\s*(monthly (audience|listeners)|ouvintes mensais|público mensal)\s*", "", listeners)
+    sub = L("listeners").format(listeners) if listeners else (L("subs").format(a["subscribers"]) if a.get("subscribers") else "")
     desc = " ".join((a.get("description") or "").split())
     if len(desc) > 420:
         desc = desc[:420].rsplit(" ", 1)[0] + "…"

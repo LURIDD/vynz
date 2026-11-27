@@ -1,0 +1,1493 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: pt_BR\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Lyrics from Unison"
+msgstr "Lyrics from Unison"
+
+msgid "gönderen {}"
+msgstr "enviada por {}"
+
+msgid "KİŞİSEL KARIŞIM"
+msgstr "MIX PESSOAL"
+
+msgid "KEŞİF"
+msgstr "DESCOBERTAS"
+
+msgid "Tümünü çal"
+msgstr "Tocar tudo"
+
+msgid "Henüz seçilmedi"
+msgstr "Nada escolhido ainda"
+
+msgid "Merhaba"
+msgstr "Olá"
+
+msgid "Şarkı, sanatçı, albüm ya da bağlantı"
+msgstr "Música, artista, álbum ou link"
+
+msgid "Esc"
+msgstr "Esc"
+
+msgid "Ctrl K"
+msgstr "Ctrl K"
+
+msgid "Kuyruk"
+msgstr "Fila"
+
+msgid "Yükleniyor"
+msgstr "Carregando"
+
+msgid "Şimdi Çalıyor"
+msgstr "Tocando agora"
+
+msgid "Duraklatıldı"
+msgstr "Pausado"
+
+msgid "Senin için karışım hazır"
+msgstr "Seu mix está pronto"
+
+msgid "Ne dinlemek istersin?"
+msgstr "O que você quer ouvir?"
+
+msgid "Dinlediklerine göre seçildi; ne kadar dinlersen o kadar sana benzer."
+msgstr "Escolhido a partir do que você ouve; quanto mais você ouve, mais tem a sua cara."
+
+msgid "Bir şarkı seç ya da yukarıda ara; dinledikçe öneriler sana göre şekillenir."
+msgstr "Escolha uma música ou pesquise acima; as recomendações se adaptam a você conforme você ouve."
+
+msgid "Karışımı çal"
+msgstr "Tocar mix"
+
+msgid "Sözleri kapat"
+msgstr "Fechar letra"
+
+msgid "Sözler"
+msgstr "Letra"
+
+msgid "Radyo hazırlanıyor…"
+msgstr "Preparando rádio…"
+
+msgid "Bu şarkıdan radyo"
+msgstr "Rádio desta música"
+
+msgid "Önerileri yenile"
+msgstr "Atualizar recomendações"
+
+msgid "Önerilerin yükleniyor…"
+msgstr "Carregando suas recomendações…"
+
+msgid "Ara"
+msgstr "Buscar"
+
+msgid "Aranıyor…"
+msgstr "Buscando…"
+
+msgid "Yazmaya başla; durduğunda sonuçlar gelir. Ctrl+K ya da / ile buraya, Esc ile geri."
+msgstr "Comece a digitar; os resultados aparecem quando você para. Ctrl+K ou / para vir aqui, Esc para voltar."
+
+msgid "Tümü"
+msgstr "Tudo"
+
+msgid "Şarkılar"
+msgstr "Músicas"
+
+msgid "Albümler"
+msgstr "Álbuns"
+
+msgid "Sanatçılar"
+msgstr "Artistas"
+
+msgid "Listeler"
+msgstr "Playlists"
+
+msgid "SoundCloud…"
+msgstr "SoundCloud…"
+
+msgid "Tüm kaynaklar"
+msgstr "Todas as fontes"
+
+msgid "YTM"
+msgstr "YTM"
+
+msgid "SC"
+msgstr "SC"
+
+msgid "En iyi sonuç"
+msgstr "Melhor resultado"
+
+msgid "EN İYİ SONUÇ"
+msgstr "MELHOR RESULTADO"
+
+msgid "Şarkı bulunamadı. Başka bir şekilde yazmayı dene."
+msgstr "Nenhuma música encontrada. Tente escrever de outro jeito."
+
+msgid "Frekans & Profil"
+msgstr "Frequência & Perfil"
+
+msgid "Dinleme profilin"
+msgstr "Seu perfil de escuta"
+
+msgid "Toplam dinleme"
+msgstr "Tempo total"
+
+msgid "Bu hafta"
+msgstr "Esta semana"
+
+msgctxt "profil"
+msgid "Şarkı"
+msgstr "Músicas"
+
+msgctxt "profil"
+msgid "Sanatçı"
+msgstr "Artistas"
+
+msgctxt "profil"
+msgid "Beğeni"
+msgstr "Curtidas"
+
+msgid "Canlı spektrum"
+msgstr "Espectro ao vivo"
+
+msgid "Çalan sesin frekansları, kapağın renginde"
+msgstr "As frequências do que está tocando, nas cores da capa"
+
+msgid "Müzik çalınca burada canlanır"
+msgstr "Ganha vida quando a música toca"
+
+msgid "En çok dinlediğin sanatçılar"
+msgstr "Seus artistas mais ouvidos"
+
+msgid "Henüz yok."
+msgstr "Nada ainda."
+
+msgid "Günün saatlerine göre"
+msgstr "Por hora do dia"
+
+msgid "En çok dinlediğin şarkılar"
+msgstr "Suas músicas mais ouvidas"
+
+msgid "Liste Aktarma"
+msgstr "Importar playlist"
+
+msgid "Spotify, YouTube Music ya da SoundCloud liste bağlantısını yapıştır. Spotify şarkıları YouTube Music'te (bulunamazsa SoundCloud'da) eşleştirilir."
+msgstr "Cole o link de uma playlist do Spotify, YouTube Music ou SoundCloud. As músicas do Spotify são encontradas no YouTube Music (ou no SoundCloud, se não houver)."
+
+msgid "https://open.spotify.com/playlist/…"
+msgstr "https://open.spotify.com/playlist/…"
+
+msgid "Aktarılıyor…"
+msgstr "Importando…"
+
+msgid "Aktar"
+msgstr "Importar"
+
+msgid "Dosyadan aktar"
+msgstr "Importar de arquivo"
+
+msgid "Dosyada birden çok liste var; aktarmak istediğini seç:"
+msgstr "O arquivo tem várias playlists; escolha a que deseja importar:"
+
+msgid "Bağlantıyla Spotify'ın herkese açık listelerinden ilk 100 şarkı alınır. Gizli listeler, Beğenilen Şarkılar ve uzun listeler için: Spotify → Hesap → Gizlilik → \"Verilerini indir\"; gelen dosyadaki Playlist…json ya da YourLibrary.json'u \"Dosyadan aktar\" ile seç. Exportify / TuneMyMusic CSV dosyaları da olur."
+msgstr "Pelo link são importadas as 100 primeiras músicas de uma playlist pública do Spotify. Para playlists privadas, Músicas Curtidas e playlists longas: Spotify → Conta → Privacidade → \"Baixar seus dados\"; depois escolha Playlist…json ou YourLibrary.json com \"Importar de arquivo\". Arquivos CSV do Exportify / TuneMyMusic também funcionam."
+
+msgid "Eşleştiriliyor: {} / {}"
+msgstr "Combinando: {} / {}"
+
+msgid "Liste okunuyor…"
+msgstr "Lendo playlist…"
+
+msgid "Temizle"
+msgstr "Limpar"
+
+msgid "Aktarım silinsin mi?"
+msgstr "Descartar a importação?"
+
+msgid "Kütüphaneye kaydet ({})"
+msgstr "Salvar na biblioteca ({})"
+
+msgid "Tümü ({})"
+msgstr "Tudo ({})"
+
+msgid "Eşleşti ({})"
+msgstr "Encontradas ({})"
+
+msgid "Emin değil ({})"
+msgstr "Incertas ({})"
+
+msgid "Bulunamadı ({})"
+msgstr "Não encontradas ({})"
+
+msgid "Kapağı değiştir"
+msgstr "Trocar capa"
+
+msgid "Kapak seç"
+msgstr "Escolher capa"
+
+msgid "ÇALMA LİSTESİ"
+msgstr "PLAYLIST"
+
+msgid "Kaydet"
+msgstr "Salvar"
+
+msgid "İptal"
+msgstr "Cancelar"
+
+msgid "{n} şarkı"
+msgid_plural "{n} şarkı"
+msgstr[0] "{n} música"
+msgstr[1] "{n} músicas"
+
+msgid "Çal"
+msgstr "Tocar"
+
+msgid "Karıştır"
+msgstr "Aleatório"
+
+msgid "İndir"
+msgstr "Baixar"
+
+msgid "Yeniden adlandır"
+msgstr "Renomear"
+
+msgid "Sil"
+msgstr "Excluir"
+
+msgid "Liste içinde ara…"
+msgstr "Buscar na playlist…"
+
+msgid "Satır üzerine gel: ↑/↓ sırala · × çıkar"
+msgstr "Passe o mouse na linha: ↑/↓ reordenar · × remover"
+
+msgid "{n} eşleşme"
+msgid_plural "{n} eşleşme"
+msgstr[0] "{n} resultado"
+msgstr[1] "{n} resultados"
+
+msgid "Bu listede henüz şarkı yok. Şarkılara sağ tıklayıp \"Listeye ekle…\" diyebilirsin."
+msgstr "Ainda não há músicas nesta playlist. Clique com o botão direito numa música e escolha \"Adicionar à playlist…\"."
+
+msgid "“{}” ile eşleşen şarkı bulunamadı."
+msgstr "Nenhuma música corresponde a “{}”."
+
+msgid "ÇEVRİMDIŞI"
+msgstr "OFFLINE"
+
+msgid "İndirilenler"
+msgstr "Downloads"
+
+msgid " · internet olmadan da çalar"
+msgstr " · toca sem internet"
+
+msgid "İndiriliyor ({})"
+msgstr "Baixando ({})"
+
+msgid "Henüz indirdiğin şarkı yok. Bir şarkıya sağ tıklayıp \"İndir\" de, ya da bir listede \"İndir\" düğmesini kullan."
+msgstr "Nenhum download ainda. Clique com o botão direito numa música e escolha \"Baixar\", ou use o botão \"Baixar\" numa playlist."
+
+msgid "KÜTÜPHANE"
+msgstr "BIBLIOTECA"
+
+msgid "Beğendiklerim"
+msgstr "Curtidas"
+
+msgid "Tümünü indir"
+msgstr "Baixar tudo"
+
+msgid "Henüz beğendiğin şarkı yok. Çalarken kalp simgesine basarak ekleyebilirsin."
+msgstr "Você ainda não curtiu nenhuma música. Toque no coração enquanto uma música toca para adicioná-la."
+
+msgid "Ayarlar"
+msgstr "Configurações"
+
+msgid "Çalma & Ses"
+msgstr "Reprodução & Áudio"
+
+msgid "Görünüm"
+msgstr "Aparência"
+
+msgid "Zevkler"
+msgstr "Gostos"
+
+msgid "Önbellek & Ağ"
+msgstr "Cache & Rede"
+
+msgid "Kaynaklar & Hakkında"
+msgstr "Fontes & Sobre"
+
+msgid "Liste bitince"
+msgstr "Quando a fila acabar"
+
+msgid "Kuyruk bittiğinde çalan şarkının radyosundan (benzer şarkılar) devam et."
+msgstr "Quando a fila acabar, continuar com uma rádio da última música (músicas parecidas)."
+
+msgid "Radyo"
+msgstr "Rádio"
+
+msgid "Dur"
+msgstr "Parar"
+
+msgid "Ses seviyesi dengeleme"
+msgstr "Normalização de volume"
+
+msgid "Farklı şarkılar arasındaki ani ses yüksekliği farklarını yumuşatır (dynaudnorm)."
+msgstr "Suaviza diferenças bruscas de volume entre as músicas (dynaudnorm)."
+
+msgid "Açık"
+msgstr "Ligado"
+
+msgid "Kapalı"
+msgstr "Desligado"
+
+msgid "Çapraz geçiş"
+msgstr "Crossfade"
+
+msgid "Şarkı biterken sıradakiyle üst üste binerek yumuşakça geçer (Önceden hazırlama açık olmalı). Kapalıyken boşluksuz geçiş."
+msgstr "Mistura com a próxima música quando a atual termina (requer Pré-carregamento). Desligado, a transição é sem pausa."
+
+msgid "3 sn"
+msgstr "3 s"
+
+msgid "5 sn"
+msgstr "5 s"
+
+msgid "8 sn"
+msgstr "8 s"
+
+msgid "12 sn"
+msgstr "12 s"
+
+msgid "Ekolayzır"
+msgstr "Equalizador"
+
+msgid "10 bant. Sürgüyü sürükle, çift tıkla sıfırla."
+msgstr "10 bandas. Arraste o controle, clique duas vezes para zerar."
+
+msgid "Düz"
+msgstr "Plano"
+
+msgid "Bas"
+msgstr "Graves"
+
+msgid "Tiz"
+msgstr "Agudos"
+
+msgid "Vokal"
+msgstr "Vocal"
+
+msgid "Rap"
+msgstr "Rap"
+
+msgid "Elektronik"
+msgstr "Eletrônica"
+
+msgid "Akustik"
+msgstr "Acústico"
+
+msgid "Rock"
+msgstr "Rock"
+
+msgid "Gece"
+msgstr "Noite"
+
+msgid "Özel"
+msgstr "Personalizado"
+
+msgid "1k"
+msgstr "1k"
+
+msgid "2k"
+msgstr "2k"
+
+msgid "4k"
+msgstr "4k"
+
+msgid "8k"
+msgstr "8k"
+
+msgid "16k"
+msgstr "16k"
+
+msgid "Discord'da göster"
+msgstr "Mostrar no Discord"
+
+msgid "Çalan şarkıyı Discord profilinde \"Dinliyor\" olarak gösterir. Discord kapalıysa sessizce bekler."
+msgstr "Mostra a música atual como \"Ouvindo\" no seu perfil do Discord. Se o Discord estiver fechado, espera em silêncio."
+
+msgid "Önceden hazırlama"
+msgstr "Pré-carregamento"
+
+msgid "Sıradaki ve üzerine gelinen şarkıları arka planda hazırlar (pilde/kotalıda sınırlı)."
+msgstr "Prepara em segundo plano a próxima música e as que você passa o mouse (limitado na bateria ou em conexão limitada)."
+
+msgid "İleri okuma"
+msgstr "Buffer à frente"
+
+msgid "Çalan şarkının ne kadar önden tamponlanacağı."
+msgstr "Quanto da música atual é carregado antecipadamente."
+
+msgid "30 sn"
+msgstr "30 s"
+
+msgid "1 dk"
+msgstr "1 min"
+
+msgid "2 dk"
+msgstr "2 min"
+
+msgid "Sınırsız"
+msgstr "Ilimitado"
+
+msgid "Kapatınca tepsiye in"
+msgstr "Minimizar para a bandeja ao fechar"
+
+msgid "Çarpıya basınca müzik çalmaya devam eder; sistem tepsisinden geri açabilirsin."
+msgstr "Ao fechar a janela a música continua tocando; reabra pela bandeja do sistema."
+
+msgid "Arayüz dili. Sistem: bilgisayarın diline göre seçilir (desteklenmiyorsa İngilizce)."
+msgstr "Idioma da interface. Sistema: segue o idioma do computador (inglês, se não houver suporte)."
+
+msgid "Sistem"
+msgstr "Sistema"
+
+msgid "Vurgu rengi"
+msgstr "Cor de destaque"
+
+msgid "Otomatik: çalan şarkının kapağından alınır. Ya da sabit bir renk seç."
+msgstr "Automático: tirada da capa da música atual. Ou escolha uma cor fixa."
+
+msgid "Otomatik"
+msgstr "Automático"
+
+msgid "Zemin"
+msgstr "Fundo"
+
+msgid "OLED siyah"
+msgstr "Preto OLED"
+
+msgid "Lacivert"
+msgstr "Azul-marinho"
+
+msgid "Mor"
+msgstr "Roxo"
+
+msgid "Grafit"
+msgstr "Grafite"
+
+msgid "Arka plan ışığı"
+msgstr "Luz de fundo"
+
+msgid "Ana sayfada ve sözlerde, çalan şarkının kapak renklerinden süzülen yumuşak ışık."
+msgstr "Uma luz suave tirada das cores da capa da música atual, na página inicial e na letra."
+
+msgid "Stil"
+msgstr "Estilo"
+
+msgid "Kapak"
+msgstr "Capa"
+
+msgid "Sıvı kapak"
+msgstr "Capa líquida"
+
+msgid "Hale"
+msgstr "Halo"
+
+msgid "Renk lekeleri"
+msgstr "Manchas de cor"
+
+msgid "Sade"
+msgstr "Simples"
+
+msgid "Yoğunluk"
+msgstr "Intensidade"
+
+msgid "Orta"
+msgstr "Médio"
+
+msgid "Canlı"
+msgstr "Vivo"
+
+msgid "Hareket"
+msgstr "Movimento"
+
+msgid "Süzülsün"
+msgstr "Flutuar"
+
+msgid "Durgun"
+msgstr "Parado"
+
+msgid "Kumlanma"
+msgstr "Granulado"
+
+msgid "Müziğe tepki"
+msgstr "Reagir à música"
+
+msgid "Baslarda ışık nabız atar (cava gerekir)"
+msgstr "A luz pulsa com os graves (requer cava)"
+
+msgid "Müzik zevklerin"
+msgstr "Seus gostos musicais"
+
+msgid " · Yalnızca Ana Sayfa önerilerini besler; başlattığın radyoları etkilemez."
+msgstr " · Só alimenta as recomendações do Início; não afeta as rádios que você inicia."
+
+msgid "Zevkleri düzenle"
+msgstr "Editar gostos"
+
+msgid "Öneri profilini sıfırla"
+msgstr "Redefinir perfil de recomendações"
+
+msgid "Zevkleri, \"Bunu daha çok öner\" ve \"İlgilenmiyorum\" seçimlerini siler. Dinleme geçmişin ve beğenilerin korunur."
+msgstr "Apaga seus gostos e as escolhas \"Recomendar mais como esta\" e \"Não tenho interesse\". Seu histórico e suas curtidas são mantidos."
+
+msgid "Sıfırla"
+msgstr "Redefinir"
+
+msgid "Emin misin? Sıfırla"
+msgstr "Tem certeza? Redefinir"
+
+msgid "Dinleme geçmişini de temizle"
+msgstr "Limpar também o histórico"
+
+msgid "Tamamen sıfırdan başla: öneri profiliyle birlikte dinleme geçmişi ve istatistikler silinir. Beğendiklerin korunur; 8 sn içinde geri alınabilir."
+msgstr "Começar do zero: o histórico e as estatísticas são apagados junto com o perfil de recomendações. As músicas curtidas são mantidas; dá para desfazer em até 8 s."
+
+msgid "Evet, hepsini sil"
+msgstr "Sim, apagar tudo"
+
+msgid "Önerilmeyen sanatçılar ({})"
+msgstr "Artistas ocultos ({})"
+
+msgid "Kaldır"
+msgstr "Remover"
+
+msgid "İlgilenmediğin şarkılar ({})"
+msgstr "Músicas sem interesse ({})"
+
+msgid "Ses önbelleği ({})"
+msgstr "Cache de áudio ({})"
+
+msgid "20 sn üzeri dinlenen şarkılar diske kaydedilir; tekrar açılışta anında ve çevrimdışı çalar."
+msgstr "Músicas ouvidas por mais de 20 s são salvas no disco e da próxima vez tocam na hora, até offline."
+
+msgid "1 GB"
+msgstr "1 GB"
+
+msgid "2 GB"
+msgstr "2 GB"
+
+msgid "5 GB"
+msgstr "5 GB"
+
+msgid "10 GB"
+msgstr "10 GB"
+
+msgid "Önbelleği sil?"
+msgstr "Limpar o cache?"
+
+msgid "Dinlenmeyenleri sil"
+msgstr "Remover não tocadas"
+
+msgid "Bu süre çalınmayan önbellek dosyaları otomatik temizlenir."
+msgstr "Arquivos do cache não tocados por esse tempo são removidos automaticamente."
+
+msgid "14 gün"
+msgstr "14 dias"
+
+msgid "30 gün"
+msgstr "30 dias"
+
+msgid "90 gün"
+msgstr "90 dias"
+
+msgid "Silme"
+msgstr "Nunca"
+
+msgid "Arka plan indirme hızı"
+msgstr "Velocidade de download em segundo plano"
+
+msgid "Başka programlar ağı yoğun kullanıyorsa bekler; kotalı bağlantıda indirmez."
+msgstr "Espera quando outros programas estão usando muito a rede; não baixa em conexão limitada."
+
+msgid "256 KB/sn"
+msgstr "256 KB/s"
+
+msgid "512 KB/sn"
+msgstr "512 KB/s"
+
+msgid "1 MB/sn"
+msgstr "1 MB/s"
+
+msgid "Yeni sürüm çıkınca açılışta kendiliğinden indirilip kurulur, uygulama yeniden açılır."
+msgstr "Quando sai uma nova versão, ela é baixada e instalada ao abrir, e o app reinicia."
+
+msgid "Yenilikleri göster"
+msgstr "Ver novidades"
+
+msgid "Denetleniyor…"
+msgstr "Verificando…"
+
+msgid "Güncellemeleri denetle"
+msgstr "Verificar atualizações"
+
+msgid "Elle"
+msgstr "Manual"
+
+msgid "YouTube Music girişi"
+msgstr "Login do YouTube Music"
+
+msgid "Premium hesapta ~260 kbps ses kalitesi için Firefox çerezini kullanır; girişsiz ~140 kbps."
+msgstr "Usa os cookies do Firefox para áudio de ~260 kbps com conta Premium; sem login, ~140 kbps."
+
+msgid "Girişsiz"
+msgstr "Sem login"
+
+msgid "Firefox oturumu"
+msgstr "Sessão do Firefox"
+
+msgid "Çözücü ortamı"
+msgstr "Ambiente do resolvedor"
+
+msgid "Güncelleniyor…"
+msgstr "Atualizando…"
+
+msgid "yt-dlp güncelle"
+msgstr "Atualizar yt-dlp"
+
+msgid "Aktif kaynaklar"
+msgstr "Fontes ativas"
+
+msgid " · çalma"
+msgstr " · reprodução"
+
+msgid " · aktarma"
+msgstr " · importação"
+
+msgid "Söz kaynakları: Unison (hece zamanlı TTML) → YouTube Music → LRCLIB · Vynz v0.1.0 (MIT)"
+msgstr "Fontes de letras: Unison (TTML sincronizado por sílaba) → YouTube Music → LRCLIB · Vynz (MIT)"
+
+msgid "Bu ekran sonraki aşamada"
+msgstr "Esta tela vem depois"
+
+msgid "Şu an ana sayfa, arama ve oynatma hazır."
+msgstr "Por enquanto, início, busca e reprodução estão prontos."
+
+msgid "Albüm"
+msgstr "Álbum"
+
+msgid "Sanatçı"
+msgstr "Artista"
+
+msgid "Liste"
+msgstr "Playlist"
+
+msgid "Yükleniyor…"
+msgstr "Carregando…"
+
+msgid "Listelerim'e kaydet"
+msgstr "Salvar em Minhas playlists"
+
+msgid "Ruh hâli ve türler"
+msgstr "Climas e gêneros"
+
+msgid "Listeler getiriliyor…"
+msgstr "Carregando playlists…"
+
+msgid "Sanatçı radyosu"
+msgstr "Rádio do artista"
+
+msgid "Popüler"
+msgstr "Populares"
+
+msgid "Daha az"
+msgstr "Mostrar menos"
+
+msgid "Tümünü göster ({})"
+msgstr "Mostrar tudo ({})"
+
+msgid "Hakkında"
+msgstr "Sobre"
+
+msgid "Çalan yok"
+msgstr "Nada tocando"
+
+msgid "−0.5 sn"
+msgstr "−0,5 s"
+
+msgid "{} sn"
+msgstr "{} s"
+
+msgid "+0.5 sn"
+msgstr "+0,5 s"
+
+msgid "Kaynak: {}"
+msgstr "Fonte: {}"
+
+msgid " · satıra tıkla, oraya atla"
+msgstr " · clique numa linha para pular até ela"
+
+msgid "Kaldığı yere dön"
+msgstr "Voltar à linha atual"
+
+msgid "Bu şarkının sözleri zamanlı değil."
+msgstr "A letra desta música não é sincronizada."
+
+msgid "Bu şarkının sözleri bulunamadı"
+msgstr "Letra não encontrada para esta música"
+
+msgid "Enstrümantal olabilir ya da söz kaynaklarında henüz yok. Arkana yaslan, müziğin tadını çıkar."
+msgstr "Pode ser instrumental, ou as fontes de letras ainda não a têm. Relaxe e curta a música."
+
+msgid "Sözleri web'de ara"
+msgstr "Buscar a letra na web"
+
+msgid "Sıradakine geç"
+msgstr "Pular para a próxima"
+
+msgid "Sırada"
+msgstr "A seguir"
+
+msgid "Bir şarkı çaldığında sözleri burada akar."
+msgstr "Quando uma música tocar, a letra aparece aqui."
+
+msgid "Kelime kelime dolan satırlar, istersen çevirisiyle."
+msgstr "Linhas que se preenchem palavra por palavra, com tradução se quiser."
+
+msgid "Beğenildi"
+msgstr "Curtida"
+
+msgid "Beğen"
+msgstr "Curtir"
+
+msgid "Sözleri göster"
+msgstr "Mostrar letra"
+
+msgid "Sözler hazır, görmek için tıkla"
+msgstr "A letra está pronta, clique para ver"
+
+msgid "Yazı stili"
+msgstr "Estilo da fonte"
+
+msgid "Modern"
+msgstr "Moderno"
+
+msgid "Klasik"
+msgstr "Clássico"
+
+msgid "Aa"
+msgstr "Aa"
+
+msgid "Boyut"
+msgstr "Tamanho"
+
+msgid "Küçük"
+msgstr "Pequeno"
+
+msgid "Büyük"
+msgstr "Grande"
+
+msgid "Satır aralığı"
+msgstr "Espaçamento"
+
+msgid "Sıkı"
+msgstr "Justo"
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Geniş"
+msgstr "Amplo"
+
+msgid "Hizalama"
+msgstr "Alinhamento"
+
+msgid "Sola"
+msgstr "Esquerda"
+
+msgid "Ortaya"
+msgstr "Centro"
+
+msgid "Çeviri"
+msgstr "Tradução"
+
+msgid "Türkçe"
+msgstr "Turco"
+
+msgid "English"
+msgstr "Inglês"
+
+msgid "Hareketli"
+msgstr "Animado"
+
+msgid "vynz"
+msgstr "vynz"
+
+msgid "Ana Sayfa"
+msgstr "Início"
+
+msgid "Listelerim"
+msgstr "Minhas playlists"
+
+msgid "Yeni liste"
+msgstr "Nova playlist"
+
+msgid "{} indiriliyor…"
+msgstr "Baixando {}…"
+
+msgid "{n} şarkı · çevrimdışı"
+msgid_plural "{n} şarkı · çevrimdışı"
+msgstr[0] "{n} música · offline"
+msgstr[1] "{n} músicas · offline"
+
+msgid "+ ile oluştur ya da aktar"
+msgstr "Crie ou importe com +"
+
+msgid "Mini oynatıcı"
+msgstr "Miniplayer"
+
+msgid "Profil"
+msgstr "Perfil"
+
+msgid "Radyo…"
+msgstr "Rádio…"
+
+msgid "Radyo başlat"
+msgstr "Iniciar rádio"
+
+msgid "Kuyruk silinsin mi?"
+msgstr "Limpar a fila?"
+
+msgid "Sıralamak için sürükle"
+msgstr "Arraste para reordenar"
+
+msgid "Kuyruk boş."
+msgstr "A fila está vazia."
+
+msgid "Geri al"
+msgstr "Desfazer"
+
+msgid "Sürgüyü sürükle, çift tıkla sıfırla."
+msgstr "Arraste o controle, clique duas vezes para zerar."
+
+msgid "Uyku zamanlayıcısı"
+msgstr "Timer para dormir"
+
+msgid "Bu şarkı bitince duracak."
+msgstr "A reprodução para quando esta música terminar."
+
+msgid "Kalan {} · ses yavaşça kısılıp durur."
+msgstr "Faltam {} · o volume diminui aos poucos e a reprodução para."
+
+msgid "Süre dolunca ses yavaşça kısılır ve çalma durur."
+msgstr "Quando o tempo acabar, o volume diminui aos poucos e a reprodução para."
+
+msgid "{} dk"
+msgstr "{} min"
+
+msgid "{} sa"
+msgstr "{} h"
+
+msgid "Şarkı bitince"
+msgstr "Fim da música"
+
+msgid "Kapat"
+msgstr "Fechar"
+
+msgid "Liste silinsin mi?"
+msgstr "Excluir a playlist?"
+
+msgid "“{}” ({} şarkı) kütüphaneden kaldırılacak. Bu işlem geri alınamaz."
+msgstr "“{}” ({} músicas) será removida da biblioteca. Isso não pode ser desfeito."
+
+msgid "Vazgeç"
+msgstr "Cancelar"
+
+msgid "Listeye ekle"
+msgstr "Adicionar à playlist"
+
+msgid "Liste adı, Enter ile oluştur"
+msgstr "Nome da playlist, Enter para criar"
+
+msgid "Yeni liste oluştur"
+msgstr "Criar nova playlist"
+
+msgid "Oluştur"
+msgstr "Criar"
+
+msgid "Bu şarkı zaten burada"
+msgstr "Esta música já está aqui"
+
+msgid "Yeni çalma listesi"
+msgstr "Nova playlist"
+
+msgid "Örn. Gece sürüşü…"
+msgstr "Ex.: Estrada à noite…"
+
+msgid "Müzik zevklerini seç"
+msgstr "Escolha seus gostos musicais"
+
+msgid "Bir türe tıkla, altta o türden örnek şarkılar gelsin; beğendiklerini seç. Yalnızca Ana Sayfa önerilerini besler, başlattığın radyoları etkilemez."
+msgstr "Clique num gênero para ver músicas de exemplo abaixo e escolha as que você curte. Isso só alimenta as recomendações do Início e não afeta as rádios que você inicia."
+
+msgid "{} · örnek şarkılar (beğendiklerini seç ya da dinle)"
+msgstr "{} · músicas de exemplo (escolha as que curte ou ouça)"
+
+msgid "Örnek şarkıları görmek için yukarıdan bir tür seç"
+msgstr "Escolha um gênero acima para ver músicas de exemplo"
+
+msgid "İstediğin zaman Ayarlar → Zevkler'den değiştirebilirsin."
+msgstr "Você pode mudar isso quando quiser em Configurações → Gostos."
+
+msgid "Şimdilik geç"
+msgstr "Pular por agora"
+
+msgid "Görünümünü seç"
+msgstr "Escolha o visual"
+
+msgid "Ana sayfada ve söz ekranında arka planın nasıl görüneceğini seç."
+msgstr "Escolha como o fundo aparece na página inicial e na tela de letras."
+
+msgid "Çalan şarkının kapağı, bulanık ve canlı"
+msgstr "A capa da música atual, desfocada e viva"
+
+msgid "Kapak renkleri akışkan katmanlarla karışır"
+msgstr "As cores da capa se misturam em camadas fluidas"
+
+msgid "Kapağın arkasından taşan ışık"
+msgstr "Luz saindo por trás da capa"
+
+msgid "Kapak renklerinden süzülen ışık lekeleri"
+msgstr "Manchas de luz tiradas das cores da capa"
+
+msgid "Hareketsiz, tek renkli yumuşak degrade"
+msgstr "Um degradê suave, parado e de uma cor só"
+
+msgid "İstediğin zaman Ayarlar → Görünüm'den değiştirebilirsin."
+msgstr "Você pode mudar isso quando quiser em Configurações → Aparência."
+
+msgid "Geri"
+msgstr "Voltar"
+
+msgid "Devam"
+msgstr "Continuar"
+
+msgid "YENİLİKLER"
+msgstr "NOVIDADES"
+
+msgid "Görünümü dene"
+msgstr "Experimentar o visual"
+
+msgid "Harika"
+msgstr "Ótimo"
+
+msgid "Yeniden başlatılıyor…"
+msgstr "Reiniciando…"
+
+msgid "Güncelleme kurulamadı"
+msgstr "Falha na atualização"
+
+msgid "Vynz güncelleniyor"
+msgstr "Atualizando o Vynz"
+
+msgid "İndiriliyor… %{}"
+msgstr "Baixando… {}%"
+
+msgid "Doğrulanıyor ve kuruluyor…"
+msgstr "Verificando e instalando…"
+
+msgid "Bu sürümü atla"
+msgstr "Pular esta versão"
+
+msgid "GitHub'da aç"
+msgstr "Abrir no GitHub"
+
+msgid "Yeniden dene"
+msgstr "Tentar de novo"
+
+msgid "Şimdi değil"
+msgstr "Agora não"
+
+msgid "Sanatçıya git"
+msgstr "Ir para o artista"
+
+msgid "Şimdi çal"
+msgstr "Tocar agora"
+
+msgid "Sıradaki çal"
+msgstr "Tocar a seguir"
+
+msgid "Kuyruğa ekle"
+msgstr "Adicionar à fila"
+
+msgid "İndirilenlerden kaldır"
+msgstr "Remover dos downloads"
+
+msgid "Daha çok önermeyi bırak"
+msgstr "Parar de recomendar mais"
+
+msgid "Bunu daha çok öner"
+msgstr "Recomendar mais como esta"
+
+msgid "İlgilenmiyorum"
+msgstr "Não tenho interesse"
+
+msgid "Sanatçıyı önerme"
+msgstr "Não recomendar o artista"
+
+msgid "Listeden çıkar"
+msgstr "Remover da playlist"
+
+msgid "Kuyruktan çıkar"
+msgstr "Remover da fila"
+
+msgid "Listeye ekle…"
+msgstr "Adicionar à playlist…"
+
+msgid "Vynz Mini"
+msgstr "Vynz Mini"
+
+msgid "Çalan bir şey yok"
+msgstr "Nada está tocando"
+
+msgid "Emin misin?"
+msgstr "Tem certeza?"
+
+msgid "Eşleşti"
+msgstr "Encontrada"
+
+msgid "Emin değil"
+msgstr "Incerta"
+
+msgid "Bulunamadı"
+msgstr "Não encontrada"
+
+msgid "Hazır"
+msgstr "Pronto"
+
+msgid "Karşılığı bulunamadı"
+msgstr "Nenhuma correspondência"
+
+msgid "Değiştir"
+msgstr "Trocar"
+
+msgid "Spotify sayfası açılamadı: {}"
+msgstr "Não foi possível abrir a página do Spotify: {}"
+
+msgid "Spotify sayfa biçimi değişmiş (veri yok); liste gizli olabilir"
+msgstr "O formato da página do Spotify mudou (sem dados); a playlist pode ser privada"
+
+msgid "Liste boş ya da gizli"
+msgstr "A playlist está vazia ou é privada"
+
+msgid "Spotify listesi"
+msgstr "Playlist do Spotify"
+
+msgid "Aktarılan liste"
+msgstr "Playlist importada"
+
+msgid "Bu bağlantı tanınmadı. Spotify, YouTube Music ya da SoundCloud liste bağlantısı yapıştır."
+msgstr "Link não reconhecido. Cole o link de uma playlist do Spotify, YouTube Music ou SoundCloud."
+
+msgid "Dosya okunamadı: {}"
+msgstr "Não foi possível ler o arquivo: {}"
+
+msgid "Dosyada şarkı bulunamadı. Spotify dışa aktarımındaki Playlist/YourLibrary JSON dosyalarını ya da bir CSV seç."
+msgstr "Nenhuma música encontrada no arquivo. Escolha um JSON Playlist/YourLibrary da exportação de dados do Spotify, ou um CSV."
+
+msgid "JSON okunamadı: {}"
+msgstr "Não foi possível ler o JSON: {}"
+
+msgid "Beğenilen Şarkılar (Spotify)"
+msgstr "Músicas Curtidas (Spotify)"
+
+msgid "Bu JSON dosyası tanınmadı (Spotify Playlist ya da YourLibrary dosyası değil)."
+msgstr "Arquivo JSON não reconhecido (não é um arquivo Playlist ou YourLibrary do Spotify)."
+
+msgid "CSV boş"
+msgstr "O CSV está vazio"
+
+msgid "CSV'de şarkı adı sütunu bulunamadı"
+msgstr "Nenhuma coluna de título de música no CSV"
+
+msgid "Geri alındı"
+msgstr "Desfeito"
+
+msgid "Çevriliyor…"
+msgstr "Traduzindo…"
+
+msgid "Şarkı zaten Türkçe"
+msgstr "A música já está em turco"
+
+msgid "Şarkı zaten bu dilde"
+msgstr "A música já está neste idioma"
+
+msgid "Çeviri alınamadı"
+msgstr "Falha na tradução"
+
+msgid "Yaş doğrulaması gerekiyor, atlandı: {}"
+msgstr "Verificação de idade necessária, pulada: {}"
+
+msgid "akış ilerlemedi"
+msgstr "o stream travou"
+
+msgid "Çalınamadı: {}"
+msgstr "Não foi possível tocar: {}"
+
+msgid "YouTube Music'te karşılığı bulunamadı"
+msgstr "Nenhuma correspondência no YouTube Music"
+
+msgid "radyo zaman aşımı"
+msgstr "a rádio demorou demais"
+
+msgid "“{}” radyosu hazırlanıyor…"
+msgstr "Preparando a rádio de “{}”…"
+
+msgid "Radyo alınamadı: {}"
+msgstr "Não foi possível carregar a rádio: {}"
+
+msgid "Kuyruktan çıkarıldı"
+msgstr "Removida da fila"
+
+msgid "Kuyruk temizlendi ({} şarkı)"
+msgstr "Fila limpa ({} músicas)"
+
+msgid "akış indirilemez"
+msgstr "o stream não pode ser baixado"
+
+msgid "İndiriliyor…"
+msgstr "Baixando…"
+
+msgid "{} şarkı indiriliyor…"
+msgstr "Baixando {} músicas…"
+
+msgid "SoundCloud şarkıları şimdilik indirilemiyor"
+msgstr "Ainda não dá para baixar músicas do SoundCloud"
+
+msgid "Zaten indirilmiş"
+msgstr "Já baixada"
+
+msgid "İndirilemedi: {}"
+msgstr "Falha no download: {}"
+
+msgid "İndirilenlerden kaldırıldı"
+msgstr "Removida dos downloads"
+
+msgid "Beğendiklerine eklendi"
+msgstr "Adicionada às músicas curtidas"
+
+msgid "Beğendiklerinden çıkarıldı"
+msgstr "Removida das músicas curtidas"
+
+msgid "Sıradaki: {}"
+msgstr "A seguir: {}"
+
+msgid "Kuyruğa eklendi: {}"
+msgstr "Adicionada à fila: {}"
+
+msgid "Benzerleri daha sık önerilecek; ana sayfa yenilenince görünür"
+msgstr "Músicas parecidas serão recomendadas com mais frequência; você verá quando o Início atualizar"
+
+msgid "Artık öne çıkarılmıyor"
+msgstr "Não está mais em destaque"
+
+msgid "Listeden çıkarıldı"
+msgstr "Removida da playlist"
+
+msgid "Artık önerilmeyecek: {}"
+msgstr "Não será mais recomendada: {}"
+
+msgid "Artık önerilmeyecek sanatçı: {} · kuyruktan {} şarkı çıkarıldı"
+msgstr "Artista não será mais recomendado: {} · {} músicas removidas da fila"
+
+msgid "Artık önerilmeyecek sanatçı: {}"
+msgstr "Artista não será mais recomendado: {}"
+
+msgid "Kuyrukta başka uygun şarkı kalmadı"
+msgstr "Não há outra música adequada na fila"
+
+msgid "'{}' oluşturuldu ve şarkı eklendi"
+msgstr "'{}' criada e música adicionada"
+
+msgid "'{}' listesine eklendi"
+msgstr "Adicionada a '{}'"
+
+msgid "Zaten '{}' listesinde"
+msgstr "Já está em '{}'"
+
+msgid "{} ve benzerleri"
+msgstr "{} e parecidos"
+
+msgid "Çünkü {} dinliyorsun"
+msgstr "Porque você ouve {}"
+
+msgid "Günaydın"
+msgstr "Bom dia"
+
+msgid "İyi günler"
+msgstr "Boa tarde"
+
+msgid "İyi akşamlar"
+msgstr "Boa noite"
+
+msgid "İyi geceler"
+msgstr "Boa noite"
+
+msgid "{} ve daha fazlası"
+msgstr "{} e mais"
+
+msgid "Yeni keşifler"
+msgstr "Novas descobertas"
+
+msgid "{} karışım"
+msgstr "Mix {}"
+
+msgid "Öneriler alınamadı: {}"
+msgstr "Não foi possível carregar as recomendações: {}"
+
+msgid "Sanatçı açılamadı: {}"
+msgstr "Não foi possível abrir o artista: {}"
+
+msgid "Açılamadı: {}"
+msgstr "Não foi possível abrir: {}"
+
+msgid "“{}” Listelerim'e kaydedildi"
+msgstr "“{}” salva em Minhas playlists"
+
+msgid "Şarkı · {}"
+msgstr "Música · {}"
+
+msgid "Arama hatası: {}"
+msgstr "Erro na busca: {}"
+
+msgid " · Spotify ilk 100 şarkıyı verdi"
+msgstr " · o Spotify só retornou as 100 primeiras músicas"
+
+msgid " · {} şarkı kaynakta artık yok, atlandı"
+msgstr " · {} músicas não existem mais na origem e foram puladas"
+
+msgid "Liste dosyası seç"
+msgstr "Escolher arquivo de playlist"
+
+msgid "Aktarımdan çıkarıldı: {}"
+msgstr "Removida da importação: {}"
+
+msgid "“{}” aktarımı temizlendi"
+msgstr "Importação de “{}” descartada"
+
+msgid "“{}” kaydedildi: {} şarkı"
+msgstr "“{}” salva: {} músicas"
+
+msgid "{} sa {} dk"
+msgstr "{} h {} min"
+
+msgid "{} dk {} sn"
+msgstr "{} min {} s"
+
+msgid "Liste kapağı seç"
+msgstr "Escolher capa da playlist"
+
+msgid "Liste kapağı güncellendi"
+msgstr "Capa da playlist atualizada"
+
+msgid "Özel kapak kaldırıldı"
+msgstr "Capa personalizada removida"
+
+msgid "'{}' oluşturuldu"
+msgstr "'{}' criada"
+
+msgid "{} örnek şarkı"
+msgstr "{} músicas de exemplo"
+
+msgid "{} engelli tür"
+msgstr "{} gêneros bloqueados"
+
+msgid "Zevkler kaydedildi; ana sayfa yenileniyor…"
+msgstr "Gostos salvos; atualizando o Início…"
+
+msgid "Geçmiş ve öneri profili sıfırlandı"
+msgstr "Histórico e perfil de recomendações redefinidos"
+
+msgid "Öneri profili sıfırlandı"
+msgstr "Perfil de recomendações redefinido"
+
+msgid "Liste adı güncellendi: {}"
+msgstr "Playlist renomeada: {}"
+
+msgid "En çok {} civarında dinliyorsun."
+msgstr "Você ouve mais por volta das {}."
+
+msgid "Dinledikçe burası dolacak."
+msgstr "Isto vai se preenchendo conforme você ouve."
+
+msgid "Dil değişti; bazı bölümler yeniden açılınca tamamen güncellenir"
+msgstr "Idioma alterado; algumas partes só atualizam por completo depois de reiniciar"
+
+msgid "Geliştirici derlemesi: kendini güncellemez (cargo build ile güncelle)"
+msgstr "Build de desenvolvimento: não se atualiza sozinho (atualize com cargo build)"
+
+msgid "Vynz güncel ({})"
+msgstr "O Vynz está atualizado ({})"
+
+msgid "Güncelleme denetlenemedi (bağlantı?)"
+msgstr "Não foi possível verificar atualizações (conexão?)"
+
+msgid "Güncelleme kuruldu; bir sonraki açılışta geçerli olur"
+msgstr "Atualização instalada; vale a partir da próxima vez que abrir o Vynz"
+
+msgid "Çözücü ortamı arka planda hazırlanıyor…"
+msgstr "Preparando o ambiente do resolvedor em segundo plano…"
+
+msgid "Önbellek temizlendi"
+msgstr "Cache limpo"
+
+msgid "Öneriler yenileniyor…"
+msgstr "Atualizando recomendações…"
+
+msgid "Bu sürüm atlanacak; Ayarlar'dan yine kurabilirsin"
+msgstr "Esta versão será pulada; você ainda pode instalá-la nas Configurações"
+
+msgid "{} {} şarkı sözleri"
+msgstr "{} {} letra"
+
+msgid "Güncelleme hatası: {}"
+msgstr "Erro na atualização: {}"
+
+msgid "Sanatçı engeli kaldırıldı"
+msgstr "Artista desbloqueado"
+
+msgid "Şarkı engeli kaldırıldı"
+msgstr "Música desbloqueada"
+
+msgid "Vynz {} sürümüne güncellendi"
+msgstr "Vynz atualizado para {}"
+
+msgid "parça açılamadı"
+msgstr "não foi possível abrir a faixa"
+
+msgid "çözücü zaman aşımı"
+msgstr "o resolvedor demorou demais"
+
+msgid "radyo alınamadı"
+msgstr "não foi possível carregar a rádio"
+
+msgid "çözülemedi"
+msgstr "não foi possível resolver"
+
+msgid "Hazır (izole uv + deno + yt-dlp)"
+msgstr "Pronto (uv + deno + yt-dlp isolados)"
+
+msgid "Sistem Python (izole ortam arka planda hazırlanıyor)"
+msgstr "Python do sistema (ambiente isolado sendo preparado em segundo plano)"
+
+msgid "İlk kurulum bekleniyor…"
+msgstr "Aguardando a configuração inicial…"
+
+msgid "Çözücü ortamı kuruldu ve güncel"
+msgstr "Ambiente do resolvedor instalado e atualizado"
+
+msgid "yt-dlp ve ytmusicapi güncellendi"
+msgstr "yt-dlp e ytmusicapi atualizados"
+
+msgid "Vynz'i göster"
+msgstr "Mostrar o Vynz"
+
+msgid "Sonraki şarkı"
+msgstr "Próxima música"
+
+msgid "Çıkış"
+msgstr "Sair"
+
+msgid "SHA256SUMS içinde paket yok"
+msgstr "Pacote não listado no SHA256SUMS"
+
+msgid "indirilen dosya doğrulanamadı (SHA-256 tutmuyor)"
+msgstr "não foi possível verificar o download (SHA-256 não confere)"
+
+msgid "uygun ses akışı yok"
+msgstr "nenhum stream de áudio adequado"
+
+msgid "Türkçe Rock"
+msgstr "Rock turco"
+
+msgid "Türkçe Pop"
+msgstr "Pop turco"
+
+msgid "Türkçe Rap"
+msgstr "Rap turco"
+
+msgid "Indie & Alternatif"
+msgstr "Indie & Alternativo"
+
+msgid "Lo-Fi & Chill"
+msgstr "Lo-Fi & Chill"
+
+msgid "Elektronik & Synthwave"
+msgstr "Eletrônica & Synthwave"
+
+msgid "Metal & Hard Rock"
+msgstr "Metal & Hard Rock"
+
+msgid "Hip-Hop & R&B"
+msgstr "Hip-Hop & R&B"
+
+msgid "Caz & Blues"
+msgstr "Jazz & Blues"
+
+msgid "Klasik & Piyano"
+msgstr "Clássica & Piano"
+
+msgid "Arabesk & Fantazi"
+msgstr "Arabesk & Fantasia"
+
+msgid "Phonk & Drift"
+msgstr "Phonk & Drift"
+
+msgid "Anime & Oyun"
+msgstr "Anime & Games"
+
+msgid "80'ler & 90'lar"
+msgstr "Anos 80 & 90"
+
+msgid "Bugün için karışım"
+msgstr "Mix de hoje"
+
+msgid "Senin için karışım"
+msgstr "Seu mix"
+
+msgid "Kaldığın yerden"
+msgstr "Continue de onde parou"
+
+msgid "En çok dinlediklerin"
+msgstr "Suas mais tocadas"
+
+msgid "Beğendiklerin"
+msgstr "Suas curtidas"
+
+msgid "Hızlı erişim"
+msgstr "Acesso rápido"
+
+msgid "Sana özel"
+msgstr "Feito para você"
+
+msgid "Trend şarkılar"
+msgstr "Músicas em alta"
+
+msgid "Yeni albümler"
+msgstr "Novos álbuns"
+
+msgid "Türkiye'de popüler sanatçılar"
+msgstr "Artistas populares"
+
+msgid "Keşfet · Türkiye'de trend"
+msgstr "Explorar · Em alta"
+
+msgid "Zevkine göre çalma listeleri"
+msgstr "Playlists para o seu gosto"
+
+msgid "Single ve EP'ler"
+msgstr "Singles & EPs"
+
+msgid "Benzer sanatçılar"
+msgstr "Artistas parecidos"
