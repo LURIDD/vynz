@@ -545,6 +545,8 @@ export component AppWindow inherits Window {
     // Hale: 0 kapaktan renk, 1 vurgu rengi; yayılım çarpanı 0.6–1.8
     in-out property <int> halo-color: 0;
     in-out property <float> halo-spread: 1.0;
+    // Sol çubuk zemini: 0 saydam, 1 yarı, 2 koyu
+    in-out property <int> sidebar-dim: 1;
     // Arayüz dili: 0 sistem, 1 Türkçe, 2 English, 3 Português (BR)
     in-out property <int> lang-index: 0;
     in property <string> app-version;
@@ -992,6 +994,19 @@ export component AppWindow inherits Window {
             level: [0.45, 0.60, 0.75][bg-level];
             beat: bg-reactive ? beat : 0;
         }
+        // Y2: ana sayfa halesi pencere zemininde çizilir; kaydırılan içerikte kalınca
+        // sol çubuğun ve üst çubuğun kenarında kesiliyordu. Kapağın gerçek konumunu izler.
+        if bg-style == 4 && view == "home" && sheet == "" && has-now && has-blur2: HaloGlow {
+            x: sidebar-w + 36px;
+            y: 60px + flick.content-y + 24px;
+            width: 224px; height: 224px;
+            blur2-a: blur2-a; blur2-b: blur2-b;
+            has-a: blur2-has-a; has-b: blur2-has-b; slot-b: blur2-slot-b;
+            t: bg-motion ? amb-t : 0;
+            level: [0.85, 1.0, 1.0][bg-level]; spread: 3.2 * halo-spread;
+            use-tint: halo-color == 1; tint: Theme.accent;
+            beat: bg-reactive ? beat : 0;
+        }
         if (bg-style == 0 || bg-style == 3 || bg-style == 4) && bg-grain: Image {
             width: parent.width; height: parent.height;
             source: fx-grain; horizontal-tiling: repeat; vertical-tiling: repeat;
@@ -1108,14 +1123,7 @@ export component AppWindow inherits Window {
                     padding-top: 12px; padding-bottom: 8px;
                     Rectangle {
                         width: 224px; height: 224px;
-                        if bg-style == 4 && has-now && has-blur2: HaloGlow {
-                            blur2-a: blur2-a; blur2-b: blur2-b;
-                            has-a: blur2-has-a; has-b: blur2-has-b; slot-b: blur2-slot-b;
-                            t: bg-motion ? amb-t : 0;
-                            level: [0.85, 1.0, 1.0][bg-level]; spread: 3.2 * halo-spread;
-                            use-tint: halo-color == 1; tint: Theme.accent;
-                            beat: bg-reactive ? beat : 0;
-                        }
+                        // Hale burada değil, pencere zemininde çizilir (Y2)
                         Cover {
                             width: 224px; height: 224px;
                             radius: Theme.r-lg;
@@ -2269,6 +2277,14 @@ export component AppWindow inherits Window {
                                 }
                                 HorizontalLayout {
                                     spacing: 8px; alignment: start;
+                                    Text { text: @tr("Sol çubuk"); width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
+                                    for label[i] in [@tr("Saydam"), @tr("Yarı"), @tr("Koyu")]: PillButton {
+                                        pill-height: 30px; text: label; active: sidebar-dim == i;
+                                        clicked => { sidebar-dim = i; root.settings-changed(); }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px; alignment: start;
                                     Text { text: @tr("Yoğunluk"); width: 110px; vertical-alignment: center; font-size: 12.5px; color: Theme.text-secondary; }
                                     for name[i] in [@tr("Sade"), @tr("Orta"), @tr("Canlı")]: PillButton { pill-height: 30px; text: name; active: bg-level == i; clicked => { bg-level = i; root.settings-changed(); } }
                                 }
@@ -3260,12 +3276,19 @@ export component AppWindow inherits Window {
         background: lyrics-open ? Theme.floating : Theme.surface-subtle;
         drop-shadow-blur: lyrics-open && sidebar-peek ? 40px : 0px;
         drop-shadow-color: lyrics-open && sidebar-peek ? #00000099 : transparent;
+        // Arka plan ışığı sol çubuğun altına taşar; yazılar okunsun diye ayarlanabilir koyuluk
+        if !lyrics-open: Rectangle {
+            background: Theme.canvas.with-alpha([0, 0.32, 0.6][sidebar-dim]);
+            animate background { duration: 200ms; }
+        }
         TouchArea { }
 
-        // Sağ ince ayırıcı çizgi
+        // Sağ ince ayırıcı çizgi; ana sayfa halesi sol çubuğa taşarken ışığı bölmesin diye gizlenir
         Rectangle {
             x: parent.width - 1px; y: 0; width: 1px; height: parent.height;
             background: Theme.border;
+            opacity: !lyrics-open && bg-style == 4 && view == "home" && sheet == "" && has-now && has-blur2 ? 0 : 1;
+            animate opacity { duration: 300ms; }
         }
 
         VerticalLayout {

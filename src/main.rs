@@ -4326,6 +4326,7 @@ fn load_settings_ui(ui: &AppWindow, s: &Settings) {
     ui.set_auto_update(s.auto_update);
     ui.set_halo_color(s.halo_color.clamp(0, 1));
     ui.set_halo_spread(s.halo_spread.clamp(0.6, 1.8));
+    ui.set_sidebar_dim(s.sidebar_dim.clamp(0, 2));
     ui.set_lang_index(match s.lang.as_str() { "tr" => 1, "en" => 2, "pt_BR" => 3, _ => 0 });
     ui.set_bg_style(s.bg_style.clamp(0, 4));
     ui.set_bg_level(s.bg_level.clamp(0, 2));
@@ -4411,6 +4412,7 @@ fn apply_settings(ui: &AppWindow) {
         bg_grain: ui.get_bg_grain(),
         halo_color: ui.get_halo_color().clamp(0, 1),
         halo_spread: ui.get_halo_spread().clamp(0.6, 1.8),
+        sidebar_dim: ui.get_sidebar_dim().clamp(0, 2),
         lang: ["", "tr", "en", "pt_BR"][ui.get_lang_index().clamp(0, 3) as usize].to_string(),
         ..prev
     };

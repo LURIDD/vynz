@@ -110,6 +110,8 @@ pub struct Settings {
     pub halo_color: i32,
     /// Hale yayılımı çarpanı (0.6–1.8; her yerin kendi temel boyutuyla çarpılır)
     pub halo_spread: f32,
+    /// Sol çubuk zemini: 0 saydam, 1 yarı koyu, 2 koyu (ışık altında okunurluk)
+    pub sidebar_dim: i32,
 }
 
 impl Default for Settings {
@@ -153,6 +155,7 @@ impl Default for Settings {
             lang: String::new(),
             halo_color: 0,
             halo_spread: 1.0,
+            sidebar_dim: 1,
         }
     }
 }

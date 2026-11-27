@@ -509,6 +509,18 @@ msgstr "From cover"
 msgid "Yayılım"
 msgstr "Spread"
 
+msgid "Sol çubuk"
+msgstr "Sidebar"
+
+msgid "Saydam"
+msgstr "Clear"
+
+msgid "Yarı"
+msgstr "Half"
+
+msgid "Koyu"
+msgstr "Dark"
+
 msgid "Yoğunluk"
 msgstr "Intensity"
 

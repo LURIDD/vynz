@@ -509,6 +509,18 @@ msgstr "Da capa"
 msgid "Yayılım"
 msgstr "Alcance"
 
+msgid "Sol çubuk"
+msgstr "Barra lateral"
+
+msgid "Saydam"
+msgstr "Transparente"
+
+msgid "Yarı"
+msgstr "Meio"
+
+msgid "Koyu"
+msgstr "Escuro"
+
 msgid "Yoğunluk"
 msgstr "Intensidade"
 
