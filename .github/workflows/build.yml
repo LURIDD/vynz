@@ -109,6 +109,39 @@ jobs:
         if: env.SIGN == 'true'
         shell: pwsh
         run: Copy-Item signed-exe/vynz.exe target/release/vynz.exe -Force
+      # Çözücü için gömülü Python: ilk açılışta indirme gerekmesin (temiz Windows'ta
+      # kurulum yavaş/başarısız oluyordu). python.org'un resmi "embeddable" paketi + yt-dlp + ytmusicapi.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Bundle Python runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $minor = "3.14"
+          $listing = (Invoke-WebRequest "https://www.python.org/ftp/python/" -UseBasicParsing).Content
+          $vers = [regex]::Matches($listing, 'href="(3\.14\.\d+)/"') | ForEach-Object { $_.Groups[1].Value } |
+            Sort-Object { [version]$_ } -Descending
+          $embed = $null
+          foreach ($v in $vers) {
+            $u = "https://www.python.org/ftp/python/$v/python-$v-embed-amd64.zip"
+            try { Invoke-WebRequest $u -Method Head -UseBasicParsing | Out-Null; $embed = $u; break } catch { }
+          }
+          if (-not $embed) { throw "Python $minor embeddable paketi bulunamadı" }
+          Write-Host "Gömülü Python: $embed"
+          $py = "dist/vynz-windows-x86_64/python"
+          New-Item -ItemType Directory -Force -Path $py | Out-Null
+          Invoke-WebRequest $embed -OutFile py-embed.zip -UseBasicParsing
+          Expand-Archive py-embed.zip -DestinationPath $py -Force
+          # ._pth: site-packages'ı aç (gömülü paket varsayılan olarak kapalı gelir)
+          $pth = Get-ChildItem "$py/python3*._pth" | Select-Object -First 1
+          $zipname = (Get-ChildItem "$py/python3*.zip" | Select-Object -First 1).Name
+          Set-Content -Path $pth.FullName -Value "$zipname`r`n.`r`nLib\site-packages`r`nimport site" -Encoding ASCII
+          python -m pip install --disable-pip-version-check --no-compile --only-binary=:all: --target "$py/Lib/site-packages" yt-dlp ytmusicapi
+          Get-ChildItem "$py/Lib/site-packages" -Directory -Filter "__pycache__" -Recurse | Remove-Item -Recurse -Force
+          # Paketlenen Python gerçekten çalışıyor mu (yalıtılmış kipte, çözücünün kullandığı gibi)
+          & "$py/python.exe" -I -c "import ssl, json, yt_dlp, ytmusicapi; print('yt-dlp', yt_dlp.version.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw "gömülü python denemesi başarısız" }
       - name: Package Windows portable zip
         shell: pwsh
         run: |

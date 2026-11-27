@@ -568,6 +568,8 @@ export component AppWindow inherits Window {
     callback settings-changed();
     callback clear-cache();
     callback update-runtime();
+    // Kayıt klasörünü dosya yöneticisinde aç (sorun bildirirken)
+    callback open-logs();
 
     // Beğendiklerim & Yeni liste
     in property <[Track]> liked-tracks;
@@ -2411,6 +2413,10 @@ export component AppWindow inherits Window {
                                 text: runtime-updating ? @tr("Güncelleniyor…") : @tr("yt-dlp güncelle");
                                 enabled: !runtime-updating;
                                 clicked => { root.update-runtime(); }
+                            }
+                            PillButton {
+                                pill-height: 30px; text: @tr("Kayıtları aç");
+                                clicked => { root.open-logs(); }
                             }
                         }
                         Rectangle {

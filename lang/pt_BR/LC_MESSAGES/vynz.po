@@ -680,6 +680,9 @@ msgstr "Atualizando…"
 msgid "yt-dlp güncelle"
 msgstr "Atualizar yt-dlp"
 
+msgid "Kayıtları aç"
+msgstr "Abrir registros"
+
 msgid "Aktif kaynaklar"
 msgstr "Fontes ativas"
 
@@ -1399,6 +1402,9 @@ msgstr "não foi possível carregar a rádio"
 msgid "çözülemedi"
 msgstr "não foi possível resolver"
 
+msgid "Hazır (kurulumla gelen Python + yt-dlp)"
+msgstr "Pronto (Python + yt-dlp incluídos)"
+
 msgid "Hazır (izole uv + deno + yt-dlp)"
 msgstr "Pronto (uv + deno + yt-dlp isolados)"
 
@@ -1407,6 +1413,9 @@ msgstr "Python do sistema (ambiente isolado sendo preparado em segundo plano)"
 
 msgid "İlk kurulum bekleniyor…"
 msgstr "Aguardando a configuração inicial…"
+
+msgid "yt-dlp güncel ({})"
+msgstr "yt-dlp atualizado ({})"
 
 msgid "Çözücü ortamı kuruldu ve güncel"
 msgstr "Ambiente do resolvedor instalado e atualizado"

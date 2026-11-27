@@ -151,7 +151,7 @@ impl Default for Settings {
             bg_level: 1,
             bg_motion: true,
             bg_reactive: false,
-            bg_grain: true,
+            bg_grain: false,
             lang: String::new(),
             halo_color: 0,
             halo_spread: 1.0,

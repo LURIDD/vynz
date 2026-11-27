@@ -680,6 +680,9 @@ msgstr "Updating…"
 msgid "yt-dlp güncelle"
 msgstr "Update yt-dlp"
 
+msgid "Kayıtları aç"
+msgstr "Open logs"
+
 msgid "Aktif kaynaklar"
 msgstr "Active sources"
 
@@ -1399,6 +1402,9 @@ msgstr "couldn't load radio"
 msgid "çözülemedi"
 msgstr "couldn't resolve"
 
+msgid "Hazır (kurulumla gelen Python + yt-dlp)"
+msgstr "Ready (bundled Python + yt-dlp)"
+
 msgid "Hazır (izole uv + deno + yt-dlp)"
 msgstr "Ready (isolated uv + deno + yt-dlp)"
 
@@ -1407,6 +1413,9 @@ msgstr "System Python (isolated environment being set up in the background)"
 
 msgid "İlk kurulum bekleniyor…"
 msgstr "Waiting for first-time setup…"
+
+msgid "yt-dlp güncel ({})"
+msgstr "yt-dlp is up to date ({})"
 
 msgid "Çözücü ortamı kuruldu ve güncel"
 msgstr "Resolver environment installed and up to date"

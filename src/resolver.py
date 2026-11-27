@@ -17,7 +17,12 @@ import threading
 import time
 import urllib.parse
 
-import yt_dlp
+# Gömülü Python'da güncel yt-dlp veri klasöründeki katmandan gelir (kurulumdakini gölgeler).
+_overlay = os.environ.get("VYNZ_PYOVERLAY")
+if _overlay and os.path.isdir(_overlay):
+    sys.path.insert(0, _overlay)
+
+import yt_dlp  # noqa: E402
 
 FAST_ARGS = {"youtube": {"player_client": ["web_music"], "player_skip": ["webpage", "configs"]}}
 DENO_PATH = os.environ.get("VYNZ_DENO") or None

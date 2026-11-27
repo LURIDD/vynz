@@ -51,8 +51,19 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; İşaretli gelir; istemeyen kaldırır
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
+[InstallDelete]
+; Gömülü Python her sürümde baştan kurulur (eski paketler ve __pycache__ kalmasın)
+Type: filesandordirs; Name: "{app}\python"
+Type: filesandordirs; Name: "{app}\python.new"
+Type: filesandordirs; Name: "{app}\python.old"
+
 [Files]
 Source: "..\..\dist\vynz-windows-x86_64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\python"
+Type: filesandordirs; Name: "{app}\python.new"
+Type: filesandordirs; Name: "{app}\python.old"
 
 [Icons]
 Name: "{autoprograms}\Vynz"; Filename: "{app}\vynz.exe"; WorkingDir: "{app}"

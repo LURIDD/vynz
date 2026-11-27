@@ -205,13 +205,42 @@ struct HomeData {
 }
 
 /// VYNZ_DEBUG=1 ile zaman damgalı olay günlüğü (stderr): hız ölçümü için.
+/// Kayıt dosyası: veri klasörü/logs/<ad>. Açılışta 1 MB'ı aşmışsa .1 yedeğine döner.
+/// Windows'ta konsol olmadığından sorun bildiren kullanıcıdan istenecek tek kaynak budur.
+pub(crate) fn log_file(name: &str) -> Option<std::fs::File> {
+    let dir = paths::data_dir().join("logs");
+    std::fs::create_dir_all(&dir).ok()?;
+    let p = dir.join(name);
+    if std::fs::metadata(&p).map(|m| m.len() > 1_000_000).unwrap_or(false) {
+        let _ = std::fs::rename(&p, dir.join(format!("{name}.1")));
+    }
+    std::fs::OpenOptions::new().create(true).append(true).open(p).ok()
+}
+
 pub(crate) fn dbg(msg: &str) {
-    use std::sync::OnceLock;
+    use std::io::Write;
+    use std::sync::{Mutex, OnceLock};
     static T0: OnceLock<std::time::Instant> = OnceLock::new();
     static ON: OnceLock<bool> = OnceLock::new();
+    static FILE: OnceLock<Option<Mutex<(std::fs::File, u64)>>> = OnceLock::new();
+    let t = T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f64();
     if *ON.get_or_init(|| std::env::var_os("VYNZ_DEBUG").is_some()) {
-        let t = T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f64();
         eprintln!("[{t:8.3}] {msg}");
+    }
+    let file = FILE.get_or_init(|| {
+        let mut f = log_file("vynz.log")?;
+        let _ = writeln!(f, "---- Vynz {} ({}) ----", env!("CARGO_PKG_VERSION"), std::env::consts::OS);
+        Some(Mutex::new((f, 0)))
+    });
+    if let Some(m) = file {
+        if let Ok(mut g) = m.lock() {
+            // oturum içinde en çok ~5 MB
+            if g.1 < 5_000_000 {
+                let line = format!("[{t:8.3}] {msg}\n");
+                g.1 += line.len() as u64;
+                let _ = g.0.write_all(line.as_bytes());
+            }
+        }
     }
 }
 
@@ -423,6 +452,7 @@ fn request_art_hot(st: &mut State, key: String, url: &str) {
 }
 
 fn toast(ui: &AppWindow, msg: &str) {
+    dbg(&format!("bildirim: {msg}"));
     show_toast(ui, msg, None);
 }
 
@@ -5867,6 +5897,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             play_list(&ui, list, 0);
         }
+    });
+    ui.on_open_logs(|| {
+        let dir = paths::data_dir().join("logs");
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = open::that_detached(dir);
     });
     ui.on_update_runtime({
         let weak = weak.clone();

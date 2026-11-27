@@ -285,6 +285,13 @@ impl Resolver {
         }
         let (hl, gl) = crate::i18n::content();
         cmd.env("VYNZ_HL", hl).env("VYNZ_GL", gl);
+        if crate::runtime::bundled_python().is_some() {
+            cmd.env("VYNZ_PYOVERLAY", crate::runtime::overlay_dir());
+        }
+        // Yardımcının hata çıktısı kayıt dosyasına (Windows'ta konsol yok; teşhis için)
+        if let Some(f) = crate::log_file("resolver.log") {
+            cmd.stderr(f);
+        }
         let mut child = cmd
             .spawn()
             .map_err(|e| format!("çözücü python başlatılamadı ({}): {e}", rt.python.display()))?;

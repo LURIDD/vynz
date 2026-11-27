@@ -1,6 +1,9 @@
-// Çözücü çalışma ortamı: Vynz veri klasöründe izole uv + Python + yt-dlp + ytmusicapi + deno.
-// Sistem Python'una dokunmaz; Linux ve Windows'ta aynı düzende çalışır.
-// yt-dlp birkaç günde bir arka planda sessizce güncellenir.
+// Çözücü çalışma ortamı.
+// - Windows kurulumu Python + yt-dlp + ytmusicapi'yi uygulama klasöründe getirir (python\);
+//   ilk açılışta indirme gerekmez. deno arka planda indirilir (yalnız yedek çözücüler kullanır),
+//   yt-dlp güncellemeleri veri klasöründeki bir katmana (overlay) iner.
+// - Diğer durumlarda Vynz veri klasöründe izole uv + Python + yt-dlp + ytmusicapi + deno kurar.
+// Sistem Python'una dokunmaz. yt-dlp birkaç günde bir arka planda sessizce güncellenir.
 
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
@@ -85,6 +88,50 @@ pub fn hide_window(cmd: &mut Command) {
     }
 }
 
+/// Kurulumla gelen Python (uygulama klasörü/python/python.exe). Testte VYNZ_BUNDLED_PY ile verilebilir.
+pub fn bundled_python() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("VYNZ_BUNDLED_PY").map(PathBuf::from) {
+        return p.is_file().then_some(p);
+    }
+    if !cfg!(windows) {
+        return None;
+    }
+    let exe = std::env::current_exe().ok()?;
+    let p = exe.parent()?.join("python").join("python.exe");
+    p.is_file().then_some(p)
+}
+
+/// Gömülü Python'da güncel yt-dlp'nin indiği katman; çözücü bunu sys.path'in başına ekler.
+pub fn overlay_dir() -> PathBuf {
+    root_dir().join("overlay")
+}
+
+fn bundled_runtime(py: PathBuf) -> Runtime {
+    let deno = deno_path();
+    let has = deno.is_file();
+    Runtime { python: py, deno: has.then_some(deno), bin_dir: has.then_some(bin_dir()) }
+}
+
+/// deno yoksa arka planda indir (çözücüyü bekletmez).
+fn ensure_deno_background() {
+    if deno_path().is_file() {
+        return;
+    }
+    std::thread::Builder::new()
+        .name("vynz-deno".into())
+        .spawn(|| {
+            let _g = lock();
+            if deno_path().is_file() {
+                return;
+            }
+            let _ = std::fs::create_dir_all(bin_dir());
+            if let Err(e) = download_deno(&deno_path()) {
+                crate::dbg(&format!("deno indirilemedi: {e}"));
+            }
+        })
+        .ok();
+}
+
 fn managed_runtime_if_ready() -> Option<Runtime> {
     let py = venv_python();
     let deno = deno_path();
@@ -113,6 +160,10 @@ fn system_python_has_deps() -> bool {
 ///   yönetilen ortamı (uv + deno + venv) arka planda sessizce kurar (bir sonraki başlatmada ona geçer).
 /// - Sistemde yoksa (temiz Windows / Python'suz Linux) şimdi kurar ve onu döner.
 pub fn ensure_ready() -> Runtime {
+    if let Some(py) = bundled_python() {
+        ensure_deno_background();
+        return bundled_runtime(py);
+    }
     if let Some(rt) = managed_runtime_if_ready() {
         return rt;
     }
@@ -135,9 +186,7 @@ pub fn ensure_ready() -> Runtime {
     match bootstrap() {
         Ok(rt) => rt,
         Err(e) => {
-            if std::env::var_os("VYNZ_DEBUG").is_some() {
-                eprintln!("[runtime] kurulum başarısız, sistem python kullanılacak: {e}");
-            }
+            crate::dbg(&format!("çözücü ortamı kurulamadı, sistem python denenecek: {e}"));
             fallback_runtime()
         }
     }
@@ -165,11 +214,13 @@ pub fn deno_bin() -> Option<PathBuf> {
 }
 
 pub fn is_ready() -> bool {
-    managed_runtime_if_ready().is_some()
+    bundled_python().is_some() || managed_runtime_if_ready().is_some()
 }
 
 pub fn status_text() -> String {
-    if managed_runtime_if_ready().is_some() {
+    if bundled_python().is_some() {
+        tr!("Hazır (kurulumla gelen Python + yt-dlp)")
+    } else if managed_runtime_if_ready().is_some() {
         tr!("Hazır (izole uv + deno + yt-dlp)")
     } else if system_python_has_deps() {
         tr!("Sistem Python (izole ortam arka planda hazırlanıyor)")
@@ -184,7 +235,9 @@ pub fn update_now(on_done: impl FnOnce(Result<String, String>) + Send + 'static)
         .name("vynz-ytdlp-update-now".into())
         .spawn(move || {
             let _g = lock();
-            let res = if managed_runtime_if_ready().is_none() {
+            let res = if bundled_python().is_some() {
+                update_overlay(true).map(|v| tr!("yt-dlp güncel ({})", v))
+            } else if managed_runtime_if_ready().is_none() {
                 bootstrap().map(|_| tr!("Çözücü ortamı kuruldu ve güncel"))
             } else {
                 let mut cmd = Command::new(uv_path());
@@ -215,7 +268,8 @@ pub fn maybe_update_background() {
     std::thread::Builder::new()
         .name("vynz-ytdlp-update".into())
         .spawn(|| {
-            if !ready_marker().is_file() || !uv_path().is_file() || !venv_python().is_file() {
+            let bundled = bundled_python().is_some();
+            if !bundled && (!ready_marker().is_file() || !uv_path().is_file() || !venv_python().is_file()) {
                 return;
             }
             let last: u64 = std::fs::read_to_string(stamp_path())
@@ -226,6 +280,15 @@ pub fn maybe_update_background() {
                 return;
             }
             let _g = lock();
+            if bundled {
+                match update_overlay(false) {
+                    Ok(_) => {
+                        let _ = std::fs::write(stamp_path(), now_secs().to_string());
+                    }
+                    Err(e) => crate::dbg(&format!("yt-dlp güncellenemedi: {e}")),
+                }
+                return;
+            }
             let mut cmd = Command::new(uv_path());
             hide_window(&mut cmd);
             let ok = cmd
@@ -294,22 +357,104 @@ fn bootstrap() -> Result<Runtime, String> {
     Ok(Runtime { python: py, deno: Some(deno), bin_dir: Some(bin_dir()) })
 }
 
+/// Yavaş ya da DPI'ın yavaşlattığı bağlantıda da tamamlanabilsin: toplam süre sınırı yok,
+/// bağlantı ve yanıt için ayrı sınır, gövde için cömert sınır; 3 deneme.
 fn http_get_bytes(url: &str) -> Result<Vec<u8>, String> {
     let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(120)))
+        .timeout_connect(Some(Duration::from_secs(20)))
+        .timeout_recv_response(Some(Duration::from_secs(30)))
+        .timeout_recv_body(Some(Duration::from_secs(20 * 60)))
         .build()
         .new_agent();
-    let mut resp = agent
-        .get(url)
-        .header("User-Agent", USER_AGENT)
-        .call()
-        .map_err(|e| format!("indirme hatası ({url}): {e}"))?;
-    let mut buf = Vec::new();
-    resp.body_mut()
-        .as_reader()
-        .read_to_end(&mut buf)
-        .map_err(|e| format!("okuma hatası ({url}): {e}"))?;
-    Ok(buf)
+    let mut last = String::new();
+    for attempt in 0..3 {
+        if attempt > 0 {
+            std::thread::sleep(Duration::from_secs(3 * attempt));
+        }
+        let res = agent.get(url).header("User-Agent", USER_AGENT).call();
+        let mut resp = match res {
+            Ok(r) => r,
+            Err(e) => {
+                last = format!("indirme hatası ({url}): {e}");
+                crate::dbg(&last);
+                continue;
+            }
+        };
+        let mut buf = Vec::new();
+        match resp.body_mut().as_reader().read_to_end(&mut buf) {
+            Ok(_) => return Ok(buf),
+            Err(e) => {
+                last = format!("okuma hatası ({url}): {e}");
+                crate::dbg(&last);
+            }
+        }
+    }
+    Err(last)
+}
+
+fn version_key(v: &str) -> Vec<u64> {
+    v.split(|c: char| !c.is_ascii_digit()).filter(|x| !x.is_empty()).filter_map(|x| x.parse().ok()).collect()
+}
+
+/// Bir yt-dlp paket klasöründeki sürüm (yt_dlp/version.py).
+fn ytdlp_version_in(dir: &Path) -> Option<String> {
+    let t = std::fs::read_to_string(dir.join("yt_dlp").join("version.py")).ok()?;
+    let line = t.lines().find(|l| l.trim_start().starts_with("__version__"))?;
+    Some(line.split(['\'', '"']).nth(1)?.to_string())
+}
+
+/// Gömülü Python için yt-dlp'yi PyPI'den overlay'e indir (saf Python tekerleği, zip).
+/// Gömülü sürümden ya da mevcut overlay'den yeniyse kurar; kurulu sürümü döner.
+fn update_overlay(force_check: bool) -> Result<String, String> {
+    let py = bundled_python().ok_or("gömülü python yok")?;
+    let site = py.parent().map(|d| d.join("Lib").join("site-packages")).unwrap_or_default();
+    let have = [ytdlp_version_in(&overlay_dir()), ytdlp_version_in(&site)]
+        .into_iter()
+        .flatten()
+        .max_by_key(|v| version_key(v))
+        .unwrap_or_default();
+    let meta = http_get_bytes("https://pypi.org/pypi/yt-dlp/json")?;
+    let meta: serde_json::Value = serde_json::from_slice(&meta).map_err(|e| e.to_string())?;
+    let latest = meta["info"]["version"].as_str().ok_or("PyPI yanıtı beklenmedik")?.to_string();
+    if version_key(&latest) <= version_key(&have) {
+        let _ = force_check;
+        return Ok(have);
+    }
+    let url = meta["urls"]
+        .as_array()
+        .and_then(|a| a.iter().find(|u| u["packagetype"] == "bdist_wheel" && u["filename"].as_str().is_some_and(|f| f.ends_with("py3-none-any.whl"))))
+        .and_then(|u| u["url"].as_str())
+        .ok_or("tekerlek bulunamadı")?
+        .to_string();
+    let bytes = http_get_bytes(&url)?;
+    let tmp = root_dir().join("overlay.new");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    for i in 0..zip.len() {
+        let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
+        let Some(rel) = f.enclosed_name() else { continue };
+        if f.is_dir() {
+            continue;
+        }
+        let dest = tmp.join(rel);
+        if let Some(d) = dest.parent() {
+            std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+        }
+        let mut out = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
+        std::io::copy(&mut f, &mut out).map_err(|e| e.to_string())?;
+    }
+    if ytdlp_version_in(&tmp).is_none() {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err("tekerlekte yt_dlp yok".into());
+    }
+    let old = root_dir().join("overlay.old");
+    let _ = std::fs::remove_dir_all(&old);
+    let _ = std::fs::rename(overlay_dir(), &old);
+    std::fs::rename(&tmp, overlay_dir()).map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_dir_all(&old);
+    crate::dbg(&format!("yt-dlp overlay: {have} -> {latest}"));
+    Ok(latest)
 }
 
 fn set_executable(path: &Path) -> Result<(), String> {

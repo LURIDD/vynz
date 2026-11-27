@@ -247,6 +247,16 @@ pub fn install(u: &Update, cancel: &AtomicBool, progress: impl Fn(f32)) -> Resul
         let dest = if is_exe { target_dir.join(&exe_name) } else { target_dir.join(&name) };
         replace_file(&f, &dest)?;
     }
+    // Gömülü Python: çalışan çözücü dosyaları kilitler; python.new olarak bırak,
+    // bir sonraki açılışta (çözücü başlamadan) cleanup_old yer değiştirir.
+    let staged_py = staged.join("python");
+    if staged_py.is_dir() {
+        let new = target_dir.join("python.new");
+        let _ = std::fs::remove_dir_all(&new);
+        if std::fs::rename(&staged_py, &new).is_err() {
+            copy_dir(&staged_py, &new)?;
+        }
+    }
     progress(1.0);
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
@@ -263,7 +273,18 @@ fn extract(archive: &Path, out: &Path) -> Result<Vec<PathBuf>, String> {
             if e.is_dir() {
                 continue;
             }
-            let Some(base) = e.enclosed_name().and_then(|p| p.file_name().map(|n| n.to_owned())) else { continue };
+            let Some(rel) = e.enclosed_name() else { continue };
+            // Gömülü Python klasörü yapısıyla korunur (install bunu python.new olarak koyar)
+            if rel.components().next().is_some_and(|c| c.as_os_str() == "python") {
+                let dest = out.join(&rel);
+                if let Some(d) = dest.parent() {
+                    std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+                }
+                let mut w = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
+                std::io::copy(&mut e, &mut w).map_err(|e| e.to_string())?;
+                continue;
+            }
+            let Some(base) = rel.file_name().map(|n| n.to_owned()) else { continue };
             let dest = out.join(base);
             let mut w = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
             std::io::copy(&mut e, &mut w).map_err(|e| e.to_string())?;
@@ -312,10 +333,38 @@ fn replace_file(src: &Path, dest: &Path) -> Result<(), String> {
     std::fs::rename(&tmp, dest).map_err(|e| format!("{}: {e}", dest.display()))
 }
 
-/// Windows'ta önceki güncellemeden kalan .old dosyalarını sil.
+fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    for e in std::fs::read_dir(src).map_err(|e| e.to_string())? {
+        let e = e.map_err(|e| e.to_string())?;
+        let to = dest.join(e.file_name());
+        if e.file_type().map_err(|e| e.to_string())?.is_dir() {
+            copy_dir(&e.path(), &to)?;
+        } else {
+            std::fs::copy(e.path(), &to).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// Windows'ta önceki güncellemeden kalan .old dosyalarını sil; bekleyen gömülü Python'u yerleştir.
 pub fn cleanup_old() {
     let Ok(exe) = std::env::current_exe() else { return };
     let Some(dir) = exe.parent() else { return };
+    let new = dir.join("python.new");
+    if new.is_dir() {
+        let cur = dir.join("python");
+        let old = dir.join("python.old");
+        let _ = std::fs::remove_dir_all(&old);
+        let moved = !cur.exists() || std::fs::rename(&cur, &old).is_ok();
+        if moved && std::fs::rename(&new, &cur).is_ok() {
+            let _ = std::fs::remove_dir_all(&old);
+        } else if moved && !cur.exists() {
+            // yerleştirilemediyse eskisini geri koy
+            let _ = std::fs::rename(&old, &cur);
+        }
+    }
+    let _ = std::fs::remove_dir_all(dir.join("python.old"));
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
             if e.file_name().to_string_lossy().ends_with(".old") {
