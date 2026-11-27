@@ -64,6 +64,8 @@ export struct ImportRow {
 // Söz satırındaki kelime: state 0 söylendi, 1 şu an, 2 sırada; row 0/1 (uzun satır ikiye bölünür)
 export struct LyricWord {
     text: string,
+    // satırdaki sırası (sağdan sola satırda model sırası terstir)
+    idx: int,
     // 0 söylendi, 1 şu an, 2 sırada
     state: int,
     // 0..1: varılacak dolum; Slint oraya `dur` ms'de doğrusal gider (hece hece akıcı dolum)
@@ -76,6 +78,8 @@ export struct LyricWord {
 // Etkin satırın bir görsel satırı (gerçek genişliğe göre bölünmüş)
 export struct LyricRow {
     words: [LyricWord],
+    // sağdan sola satır: sağa yaslanır, kelimeler sağdan sola dolar
+    rtl: bool,
 }
 
 // Söz satırı: state -1 geçti, 0 şu an, 1 sırada; dist = etkin satıra uzaklık
@@ -83,6 +87,9 @@ export struct LyricLine {
     text: string,
     // çeviri (kapalıysa boş)
     tr: string,
+    // sağdan sola yazı (satır / çeviri)
+    rtl: bool,
+    tr-rtl: bool,
     t: float,
     state: int,
     dist: int,
@@ -218,6 +225,8 @@ export component KaraokeWord inherits Rectangle {
     in property <length> size;
     in property <length> spacing;
     in property <bool> italic;
+    // sağdan sola: dolum sağdan başlar
+    in property <bool> rtl;
     property <bool> current: word.state == 1;
     property <bool> sung: word.state == 0;
     property <float> f: word.fill;
@@ -247,6 +256,7 @@ export component KaraokeWord inherits Rectangle {
     animate lift { duration: 450ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
     property <length> solid-x: root.solid * root.width;
     property <length> step: (root.clear - root.solid) * root.width / 4;
+    // dolan kısmın sol kenarı: soldan sağa 0, sağdan sola width - solid-x
     t := Text {
         x: 0; y: root.lift;
         text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
@@ -255,10 +265,10 @@ export component KaraokeWord inherits Rectangle {
     }
     // Dolan kısım
     Rectangle {
-        x: 0; y: 0; width: root.solid-x; height: root.height;
+        x: root.rtl ? root.width - root.solid-x : 0; y: 0; width: root.solid-x; height: root.height;
         clip: true;
         Text {
-            x: 0; y: root.lift;
+            x: -parent.x; y: root.lift;
             text: root.word.text; font-family: root.family; font-weight: root.weight; font-size: root.size;
             letter-spacing: root.spacing; font-italic: root.italic;
             color: #ffffff;
@@ -266,7 +276,8 @@ export component KaraokeWord inherits Rectangle {
     }
     // Yumuşak kenar: dört dilim, parlaklık azalarak (yalnız şu an söylenen kelimede)
     for i in (root.current && root.step > 0.2px ? 4 : 0): Rectangle {
-        x: root.solid-x + i * root.step; y: 0; width: root.step + 0.5px; height: root.height;
+        x: root.rtl ? root.width - root.solid-x - (i + 1) * root.step - 0.5px : root.solid-x + i * root.step;
+        y: 0; width: root.step + 0.5px; height: root.height;
         clip: true;
         Text {
             x: -parent.x; y: root.lift;
@@ -289,11 +300,13 @@ export component KaraokeWord inherits Rectangle {
 export component GapDots inherits Rectangle {
     in property <float> progress;
     in property <length> size: 14px;
+    // sağdan sola: ilk nokta sağda
+    in property <bool> rtl;
     width: 3 * size + 2 * size * 0.8;
     height: size;
     for i in 3: Rectangle {
         property <float> on: Math.clamp(root.progress * 3 - i, 0, 1);
-        x: i * root.size * 1.8;
+        x: (root.rtl ? 2 - i : i) * root.size * 1.8;
         width: root.size * (0.55 + 0.45 * on); height: self.width;
         y: (root.size - self.height) / 2;
         border-radius: self.width / 2;

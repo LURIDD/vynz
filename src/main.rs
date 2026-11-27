@@ -986,9 +986,12 @@ fn render_lyrics(ui: &AppWindow) {
         };
         let join = lyric_joiner(style);
         let mk = |l: &lyrics::Lyrics| -> Vec<LyricLine> {
+            let song_rtl = lyrics::song_rtl(l);
             l.lines.iter().enumerate().map(|(i, x)| LyricLine {
                 text: x.text.split_whitespace().collect::<Vec<_>>().join(join).into(),
                 tr: trs.get(i).filter(|t| !t.is_empty() && **t != x.text).map(|t| t.as_str().into()).unwrap_or_default(),
+                rtl: lyrics::dir(&x.text).unwrap_or(song_rtl),
+                tr_rtl: trs.get(i).is_some_and(|t| lyrics::is_rtl(t)),
                 t: x.t,
                 state: 1,
                 dist: 9,
@@ -1042,7 +1045,7 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
     ui.set_lyric_word_gap(word_gap);
     enum Change {
         None,
-        Line { idx: Option<usize>, rows: Vec<Vec<LyricWord>> },
+        Line { idx: Option<usize>, rows: Vec<Vec<LyricWord>>, rtl: bool },
         Words(lyrics::Progress),
     }
     let (change, gap) = with_state(|st| {
@@ -1077,14 +1080,20 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
                         let long = spans.get(k).is_some_and(|(a, b)| b - a >= 1.0);
                         rows[row_of[k]].push(word_at(k, w, long, &pr, true));
                     }
-                    rows
+                    // Sağdan sola satırda kelimeler satır içinde ters dizilir (yerleşim soldan sağa).
+                    let rtl = lyrics::dir(&line.text).unwrap_or_else(|| lyrics::song_rtl(l));
+                    if rtl {
+                        rows.iter_mut().for_each(|r| r.reverse());
+                    }
+                    (rows, rtl)
                 }
-                _ => Vec::new(),
+                _ => (Vec::new(), false),
             };
+            let (rows, rtl) = rows;
             if std::env::var_os("VYNZ_LYRDBG").is_some() {
                 eprintln!("LYR LINE pos={pos:.3} idx={idx:?}");
             }
-            return (Change::Line { idx, rows }, gap);
+            return (Change::Line { idx, rows, rtl }, gap);
         }
         if seg != st.lyr_seg {
             st.lyr_seg = seg;
@@ -1097,8 +1106,8 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
     ui.set_lyric_gap(gap.unwrap_or(-1.0));
     match change {
         Change::None => {}
-        Change::Line { idx, rows } => {
-            let rows: Vec<LyricRow> = rows.into_iter().map(|r| LyricRow { words: ModelRc::new(VecModel::from(r)) }).collect();
+        Change::Line { idx, rows, rtl } => {
+            let rows: Vec<LyricRow> = rows.into_iter().map(|r| LyricRow { words: ModelRc::new(VecModel::from(r)), rtl }).collect();
             ui.set_lyric_rows(ModelRc::new(VecModel::from(rows)));
             // Satır durumları: geçmiş -1, etkin 0, gelecek 1; uzaklık solma için
             let lines = ui.get_lyric_lines();
@@ -1118,14 +1127,15 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
             ui.set_lyric_active(a as i32);
         }
         Change::Words(pr) => {
-            // Kelime sırası satırlar boyunca sürer; yalnız değişen kelimeler yazılır.
-            let mut k = 0;
+            // Kelimenin satırdaki sırası `idx`te (sağdan sola satırda model sırası terstir);
+            // yalnız değişen kelimeler yazılır.
             let rows = ui.get_lyric_rows();
             for r in 0..rows.row_count() {
                 let Some(row) = rows.row_data(r) else { continue };
                 let m = row.words;
                 for j in 0..m.row_count() {
                     if let Some(w) = m.row_data(j) {
+                        let k = w.idx as usize;
                         let nw = word_at(k, &w.text, w.long, &pr, hold);
                         if w.state != nw.state || (w.fill - nw.fill).abs() > 0.001 || w.dur != nw.dur {
                             if std::env::var_os("VYNZ_LYRDBG").is_some() {
@@ -1134,7 +1144,6 @@ fn update_lyrics(ui: &AppWindow, pos: f32) {
                             m.set_row_data(j, nw);
                         }
                     }
-                    k += 1;
                 }
             }
         }
@@ -1150,7 +1159,7 @@ fn word_at(k: usize, text: &str, long: bool, pr: &lyrics::Progress, hold: bool) 
     } else {
         (2, 0.0, 0)
     };
-    LyricWord { text: text.into(), state, fill, dur, long }
+    LyricWord { text: text.into(), idx: k as i32, state, fill, dur, long }
 }
 
 fn play_index(ui: &AppWindow, i: usize) {

@@ -132,6 +132,15 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 - **Not:** Sanatçı alanı yükleyici olan şarkılar (ör. "Rammstein - Pussy", sanatçı "Eliass Kevrelis") eşleşmiyor.
 - **Durum:** DÜZELTİLDİ (27 Kas).
 
+### F8. Arapça (sağdan sola) sözler ters görünüyor (27 Kas 2026)
+- **Bildiren:** yabancı bir kullanıcı (Instagram).
+- **Neden (kod okuması, denenmedi):** Çalan satır `lyric-rows` içinde kelime kelime `HorizontalLayout` ile soldan sağa diziliyor (`ui/app.slint` ~2889, `KaraokeWord`). Sağdan sola dillerde kelime sırası bu yüzden ters çıkıyor; kelime dolumu da soldan sağa. Çalmayan satırlar düz `Text`; harf şekillendirmesi muhtemelen doğru ama hizası sola.
+- **Yön:** Rust tarafında satırın yönünü belirle (Arapça, İbranice, Farsça, Urduca harf aralıkları). RTL satırda her `row`'daki kelimeleri ters sırala, hizayı sağa al (ortalı kipte ortada kalsın), `KaraokeWord` dolumunu sağdan sola yap. Satır kırma da sağdan başlamalı. Çeviri satırı kendi yönüne göre hizalansın. Test için Arapça senkronlu sözü olan bir şarkı (ör. Amr Diab).
+- **Düzeltme:** `lyrics::dir` (ilk güçlü harf; harfsiz satır şarkının genel yönünü alır). Sağdan sola satırda kelimeler her görsel satırda ters dizilir, satır sağa yaslanır; `KaraokeWord` dolumu ve yumuşak kenarı sağdan başlar; `LyricWord.idx` dolum sırasını taşır. Çeviri satırı kendi yönüne göre, müzik arası noktaları da şarkının yönüne göre.
+- **Doğrulama:** Test kopyasında Amr Diab "Tamally Maak" (YouTube sözü): satırlar sağda, çalan satırda kelime sırası doğru, dolum sağdan sola; Latin harfli sözlerde değişiklik yok. Şarkı başı müzik arası noktaları canlı denenmedi.
+- **Durum:** DÜZELTİLDİ (27 Kas).
+
+
 ---
 
 ## Yeni özellikler
@@ -170,6 +179,7 @@ Bu belge, kullanıcının (LURID) bildirdiği 12 geliştirme/sorun maddesini, te
 ### Y5. Çoklu dil: İngilizce + isteğe bağlı diller (26 Kas 2026)
 - **Kaynak:** GitHub issue #1 (nidego, Brezilya): arayüz yalnız Türkçe, İngilizce/Portekizce yok. 26 Kas'ta yanıtlandı: İngilizce "çok yakında", pt-BR listede, diğer diller istek üzerine; İngilizce çıkınca issue'ya haber verilecek.
 - **Yön:** Slint `@tr()` + gettext (.po) ile arayüz metinlerini çeviri dosyalarına taşımak; Rust tarafındaki metinler (bildirimler, Yenilikler notları `notes/vX.Y.Z.md`, hata iletileri) de dahil. Ayarlar'a dil seçimi, varsayılan sistem dili.
+- **Ek talep (27 Kas):** Instagram'dan yabancı bir kullanıcı da arayüzün yalnız Türkçe olduğundan şikâyet etti; ikinci bildirim.
 - **Durum:** Açık, söz verildi (öncelikli).
 
 ### Y6. Windows kod imzası (SignPath Foundation) (27 Kas 2026)

@@ -2848,8 +2848,9 @@ export component AppWindow inherits Window {
                             width: parent.width;
                             spacing: lyr.fsz * [0.45, 0.75, 1.0][lyrics-spacing];
                             if lyric-active < 0 && lyric-gap >= 0: HorizontalLayout {
-                                alignment: lyr.centered ? center : start;
-                                GapDots { progress: lyric-gap; size: lyr.fsz * 0.38; }
+                                property <bool> rtl: lyric-lines.length > 0 && lyric-lines[0].rtl;
+                                alignment: lyr.centered ? center : self.rtl ? end : start;
+                                GapDots { progress: lyric-gap; size: lyr.fsz * 0.38; rtl: parent.rtl; }
                             }
                             for l[i] in lyric-lines: Rectangle {
                                 property <bool> active: l.state == 0;
@@ -2863,7 +2864,7 @@ export component AppWindow inherits Window {
                                 changed height => { if (self.active) { lview.active-y = self.y + self.height / 2; } }
                                 opacity: (active ? 1 : lview.manual ? 0.72 : (l.dist == 1 ? 0.55 : l.dist == 2 ? 0.38 : l.dist <= 4 ? 0.26 : 0.14)) * fade;
                                 transform-scale: active ? 1.0 : 0.93;
-                                transform-origin: { x: lyr.centered ? self.width / 2 : 0px, y: self.height / 2 };
+                                transform-origin: { x: lyr.centered ? self.width / 2 : l.rtl ? self.width : 0px, y: self.height / 2 };
                                 animate opacity, transform-scale { duration: 420ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
                                 lt := TouchArea {
                                     mouse-cursor: pointer;
@@ -2881,7 +2882,7 @@ export component AppWindow inherits Window {
                                     spacing: lyr.fsz * 0.15;
                                     if !active: Text {
                                         text: l.text; wrap: word-wrap;
-                                        horizontal-alignment: lyr.centered ? center : left;
+                                        horizontal-alignment: lyr.centered ? center : l.rtl ? right : left;
                                         font-family: lyr.fam; font-weight: lyr.wgt; font-size: lyr.fsz; letter-spacing: lyr.lsp;
                                         font-italic: lyrics-style == 1;
                                         color: lt.has-hover ? #FFFFFF : #FFFFFFcc;
@@ -2889,23 +2890,23 @@ export component AppWindow inherits Window {
                                     if active: VerticalLayout {
                                         spacing: lyr.fsz * 0.12;
                                         for r in lyric-rows: HorizontalLayout {
-                                            alignment: lyr.centered ? center : start;
+                                            alignment: lyr.centered ? center : r.rtl ? end : start;
                                             spacing: lyric-word-gap;
                                             for w in r.words: KaraokeWord {
-                                                word: w; family: lyr.fam; weight: lyr.wgt; size: lyr.fsz; spacing: lyr.lsp; italic: lyrics-style == 1;
+                                                word: w; family: lyr.fam; weight: lyr.wgt; size: lyr.fsz; spacing: lyr.lsp; italic: lyrics-style == 1; rtl: r.rtl;
                                             }
                                         }
                                     }
                                     if l.tr != "": Text {
                                         text: l.tr; wrap: word-wrap;
-                                        horizontal-alignment: lyr.centered ? center : left;
+                                        horizontal-alignment: lyr.centered ? center : l.tr-rtl ? right : left;
                                         font-family: Theme.sans; font-weight: 500; font-size: lyr.fsz * 0.46; font-italic: true;
                                         color: active ? Theme.accent.with-alpha(0.95) : #FFFFFFaa;
                                     }
                                     if active && lyric-gap >= 0: HorizontalLayout {
-                                        alignment: lyr.centered ? center : start;
+                                        alignment: lyr.centered ? center : l.rtl ? end : start;
                                         padding-top: lyr.fsz * 0.4;
-                                        GapDots { progress: lyric-gap; size: lyr.fsz * 0.38; }
+                                        GapDots { progress: lyric-gap; size: lyr.fsz * 0.38; rtl: l.rtl; }
                                     }
                                 }
                             }
@@ -2942,12 +2943,12 @@ export component AppWindow inherits Window {
                                 spacing: 2px;
                                 Text {
                                     text: l.text; wrap: word-wrap;
-                                    horizontal-alignment: lyr.centered ? center : left;
+                                    horizontal-alignment: lyr.centered ? center : l.rtl ? right : left;
                                     font-family: lyr.fam; font-weight: lyr.wgt; font-size: lyr.fsz * 0.62; color: Theme.text-secondary;
                                 }
                                 if l.tr != "": Text {
                                     text: l.tr; wrap: word-wrap;
-                                    horizontal-alignment: lyr.centered ? center : left;
+                                    horizontal-alignment: lyr.centered ? center : l.tr-rtl ? right : left;
                                     font-size: lyr.fsz * 0.36; font-italic: true; color: Theme.accent.with-alpha(0.9);
                                 }
                             }

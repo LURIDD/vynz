@@ -432,6 +432,31 @@ pub struct Progress {
     pub remain: f32,
 }
 
+/// Yazı yönü: ilk güçlü yönlü harf belirler (Unicode bidi kuralı). Sağdan sola
+/// (Arapça, İbranice, Farsça, Urduca...) `Some(true)`; harf yoksa (♪, rakam) `None`.
+pub fn dir(s: &str) -> Option<bool> {
+    for c in s.chars() {
+        let u = c as u32;
+        if matches!(u, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF | 0x10800..=0x10FFF | 0x1E800..=0x1EFFF) {
+            return Some(true);
+        }
+        if c.is_alphabetic() {
+            return Some(false);
+        }
+    }
+    None
+}
+
+pub fn is_rtl(s: &str) -> bool {
+    dir(s) == Some(true)
+}
+
+/// Şarkının genel yönü: harfli satırların çoğu sağdan solaysa.
+pub fn song_rtl(l: &Lyrics) -> bool {
+    let (r, n) = l.lines.iter().filter_map(|x| dir(&x.text)).fold((0, 0), |(r, n), d| (r + d as usize, n + 1));
+    n > 0 && r * 2 > n
+}
+
 /// Satırdaki kelimelerin (başlangıç, bitiş) zamanları: gerçekse onlar, değilse heceye göre tahmin.
 pub fn word_spans(line: &Line) -> Vec<(f32, f32)> {
     if !line.words.is_empty() {
@@ -547,6 +572,19 @@ pub fn translate(lines: &[String], target: &str) -> Result<(String, Vec<String>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rtl_detection() {
+        assert!(is_rtl("تملي معاك ولو حتى بعيد عني"));
+        assert!(is_rtl("♪ (تملي) معاك"));
+        assert!(is_rtl("שלום עולם"));
+        assert!(is_rtl("دلم برات تنگ شده"));
+        assert!(!is_rtl("Tamally maak"));
+        assert!(!is_rtl("Kalbim ♪"));
+        assert!(!is_rtl("Love تملي"));
+        assert!(!is_rtl("♪ 123"));
+        assert_eq!(dir("♪"), None);
+    }
 
     #[test]
     fn long_source_end_is_capped() {
