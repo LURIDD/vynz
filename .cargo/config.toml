@@ -1,0 +1,5 @@
+# Windows: C çalışma zamanını exe'ye göm; yoksa VC++ Redistributable kurulu olmayan
+# temiz Windows'ta "VCRUNTIME140.dll was not found" ile açılmıyor.
+# (CI RUSTFLAGS ortam değişkenini kendisi verir; bu dosya elle derleme içindir.)
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

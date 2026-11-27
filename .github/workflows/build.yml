@@ -78,7 +78,7 @@ jobs:
           }
           lib.exe /def:"$defPath" /name:"$($dll.Name)" /out:mpv-lib/mpv.lib /machine:x64
           $libDir = (Resolve-Path mpv-lib).Path
-          "RUSTFLAGS=-L native=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RUSTFLAGS=-L native=$libDir -C target-feature=+crt-static" | Out-File -FilePath $env:GITHUB_ENV -Append
           "$libDir" | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: Test
         run: cargo test --bin vynz
