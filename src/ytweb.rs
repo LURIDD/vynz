@@ -5,7 +5,7 @@
 // - EJS (yt-dlp/ejs) oynatıcıyı sürüm başına bir kez işler, sonucu diske yazar.
 // - pot.js (bgutils) botguard'ı çalıştırıp VİDEO KİMLİĞİNE bağlı GVS token üretir
 //   (ziyaretçi verisine bağlı token adreste 403 verir).
-// Yardımcı ilk istekte başlar, IDLE_SECS boyunca iş gelmezse kapanır.
+// Yardımcı ilk istekte başlar, IDLE_SECS (90 sn) boyunca iş gelmezse kapanır.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -35,7 +35,8 @@ const SCRIPT: &str = concat!(
 const PLAYER_URL: &str = "https://music.youtube.com/youtubei/v1/player?prettyPrint=false";
 const CLIENT_VERSION: &str = "1.20261118.01.00";
 const WEB_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0";
-const IDLE_SECS: u64 = 600;
+// Yedek yol nadiren gerekir; deno ~200 MB tutar. Soğuk başlangıç ~1.7 sn, sıcak ~0.35 sn.
+const IDLE_SECS: u64 = 90;
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
 /// Oynatıcı kimliği bu kadar süre geçerli sayılır.
 const PLAYER_ID_TTL: Duration = Duration::from_secs(3600);

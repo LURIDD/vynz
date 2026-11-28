@@ -6604,6 +6604,7 @@ dependencies = [
  "flate2",
  "futures-lite",
  "image",
+ "ksni",
  "libc",
  "libmpv2",
  "mpris-server",

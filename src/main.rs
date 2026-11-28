@@ -264,7 +264,9 @@ thread_local! {
     static BIG_ORDER: RefCell<VecDeque<String>> = RefCell::new(VecDeque::new());
 }
 
-const MAX_ARTS_RAM: usize = 96;
+/// Modeller ekrandaki kapakları zaten tutar; bu sınır yalnız ekranda olmayanların ne kadarının
+/// sıcak kalacağını belirler. Düşen kapak, model yeniden kurulunca diskten geri istenir (want_art).
+const MAX_ARTS_RAM: usize = 128;
 const MAX_BANNERS_RAM: usize = 1;
 const MAX_BLURS_RAM: usize = 24;
 const MAX_BIGS_RAM: usize = 12;
@@ -387,6 +389,9 @@ fn ui_track(t: &TrackInfo) -> Track {
     let (art, has_art) = ARTS
         .with(|a| a.borrow().get(&t.key()).map(|(i, _)| (i.clone(), true)))
         .unwrap_or_default();
+    if !has_art {
+        want_art(t.key(), &t.thumb);
+    }
     Track {
         key: t.key().into(),
         title: t.title.as_str().into(),
@@ -412,6 +417,9 @@ fn card_kind(kind: &str) -> i32 {
 fn ui_card(c: &Card) -> CardUi {
     let key = c.art_key();
     let (art, has_art) = ARTS.with(|a| a.borrow().get(&key).map(|(i, _)| (i.clone(), true))).unwrap_or_default();
+    if !has_art {
+        want_art(key.clone(), &c.thumb);
+    }
     CardUi { key: key.into(), kind: card_kind(&c.kind), title: c.title.as_str().into(), sub: c.sub.as_str().into(), art, has_art }
 }
 
@@ -424,10 +432,87 @@ fn request_card_art(st: &mut State, c: &Card) {
         return;
     }
     let key = c.art_key();
+    remember_thumb(&key, &c.thumb);
     if ARTS.with(|a| a.borrow().contains_key(&key)) || !st.requested.insert(key.clone()) {
         return;
     }
     let _ = st.art_tx.send((key, c.thumb.clone()));
+}
+
+thread_local! {
+    /// Kapak anahtarı → adres: tepsi/mini sonrası modellerden atılan kapakları geri istemek için.
+    static THUMBS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+thread_local! {
+    /// Kapaksız kurulan model satırları: olay döngüsünün bir sonraki turunda istenir.
+    /// (ui_track/ui_card durum kilidi tutulurken de çağrılabildiği için hemen istenmez.)
+    static WANT_ART: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
+    /// Yüklenemeyen kapaklar: kısa süre yeniden denenmesin (ağ hatasında döngü olmasın).
+    static ART_FAILED: RefCell<HashMap<String, std::time::Instant>> = RefCell::new(HashMap::new());
+}
+
+/// Bir model satırı kapaksız kuruldu: önbellekten atılmış ya da hiç istenmemiş olabilir.
+/// Önceden yalnız sayfa açılışında istendiği için, önbellek sınırından düşen kapaklar
+/// model yeniden kurulunca (kuyruk, beğeniler, sayfa dönüşü) bir daha gelmiyordu.
+fn want_art(key: String, url: &str) {
+    if url.is_empty() {
+        return;
+    }
+    let first = WANT_ART.with(|w| {
+        let mut w = w.borrow_mut();
+        w.push((key, url.to_string()));
+        w.len() == 1
+    });
+    if first {
+        Timer::single_shot(Duration::ZERO, flush_want_art);
+    }
+}
+
+fn flush_want_art() {
+    let list = WANT_ART.with(|w| std::mem::take(&mut *w.borrow_mut()));
+    if list.is_empty() {
+        return;
+    }
+    let now = std::time::Instant::now();
+    with_state(|st| {
+        for (key, url) in list {
+            remember_thumb(&key, &url);
+            if ARTS.with(|a| a.borrow().contains_key(&key)) {
+                continue;
+            }
+            let recent_fail = ART_FAILED.with(|f| f.borrow().get(&key).is_some_and(|t| now.duration_since(*t) < Duration::from_secs(60)));
+            if recent_fail {
+                continue;
+            }
+            // `requested` içindeyse yolda: gelince apply_art modelleri günceller
+            if st.requested.insert(key.clone()) {
+                let _ = st.art_tx.send((key, url));
+            }
+        }
+    });
+}
+
+/// Kapak yüklenemedi: istek kaydını sil ki sonra yeniden denenebilsin.
+fn art_failed(key: String) {
+    ART_FAILED.with(|f| {
+        let mut f = f.borrow_mut();
+        if f.len() > 512 {
+            f.clear();
+        }
+        f.insert(key.clone(), std::time::Instant::now());
+    });
+    with_state(|st| {
+        st.requested.remove(&key);
+    });
+}
+
+fn remember_thumb(key: &str, url: &str) {
+    if !url.is_empty() {
+        THUMBS.with(|m| {
+            m.borrow_mut().entry(key.to_string()).or_insert_with(|| url.to_string());
+        });
+    }
 }
 
 fn model_of(tracks: &[TrackInfo]) -> ModelRc<Track> {
@@ -436,6 +521,7 @@ fn model_of(tracks: &[TrackInfo]) -> ModelRc<Track> {
 
 fn request_art(st: &mut State, t: &TrackInfo) {
     let key = t.key();
+    remember_thumb(&key, &t.thumb);
     if t.thumb.is_empty() || ARTS.with(|a| a.borrow().contains_key(&key)) || !st.requested.insert(key.clone()) {
         return;
     }
@@ -649,7 +735,10 @@ fn start_art_pool(weak: Weak<AppWindow>) -> (ArtTx, ArtTx) {
                 Ok(a) => {
                     let _ = weak.upgrade_in_event_loop(move |ui| apply_art(&ui, key, a));
                 }
-                Err(e) => eprintln!("kapak {key}: {e}"),
+                Err(e) => {
+                    eprintln!("kapak {key}: {e}");
+                    let _ = weak.upgrade_in_event_loop(move |_| art_failed(key));
+                }
             }
         });
     }
@@ -680,6 +769,134 @@ fn update_cards(model: &ModelRc<CardUi>, key: &str, img: &Image) {
     }
 }
 
+/// Kapak taşıyan tüm modeller; kapak gelince güncelleme, gizlenince boşaltma ve geri
+/// dönüşte yeniden doldurma aynı kümeyi kullanır. Kapanışlar model başına çağrılır.
+fn for_art_models(ui: &AppWindow, mut rows: impl FnMut(&ModelRc<Track>), mut cards: impl FnMut(&ModelRc<CardUi>)) {
+    let shelves = ui.get_shelves();
+    for i in 0..shelves.row_count() {
+        if let Some(s) = shelves.row_data(i) {
+            rows(&s.items);
+            cards(&s.cards);
+        }
+    }
+    cards(&ui.get_browse_cards());
+    let ss = ui.get_search_shelves();
+    for i in 0..ss.row_count() {
+        if let Some(s) = ss.row_data(i) {
+            cards(&s.cards);
+        }
+    }
+    let ash = ui.get_artist_shelves();
+    for i in 0..ash.row_count() {
+        if let Some(s) = ash.row_data(i) {
+            cards(&s.cards);
+        }
+    }
+    for m in [
+        ui.get_coll_tracks(),
+        ui.get_artist_tracks(),
+        ui.get_results(),
+        ui.get_queue(),
+        ui.get_playlist_tracks(),
+        ui.get_liked_tracks(),
+        ui.get_taste_samples(),
+        ui.get_dl_tracks(),
+        ui.get_prof_top_tracks(),
+    ] {
+        rows(&m);
+    }
+}
+
+/// Modellerdeki kapak kopyalarını bırak (önbellek LRU'su modellerin tuttuğu görüntüleri
+/// serbest bırakamıyor). Çalan şarkınınki kalır.
+fn strip_model_art(ui: &AppWindow, keep: Option<&str>) {
+    let blank = Image::default();
+    for_art_models(
+        ui,
+        |m| {
+            for i in 0..m.row_count() {
+                if let Some(mut t) = m.row_data(i) {
+                    if t.has_art && keep != Some(t.key.as_str()) {
+                        t.art = blank.clone();
+                        t.has_art = false;
+                        m.set_row_data(i, t);
+                    }
+                }
+            }
+        },
+        |m| {
+            for i in 0..m.row_count() {
+                if let Some(mut c) = m.row_data(i) {
+                    if c.has_art && keep != Some(c.key.as_str()) {
+                        c.art = blank.clone();
+                        c.has_art = false;
+                        m.set_row_data(i, c);
+                    }
+                }
+            }
+        },
+    );
+    if ui.get_has_top() {
+        let mut t = ui.get_search_top();
+        t.art = blank.clone();
+        t.has_art = false;
+        ui.set_search_top(t);
+    }
+    let rows = ui.get_import_rows();
+    for i in 0..rows.row_count() {
+        if let Some(mut r) = rows.row_data(i) {
+            if r.has_art {
+                r.art = blank.clone();
+                r.has_art = false;
+                rows.set_row_data(i, r);
+            }
+        }
+    }
+    ui.set_artist_banner(blank);
+    ui.set_has_banner(false);
+}
+
+/// Kapağı boş kalan model satırları için kapakları yeniden iste (disk önbelleğinden hızlı gelir).
+fn refill_model_art(ui: &AppWindow) {
+    // İki kapanış aynı listeye yazar (sıra korunur, tekrarlar atlanır)
+    let want: RefCell<(Vec<String>, std::collections::HashSet<String>)> = RefCell::default();
+    let add = |key: &str| {
+        let mut w = want.borrow_mut();
+        if w.1.insert(key.to_string()) {
+            w.0.push(key.to_string());
+        }
+    };
+    for_art_models(
+        ui,
+        |m| {
+            for i in 0..m.row_count() {
+                if let Some(t) = m.row_data(i).filter(|t| !t.has_art) {
+                    add(&t.key);
+                }
+            }
+        },
+        |m| {
+            for i in 0..m.row_count() {
+                if let Some(c) = m.row_data(i).filter(|c| !c.has_art) {
+                    add(&c.key);
+                }
+            }
+        },
+    );
+    let want = want.into_inner().0;
+    with_state(|st| {
+        for key in want {
+            if ARTS.with(|a| a.borrow().contains_key(&key)) {
+                continue;
+            }
+            let Some(url) = THUMBS.with(|m| m.borrow().get(&key).cloned()) else { continue };
+            if st.requested.insert(key.clone()) {
+                let _ = st.art_tx.send((key, url));
+            }
+        }
+    });
+}
+
 fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     if let Some(k) = key.strip_prefix("W|") {
         if with_state(|st| st.banner_key == k) {
@@ -705,42 +922,16 @@ fn apply_art(ui: &AppWindow, key: String, a: art::Art) {
     let color = Color::from_rgb_u8(a.accent.0, a.accent.1, a.accent.2);
     cache_art_lru(key.clone(), img.clone(), color);
 
-    let shelves = ui.get_shelves();
-    for i in 0..shelves.row_count() {
-        if let Some(s) = shelves.row_data(i) {
-            update_rows(&s.items, &key, &img);
-            update_cards(&s.cards, &key, &img);
-        }
-    }
-    update_cards(&ui.get_browse_cards(), &key, &img);
-    let ss = ui.get_search_shelves();
-    for i in 0..ss.row_count() {
-        if let Some(s) = ss.row_data(i) {
-            update_cards(&s.cards, &key, &img);
-        }
-    }
+    for_art_models(ui, |m| update_rows(m, &key, &img), |m| update_cards(m, &key, &img));
     if ui.get_has_top() && with_state(|st| st.top.as_ref().map(top_key)) == Some(key.clone()) {
         let mut t = ui.get_search_top();
         t.art = img.clone();
         t.has_art = true;
         ui.set_search_top(t);
     }
-    update_rows(&ui.get_coll_tracks(), &key, &img);
-    update_rows(&ui.get_artist_tracks(), &key, &img);
-    let ash = ui.get_artist_shelves();
-    for i in 0..ash.row_count() {
-        if let Some(s) = ash.row_data(i) {
-            update_cards(&s.cards, &key, &img);
-        }
-    }
-    update_rows(&ui.get_results(), &key, &img);
-    update_rows(&ui.get_queue(), &key, &img);
-    update_rows(&ui.get_playlist_tracks(), &key, &img);
     if with_state(|st| st.playlists.iter().any(|p| p.tracks.iter().take(12).any(|t| t.key() == key))) {
         refresh_playlists_ui_only(ui);
     }
-    update_rows(&ui.get_liked_tracks(), &key, &img);
-    update_rows(&ui.get_taste_samples(), &key, &img);
     let rows = ui.get_import_rows();
     for i in 0..rows.row_count() {
         if let Some(mut r) = rows.row_data(i) {
@@ -1560,12 +1751,13 @@ fn hide_main(ui: &AppWindow) {
     // winit set_visible Wayland'de etkisiz; Slint hide() yüzeyi gerçekten kaldırır.
     // Mini açık olduğu için olay döngüsü sürer.
     let _ = ui.hide();
-    trim_heap();
+    trim_heap(ui);
 }
 
 /// Linux (glibc): ayırıcıdaki boş sayfaları sisteme geri ver; dokular geç bırakılabildiği
 /// için yarım saniye sonra bir kez daha.
-fn trim_heap() {
+fn trim_heap(ui: &AppWindow) {
+    let _ = ui;
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
         unsafe {
@@ -1574,8 +1766,43 @@ fn trim_heap() {
         Timer::single_shot(Duration::from_millis(500), || unsafe {
             libc::malloc_trim(0);
         });
+        // Windows'taki SetProcessWorkingSetSize karşılığı: gizliyken kullanılmayan sayfaları
+        // takas alanına (çoğunlukla zram) bırak. Kullanılanlar hemen geri gelir.
+        let w = ui.as_weak();
+        Timer::single_shot(Duration::from_millis(1500), move || {
+            if w.upgrade().is_some_and(|u| u.get_window_hidden()) {
+                page_out();
+            }
+        });
     }
 }
+
+/// Gizli pencerede (tepsi/mini) sürecin özel sayfalarını çekirdeğe "artık
+/// gerekmiyor" diye bildir (MADV_PAGEOUT, Linux 5.4+). Paylaşılan eşlemeler (PipeWire ses
+/// arabellekleri, GPU) ve aygıt dosyaları atlanır; takas yoksa çekirdek anonim sayfaları tutar.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn page_out() {
+    let Ok(maps) = std::fs::read_to_string("/proc/self/maps") else { return };
+    const MADV_PAGEOUT: libc::c_int = 21;
+    for line in maps.lines() {
+        let mut f = line.split_whitespace();
+        let (Some(range), Some(perms)) = (f.next(), f.next()) else { continue };
+        let path = f.nth(3).unwrap_or("");
+        // yalnız özel (p) ve okunabilir eşlemeler; aygıt, vdso/vvar ve paylaşılanlar hariç
+        if !perms.starts_with('r') || !perms.ends_with('p') {
+            continue;
+        }
+        if path.starts_with("/dev/") || path.starts_with("[v") || path.contains("memfd:") {
+            continue;
+        }
+        let Some((a, b)) = range.split_once('-') else { continue };
+        let (Ok(a), Ok(b)) = (usize::from_str_radix(a, 16), usize::from_str_radix(b, 16)) else { continue };
+        unsafe {
+            libc::madvise(a as *mut libc::c_void, b - a, MADV_PAGEOUT);
+        }
+    }
+}
+
 
 fn mini_close() {
     // Bırakmayı olay döngüsüne ertele: düğmenin kendi geri çağrısı içindeyiz
@@ -4800,13 +5027,10 @@ fn on_mpris(ui: &AppWindow, a: mpris::Act) {
     }
 }
 
-/// Pencereyi sistem tepsisine gizle ve düşük RAM (oyun) moduna geç.
-#[allow(dead_code)]
+/// Pencereyi sistem tepsisine gizle. Mini oynatıcıya geçişle aynı yol: kaynaklar bırakılır,
+/// yüzey (GPU bağlamı ve dokular) kaldırılır, ayırıcı boş sayfaları geri verir.
 fn hide_to_tray(ui: &AppWindow) {
-    release_ram(ui);
-    use slint::winit_030::WinitWindowAccessor;
-    ui.window().with_winit_window(|w| w.set_visible(false));
-    trim_heap();
+    hide_main(ui);
 }
 
 /// Düşük kaynak: animasyonları durdur, çalan dışındaki kapakları bellekten at, spektrumu kapat.
@@ -4825,6 +5049,7 @@ fn release_ram(ui: &AppWindow) {
     BLUR2_ORDER.with(|q| q.borrow_mut().clear());
     BIGS.with(|m| m.borrow_mut().clear());
     BIG_ORDER.with(|q| q.borrow_mut().clear());
+    strip_model_art(ui, now_key.as_deref());
     with_state(|st| {
         st.requested.clear();
         if let Some(k) = &now_key {
@@ -4879,6 +5104,8 @@ fn reload_art(ui: &AppWindow) {
             }
         }
     });
+    // Geri kalanlar (raf sonları, kuyruk, arama, açık sayfalar) sıra ile
+    refill_model_art(ui);
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -4886,6 +5113,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     updater::wait_for_parent();
     updater::cleanup_old();
     // Zaten açıksa onu öne getir ve çık (güncelleme yeniden açılışı eski süreci yukarıda bekler)
+    // `vynz --quit`: çalışan kopyayı (tepside/minide olsa da) düzgünce kapat; oturum kaydedilir.
+    if std::env::args().any(|a| a == "--quit") {
+        if !single::send("quit") {
+            eprintln!("çalışan Vynz bulunamadı");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     if single::enabled() && single::signal_existing() {
         return Ok(());
     }
@@ -4894,7 +5129,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     i18n::set(i18n::resolve(&Settings::load().lang));
     if single::enabled() {
         let w = ui.as_weak();
-        single::listen(move || {
+        single::listen(move |cmd| {
+            if cmd == "quit" {
+                let _ = slint::invoke_from_event_loop(|| {
+                    let _ = slint::quit_event_loop();
+                });
+                return;
+            }
             let _ = w.upgrade_in_event_loop(|ui| {
                 // Tepside ya da mini oynatıcıdaysa ana pencereyi getir
                 show_from_tray(&ui);
@@ -6060,7 +6301,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // VYNZ_FAKE_WINDOWS=1: Windows başlık çubuğu düzenini Linux'ta görmek için (yalnız test)
     ui.set_is_windows(cfg!(target_os = "windows") || std::env::var_os("VYNZ_FAKE_WINDOWS").is_some());
 
-    #[cfg(target_os = "windows")]
     let _tray_guard = {
         let weak = weak.clone();
         let fq = force_quit.clone();
@@ -6081,6 +6321,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         })
     };
+    // Tepsi yoksa (Linux'ta tepsi sunmayan panel) çarpı uygulamayı kapatır; yoksa gizli
+    // pencereye dönüş yolu kalmaz.
+    let tray_ok = _tray_guard.is_some();
 
     ui.on_win_drag({
         let weak = weak.clone();
@@ -6191,7 +6434,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let fq = force_quit.clone();
         move || {
             let Some(ui) = weak.upgrade() else { return };
-            if cfg!(target_os = "windows") && ui.get_close_to_tray() {
+            if tray_ok && ui.get_close_to_tray() {
                 hide_to_tray(&ui);
             } else {
                 fq.store(true, Ordering::Relaxed);
@@ -6203,7 +6446,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = weak.clone();
         let fq = force_quit.clone();
         move || {
-            if cfg!(target_os = "windows") && !fq.load(Ordering::Relaxed) {
+            if tray_ok && !fq.load(Ordering::Relaxed) {
                 if let Some(ui) = weak.upgrade() {
                     if ui.get_close_to_tray() {
                         hide_to_tray(&ui);
@@ -6211,6 +6454,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+            // Olay döngüsü pencereler kapanınca kendiliğinden bitmiyor (tepsi/mini için);
+            // gerçek kapanışta açıkça bitir.
+            let _ = slint::quit_event_loop();
             slint::CloseRequestResponse::HideWindow
         }
     });
@@ -6304,7 +6550,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     update_amb_timer(&ui);
-    ui.run()?;
+    // Tepsideyken ya da mini açıkken ana pencere gizli: son pencere kapanınca döngü bitmesin.
+    ui.show()?;
+    slint::run_event_loop_until_quit()?;
+    // Mini açıksa kapanışta kapat
+    if let Some((w, _t, _m)) = MINI.with(|m| m.borrow_mut().take()) {
+        let _ = w.hide();
+    }
     save_session(&ui);
     // Ses düzeyi bir dahaki açılışta aynı gelsin.
     with_state(|st| {
